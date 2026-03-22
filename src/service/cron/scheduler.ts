@@ -14,6 +14,7 @@ import { checkPampMail } from './pamp-checker.js';
 import { getEntityIndex } from '../../entities/entity-index.js';
 import { getEmbeddingIndex } from '../../entities/embedding-index.js';
 import { analyzeFeedback } from './feedback-analysis.js';
+import { runInnovation } from './innovate.js';
 import { getCronConfigPath, getVaultConfigDir } from '../../paths.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ const DEFAULT_CONFIG: CronConfig = {
         'pamp-check':          { enabled: false, intervalMinutes: 15 },
         'embedding-sync':      { enabled: false, intervalMinutes: 1440 },
         'feedback-analysis':   { enabled: false, intervalMinutes: 1440 },
+        'innovate':            { enabled: false, intervalMinutes: 1440 },
     },
 };
 
@@ -122,6 +124,12 @@ const JOB_DEFS: CronJobDef[] = [
         name: 'feedback-analysis',
         async run() {
             return analyzeFeedback();
+        },
+    },
+    {
+        name: 'innovate',
+        async run() {
+            return runInnovation();
         },
     },
 ];

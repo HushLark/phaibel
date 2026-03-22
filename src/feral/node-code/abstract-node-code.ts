@@ -127,7 +127,7 @@ export abstract class AbstractNodeCode implements NodeCode {
             let value = context.get(key);
             if (value === undefined || value === null) return '';
 
-            let str = String(value);
+            let str = (typeof value === 'object') ? JSON.stringify(value) : String(value);
 
             // Apply pipe transforms
             for (let i = 1; i < parts.length; i++) {
