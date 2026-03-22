@@ -10,19 +10,86 @@ You are an autonomous improvement agent for Phaibel. Your job is to run evaluati
 
 ## Arguments
 
-`$ARGUMENTS` specifies the aspect to innovate on. Parse it as follows:
-- **"prompts"** — Improve the LLM prompts in `src/commands/chat.ts` and `src/llm/router.ts`
-- **"process"** — Improve or create Feral processes (JSON files in vault `.phaibel/processes/`)
-- **"model"** — Experiment with different model assignments in `src/config.ts`
-- If empty or unrecognized, default to **"prompts"**
+`$ARGUMENTS` specifies what to innovate and optionally a persona/context to target.
+
+**Format**: `<aspect> [for <persona context>]`
+
+Parse it as follows:
+1. Extract the **aspect** (first word): `prompts`, `model`, or `process`. Default to `prompts` if missing.
+2. Extract the **context** (everything after "for"): a use-case persona describing who Phaibel is serving.
+
+**Examples:**
+- `/innovate prompts` — improve prompts using core scenarios only
+- `/innovate prompts for parents managing a family calendar` — generate family-oriented scenarios, then improve prompts
+- `/innovate model for business users managing multiple teams` — generate business scenarios, then experiment with models
+- `/innovate for solo freelancers tracking clients and invoices` — defaults to prompts, generates freelancer scenarios
 
 ## Workflow — Repeat up to 10 times
+
+### Step 0: Generate Persona Scenarios (only if context was provided)
+
+If the user provided a persona context, generate 6-8 eval scenarios tailored to that persona. Write them to `evals/scenarios/persona.ts`.
+
+The file must follow this exact structure:
+
+```typescript
+/**
+ * Persona Scenarios — <persona description>
+ *
+ * Auto-generated for /innovate. These scenarios test Phaibel's ability
+ * to handle use cases specific to: <persona description>.
+ */
+import type { EvalScenario } from '../types.js';
+
+export const personaScenarios: EvalScenario[] = [
+    // ... scenarios here
+];
+```
+
+**How to write good persona scenarios:**
+
+Each scenario needs:
+- `id`: kebab-case unique ID prefixed with `persona-` (e.g., `persona-family-dinner-event`)
+- `name`: human-readable description
+- `category`: always `'persona'`
+- `userInput`: realistic natural language that a person with this persona would say to Phaibel
+- `assertions`: 1-3 assertions that verify correct behavior
+
+**Scenario design guidelines:**
+- Cover all relevant entity types for the persona (events, tasks, goals, notes, people, todonts)
+- Include at least one entity-type discrimination test (e.g., "soccer practice" = event, not task)
+- Include at least one create-vs-update test (seed an entity, then ask to modify it)
+- Include at least one multi-entity test (two things in one message)
+- Use realistic language — how would this persona actually talk?
+- Test field population where relevant (dates, priorities, statuses)
+
+**Available assertion types:**
+- `entity_created` — `{ type, entityType, titleMatch, description }`
+- `entity_not_created` — `{ type, entityType, titleMatch, description }`
+- `entity_updated` — `{ type, entityType, titleMatch, description }`
+- `entity_type_correct` — `{ type, titleMatch, expectedType, description }`
+- `entity_field` — `{ type, entityType, titleMatch, field, expected, description }`
+- `entity_count` — `{ type, entityType, expected, description }`
+- `response_contains` — `{ type, match, description }`
+
+**Available entity types:** task, event, note, goal, person, todont, recurrence
+
+**To seed existing entities** (for update tests), add `vaultSeed`:
+```typescript
+vaultSeed: [
+    { entityType: 'task', title: 'Example Task', fields: { status: 'open', priority: 'medium' } },
+],
+```
+
+After writing the file, all eval commands should include `--scenarios-file evals/scenarios/persona.ts` to load both core and persona scenarios.
 
 ### Step 1: Run baseline eval
 
 ```bash
-npm run eval -- --label "baseline-$(date +%s)"
+npm run eval -- --label "baseline-$(date +%s)" --scenarios-file evals/scenarios/persona.ts
 ```
+
+(Omit `--scenarios-file` if no persona context was provided.)
 
 Read the result JSON from `evals/results/`. Note the overall score, per-scenario pass/fail, and failing assertion details.
 
@@ -77,8 +144,10 @@ Creating a saved process for a common pattern (like "create event from appointme
 ### Step 4: Run eval again
 
 ```bash
-npm run eval -- --label "loop-N-description-of-change"
+npm run eval -- --label "loop-N-description-of-change" --scenarios-file evals/scenarios/persona.ts
 ```
+
+(Omit `--scenarios-file` if no persona context.)
 
 ### Step 5: Compare results
 
@@ -110,3 +179,4 @@ Go back to Step 2 with the new results. Stop after 10 loops or when all scenario
 5. **Log your reasoning** — before each change, explain what you're trying and why in the commit message.
 6. **Read before editing** — always read the file before modifying it.
 7. **Revert failures** — if a change doesn't help, revert it before trying the next thing.
+8. **Persona scenarios are additive** — never remove or skip core scenarios. Persona scenarios run alongside them.

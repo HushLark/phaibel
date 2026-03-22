@@ -13,13 +13,21 @@ import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { ALL_SCENARIOS } from './scenarios/index.js';
 import { runEval } from './runner.js';
-import type { EvalRunConfig } from './types.js';
+import type { EvalRunConfig, EvalScenario } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function parseArgs(argv: string[]): { label: string; filter?: string[]; modelOverrides?: Record<string, { provider: string; model: string }> } {
+interface ParsedArgs {
+    label: string;
+    filter?: string[];
+    scenariosFile?: string;
+    modelOverrides?: Record<string, { provider: string; model: string }>;
+}
+
+function parseArgs(argv: string[]): ParsedArgs {
     let label = 'unnamed';
     let filter: string[] | undefined;
+    let scenariosFile: string | undefined;
     const modelOverrides: Record<string, { provider: string; model: string }> = {};
 
     for (let i = 2; i < argv.length; i++) {
@@ -27,6 +35,8 @@ function parseArgs(argv: string[]): { label: string; filter?: string[]; modelOve
             label = argv[++i];
         } else if (argv[i] === '--filter' && argv[i + 1]) {
             filter = argv[++i].split(',').map(s => s.trim());
+        } else if (argv[i] === '--scenarios-file' && argv[i + 1]) {
+            scenariosFile = argv[++i];
         } else if (argv[i] === '--model-override' && argv[i + 1]) {
             // Format: capability=provider:model (e.g., reason=anthropic:claude-sonnet-4-6)
             const parts = argv[++i].split('=');
@@ -38,7 +48,7 @@ function parseArgs(argv: string[]): { label: string; filter?: string[]; modelOve
         }
     }
 
-    return { label, filter, modelOverrides: Object.keys(modelOverrides).length > 0 ? modelOverrides : undefined };
+    return { label, filter, scenariosFile, modelOverrides: Object.keys(modelOverrides).length > 0 ? modelOverrides : undefined };
 }
 
 async function main() {
@@ -50,13 +60,27 @@ async function main() {
         gitCommit = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
     } catch { /* not in a git repo */ }
 
+    // Load scenarios — core + optional persona scenarios from file
+    let scenarios: EvalScenario[] = [...ALL_SCENARIOS];
+    if (args.scenariosFile) {
+        try {
+            const absPath = path.resolve(args.scenariosFile);
+            const mod = await import(absPath);
+            const personaScenarios: EvalScenario[] = mod.personaScenarios ?? mod.default ?? [];
+            console.log(`  Persona scenarios: ${personaScenarios.length} loaded from ${args.scenariosFile}`);
+            scenarios = [...scenarios, ...personaScenarios];
+        } catch (err) {
+            console.error(`Failed to load scenarios from ${args.scenariosFile}:`, err);
+            process.exit(1);
+        }
+    }
+
     // Filter scenarios
-    let scenarios = ALL_SCENARIOS;
     if (args.filter) {
         scenarios = scenarios.filter(s => args.filter!.includes(s.id));
         if (scenarios.length === 0) {
             console.error(`No scenarios match filter: ${args.filter.join(', ')}`);
-            console.error(`Available: ${ALL_SCENARIOS.map(s => s.id).join(', ')}`);
+            console.error(`Available: ${scenarios.map(s => s.id).join(', ')}`);
             process.exit(1);
         }
     }

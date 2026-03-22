@@ -610,6 +610,7 @@ PROCESS FORMAT RULES:
 17. When referencing existing entities (find_*, link_*, update_*, complete_*, set_*), use EXACT titles from the EXISTING ENTITIES list — do NOT guess or paraphrase entity titles
 18. CRITICAL: Use the correct entity type catalog node. An event (appointment, meeting, scheduled activity) MUST use create_event, NOT create_task. A task (action item, todo) MUST use create_task, NOT create_event. Never substitute one entity type for another.
 19. When setting enum fields via set_context_value, use ONLY the valid values from the ENTITY TYPES schema above. For example, task status must be one of [open, in-progress, done, blocked] — do NOT use "todo", "complete", or other values. If unsure, omit the field and let the default apply.
+20. Events ALWAYS require BOTH startDate AND endDate. If the user only mentions one date, set endDate to the same date as startDate. Always use two separate set_context_value nodes (one for startDate, one for endDate) before create_event, and include both in extra_fields: "startDate,endDate".
 
 EXAMPLE PROCESSES:
 ${examplesStr}

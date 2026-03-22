@@ -7,9 +7,13 @@ import { createVsUpdateScenarios } from './create-vs-update.js';
 import { multiEntityScenarios } from './multi-entity.js';
 import { conversationalScenarios } from './conversational.js';
 
-export const ALL_SCENARIOS: EvalScenario[] = [
+export const CORE_SCENARIOS: EvalScenario[] = [
     ...entityTypeScenarios,
     ...createVsUpdateScenarios,
     ...multiEntityScenarios,
     ...conversationalScenarios,
 ];
+
+// Default export includes core scenarios only.
+// Persona scenarios are loaded dynamically by run-eval.ts via --scenarios-file.
+export const ALL_SCENARIOS: EvalScenario[] = [...CORE_SCENARIOS];

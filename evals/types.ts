@@ -18,7 +18,7 @@ export interface VaultSeedEntity {
 export interface EvalScenario {
     id: string;
     name: string;
-    category: 'entity-type' | 'create-vs-update' | 'multi-entity' | 'conversational';
+    category: 'entity-type' | 'create-vs-update' | 'multi-entity' | 'conversational' | 'persona';
     userInput: string;
     history?: ChatHistoryEntry[];
     vaultSeed?: VaultSeedEntity[];
