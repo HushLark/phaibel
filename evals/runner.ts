@@ -55,7 +55,12 @@ async function runScenario(
                     scenario.userInput,
                     () => {},                          // onStatus: no-op
                     (pj) => { processJson = pj; },     // onProcess: capture
-                    async () => 'yes',                  // onQuestion: default answer
+                    async (_q: string, options?: string[]) => {
+                        // If choices are offered, pick the first one
+                        if (options && options.length > 0) return options[0];
+                        // For free-text questions (e.g. "What time?"), give a reasonable default
+                        return '12:00';
+                    },
                     () => {},                           // onChatId: no-op
                     scenario.history,
                 ),

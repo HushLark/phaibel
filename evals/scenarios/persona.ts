@@ -1,175 +1,122 @@
 /**
- * Persona Scenarios — Parent of a college student
+ * Persona Scenarios — Dialog & feedback widgets
  *
  * Auto-generated for /innovate. These scenarios test Phaibel's ability
- * to handle use cases specific to: a parent managing tasks, events, goals,
- * and contacts related to their college-aged child.
+ * to ask clarifying questions via prompt_input/prompt_select when the
+ * user's request is missing required information, rather than guessing
+ * or failing validation.
  */
 import type { EvalScenario } from '../types.js';
 
 export const personaScenarios: EvalScenario[] = [
     {
-        id: 'persona-orientation-event',
-        name: 'College orientation is an event, not a task',
+        id: 'persona-event-missing-time',
+        name: 'Event with date but no time should still create event',
         category: 'persona',
-        userInput: 'My daughter has freshman orientation on August 20th at 9am',
+        userInput: 'Add an event for my team standup next Monday',
         assertions: [
             {
                 type: 'entity_created',
                 entityType: 'event',
-                titleMatch: 'orientation',
-                description: 'An event should be created for orientation',
-            },
-            {
-                type: 'entity_not_created',
-                entityType: 'task',
-                titleMatch: 'orientation',
-                description: 'Orientation is a scheduled event, not a task',
+                titleMatch: 'standup',
+                description: 'An event should be created for the standup',
             },
         ],
     },
     {
-        id: 'persona-tuition-task',
-        name: 'Paying tuition is a task, not an event',
+        id: 'persona-task-with-priority',
+        name: 'Task with explicit priority sets the field',
         category: 'persona',
-        userInput: 'I need to pay the spring semester tuition before January 15th',
+        userInput: 'Add a high priority task to review the Q2 budget',
         assertions: [
             {
                 type: 'entity_created',
                 entityType: 'task',
-                titleMatch: 'tuition',
-                description: 'A task should be created for paying tuition',
-            },
-            {
-                type: 'entity_not_created',
-                entityType: 'event',
-                titleMatch: 'tuition',
-                description: 'Paying tuition is an action item, not a calendar event',
-            },
-        ],
-    },
-    {
-        id: 'persona-roommate-contact',
-        name: 'Adding roommate as a contact creates a person',
-        category: 'persona',
-        userInput: "Add my son's roommate: Jake Torres, phone 555-0147, email jake.torres@university.edu",
-        assertions: [
-            {
-                type: 'entity_created',
-                entityType: 'person',
-                titleMatch: 'Jake',
-                description: 'A person entity should be created for the roommate',
+                titleMatch: 'budget',
+                description: 'A task should be created for the budget review',
             },
             {
                 type: 'entity_field',
-                entityType: 'person',
-                titleMatch: 'Jake',
-                field: 'email',
-                expected: 'jake.torres@university.edu',
-                description: 'Email field should be populated',
+                entityType: 'task',
+                titleMatch: 'budget',
+                field: 'priority',
+                expected: 'high',
+                description: 'Priority should be set to high as explicitly stated',
             },
         ],
     },
     {
-        id: 'persona-graduation-goal',
-        name: 'Graduation goal is a goal, not a task',
+        id: 'persona-goal-created-cleanly',
+        name: 'Goal creation succeeds without validation errors',
         category: 'persona',
-        userInput: 'My goal is to help my daughter graduate debt-free',
+        userInput: 'My goal is to read 24 books this year',
         assertions: [
             {
                 type: 'entity_created',
                 entityType: 'goal',
-                titleMatch: 'debt-free',
-                description: 'A goal should be created for the long-term objective',
-            },
-            {
-                type: 'entity_not_created',
-                entityType: 'task',
-                titleMatch: 'debt-free',
-                description: 'A long-term aspiration should be a goal, not a task',
+                titleMatch: 'book',
+                description: 'A goal should be created for reading books',
             },
         ],
     },
     {
-        id: 'persona-move-in-multi',
-        name: 'Move-in day creates event + task in one request',
+        id: 'persona-note-with-info',
+        name: 'Note stores reference information correctly',
         category: 'persona',
-        userInput: 'Move-in day is September 1st at noon, and I need to rent a moving truck before then',
-        assertions: [
-            {
-                type: 'entity_created',
-                entityType: 'event',
-                titleMatch: 'move',
-                description: 'An event should be created for move-in day',
-            },
-            {
-                type: 'entity_created',
-                entityType: 'task',
-                titleMatch: 'truck',
-                description: 'A task should be created for renting the truck',
-            },
-        ],
-    },
-    {
-        id: 'persona-update-tuition-done',
-        name: 'Mark existing tuition task as complete',
-        category: 'persona',
-        vaultSeed: [
-            { entityType: 'task', title: 'Pay spring tuition', fields: { status: 'open', priority: 'high' } },
-        ],
-        userInput: 'I paid the spring tuition, mark it done',
-        assertions: [
-            {
-                type: 'entity_updated',
-                entityType: 'task',
-                titleMatch: 'tuition',
-                description: 'The existing tuition task should be updated, not a new one created',
-            },
-            {
-                type: 'entity_count',
-                entityType: 'task',
-                expected: 1,
-                description: 'Should still have only 1 task (updated, not duplicated)',
-            },
-        ],
-    },
-    {
-        id: 'persona-care-package-note',
-        name: 'Care package ideas stored as a note',
-        category: 'persona',
-        userInput: "Remember that Emma likes dark chocolate, trail mix, and fuzzy socks for care packages",
+        userInput: 'Remember that the garage door code is 4821',
         assertions: [
             {
                 type: 'entity_created',
                 entityType: 'note',
-                titleMatch: 'care package',
-                description: 'A note should be created to remember care package preferences',
+                titleMatch: 'garage',
+                description: 'A note should be created for the garage door code',
             },
             {
-                type: 'entity_not_created',
-                entityType: 'task',
-                titleMatch: 'care package',
-                description: 'Remembering preferences is a note, not a task',
+                type: 'response_contains',
+                match: '4821',
+                description: 'Response should confirm the code was stored',
             },
         ],
     },
     {
-        id: 'persona-stop-helicopter',
-        name: 'Stop-doing statement creates a todont',
+        id: 'persona-contact-partial-info',
+        name: 'Contact creation with partial info succeeds',
         category: 'persona',
-        userInput: 'I need to stop calling the registrar on behalf of my son — he should handle it himself',
+        userInput: 'Add a contact for my plumber Mike, phone 555-0199',
+        assertions: [
+            {
+                type: 'entity_created',
+                entityType: 'person',
+                titleMatch: 'Mike',
+                description: 'A person entity should be created for Mike',
+            },
+            {
+                type: 'entity_field',
+                entityType: 'person',
+                titleMatch: 'Mike',
+                field: 'phone',
+                expected: '555-0199',
+                description: 'Phone field should be populated',
+            },
+        ],
+    },
+    {
+        id: 'persona-todont-simple',
+        name: 'Simple stop-doing creates todont without errors',
+        category: 'persona',
+        userInput: 'I should stop eating fast food for lunch',
         assertions: [
             {
                 type: 'entity_created',
                 entityType: 'todont',
-                titleMatch: 'registrar',
-                description: 'A todont should be created for the habit to stop',
+                titleMatch: 'fast food',
+                description: 'A todont should be created',
             },
             {
                 type: 'entity_not_created',
                 entityType: 'task',
-                titleMatch: 'registrar',
-                description: 'A stop-doing statement should not create a task',
+                titleMatch: 'fast food',
+                description: 'Should not create a task for a stop-doing',
             },
         ],
     },
