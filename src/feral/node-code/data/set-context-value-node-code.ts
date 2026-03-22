@@ -13,7 +13,7 @@ export class SetContextValueNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [
         { key: 'value', name: 'Value', description: 'The value to set in the context.', type: 'string' },
         { key: 'context_path', name: 'Context Path', description: 'The key in the context to set.', type: 'string' },
-        { key: 'value_type', name: 'Value Type', description: 'Type cast for the value.', type: 'string', default: 'string', options: ['string', 'int', 'float', 'boolean', 'json'] },
+        { key: 'value_type', name: 'Value Type', description: 'Type cast for the value.', type: 'string', default: 'string', options: ['string', 'number', 'int', 'float', 'boolean', 'json'] },
     ];
     static readonly resultDescriptions: ResultDescription[] = [
         { status: ResultStatus.OK, description: 'Value was set successfully.' },
@@ -32,6 +32,7 @@ export class SetContextValueNodeCode extends AbstractNodeCode {
         switch (valueType) {
             case 'string': value = String(rawValue); break;
             case 'int': value = parseInt(String(rawValue), 10); break;
+            case 'number':
             case 'float': value = parseFloat(String(rawValue)); break;
             case 'boolean': value = rawValue === 'true' || rawValue === '1'; break;
             case 'json':

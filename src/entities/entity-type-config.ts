@@ -98,6 +98,19 @@ export async function loadEntityTypes(): Promise<EntityTypeConfig[]> {
         if (!Array.isArray(parsed.entityTypes)) {
             throw new Error('entity-types.json missing entityTypes array');
         }
+        // Merge new built-in properties into saved configs for built-in types
+        // so that new features (e.g. calendarDateField) propagate to existing vaults
+        const defaultsByName = new Map(DEFAULT_ENTITY_TYPES.map(d => [d.name, d]));
+        for (const saved of parsed.entityTypes) {
+            const builtin = defaultsByName.get(saved.name);
+            if (!builtin) continue;
+            if (saved.calendarDateField === undefined && builtin.calendarDateField) {
+                saved.calendarDateField = builtin.calendarDateField;
+            }
+            if (saved.spawner === undefined && builtin.spawner) {
+                saved.spawner = builtin.spawner;
+            }
+        }
         _cache = parsed.entityTypes;
         return _cache;
     } catch (err) {

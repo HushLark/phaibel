@@ -1108,11 +1108,13 @@
     timelineBody.querySelectorAll('.task-check').forEach(el => {
       el.addEventListener('click', async () => {
         const item = el.closest('.task-item');
+        if (!item) return;
         const id = item.dataset.taskId;
-        if (!id) return;
+        if (!id) { console.warn('task-check: no data-task-id on', item); return; }
+        const entityType = item.dataset.entityType || 'task';
         item.style.opacity = '0.4';
         try {
-          const res = await fetch('/api/entities/task/' + encodeURIComponent(id), {
+          const res = await fetch('/api/entities/' + encodeURIComponent(entityType) + '/' + encodeURIComponent(id), {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'done' }),
@@ -1120,9 +1122,12 @@
           if (res.ok) {
             item.remove();
           } else {
+            const err = await res.json().catch(() => ({}));
+            console.error('task-check: PATCH failed', res.status, err);
             item.style.opacity = '1';
           }
-        } catch {
+        } catch (e) {
+          console.error('task-check: fetch error', e);
           item.style.opacity = '1';
         }
       });
@@ -1147,7 +1152,7 @@
             ${item.location ? '<div class="event-location">' + esc(item.location) + '</div>' : ''}
           </div>`;
         } else if (item.kind === 'task') {
-          return `<div class="task-item" data-task-id="${esc(item.id)}">
+          return `<div class="task-item" data-task-id="${esc(item.id)}" data-entity-type="task">
             <div class="task-check" title="Mark done"></div>
             <div class="task-info">
               <div class="task-title">${esc(item.title)}</div>
