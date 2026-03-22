@@ -17,6 +17,9 @@ schedule/
 todos/
 global/
 
+# Eval results (generated, not source)
+evals/results/
+
 # OS files
 .DS_Store
 
