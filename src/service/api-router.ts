@@ -18,6 +18,8 @@
 //
 //   GET    /api/search?q=...&type=...     — full-text search
 //
+//   GET    /api/calendar                  — all dated entities for timeline display
+//
 //   GET    /api/processes                 — list available Feral processes
 //   POST   /api/processes/:key/run        — execute a process with context
 //
@@ -96,6 +98,45 @@ export async function handleApiRoute(
 ): Promise<boolean> {
     const method = req.method ?? 'GET';
     const pathname = url.pathname;
+
+    // ── Calendar ────────────────────────────────────────────────────
+
+    // GET /api/calendar — all entities with a calendarDateField, normalized for timeline display
+    if (method === 'GET' && pathname === '/api/calendar') {
+        const types = await loadEntityTypes();
+        const calendarTypes = types.filter(t => t.calendarDateField);
+        const items: Record<string, unknown>[] = [];
+
+        for (const t of calendarTypes) {
+            try {
+                const entities = await listEntities(t.name);
+                for (const e of entities) {
+                    // Skip completed entities
+                    if (t.completionField && e.meta[t.completionField] === (t.completionValue ?? 'done')) continue;
+
+                    const rawDate = e.meta[t.calendarDateField!];
+                    if (!rawDate || typeof rawDate !== 'string') continue;
+                    // Extract YYYY-MM-DD from date or datetime
+                    const date = rawDate.slice(0, 10);
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+
+                    items.push({
+                        entityType: t.name,
+                        id: e.meta.id,
+                        title: e.meta.title,
+                        date,
+                        dateField: t.calendarDateField,
+                        meta: e.meta,
+                    });
+                }
+            } catch {
+                // Entity dir may not exist yet — skip
+            }
+        }
+
+        json(res, 200, items);
+        return true;
+    }
 
     // ── Entity Types ─────────────────────────────────────────────────
 

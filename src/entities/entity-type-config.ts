@@ -62,6 +62,7 @@ export interface EntityTypeConfig {
     completionField?: string;   // e.g. 'status'
     completionValue?: string;   // e.g. 'done'
     spawner?: SpawnerConfig;    // present only on entities that spawn children
+    calendarDateField?: string; // field key used for calendar placement (must be type 'date' or 'datetime')
 }
 
 interface EntityTypesFile {
@@ -174,6 +175,15 @@ export async function addEntityType(config: EntityTypeConfig): Promise<void> {
     const types = await loadEntityTypes();
     if (types.find(t => t.name === config.name)) {
         throw new Error(`Entity type "${config.name}" already exists.`);
+    }
+    if (config.calendarDateField) {
+        const field = config.fields.find(f => f.key === config.calendarDateField);
+        if (!field) {
+            throw new Error(`calendarDateField "${config.calendarDateField}" does not match any field in this entity type.`);
+        }
+        if (field.type !== 'date' && field.type !== 'datetime') {
+            throw new Error(`calendarDateField "${config.calendarDateField}" must be a date or datetime field, got "${field.type}".`);
+        }
     }
     types.push(config);
     await saveEntityTypes(types);

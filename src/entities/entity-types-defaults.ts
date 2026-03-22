@@ -25,6 +25,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         ],
         completionField: 'status',
         completionValue: 'done',
+        calendarDateField: 'dueDate',
     },
     {
         name: 'note',
@@ -45,6 +46,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             { key: 'endDate',   type: 'date', label: 'End Date/Time',   required: true },
             { key: 'location',  type: 'string', label: 'Location',      required: false },
         ],
+        calendarDateField: 'startDate',
     },
     {
         name: 'todont',

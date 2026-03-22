@@ -259,6 +259,36 @@
     font-style: italic;
   }
 
+  .entity-item {
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .entity-item:last-child { border-bottom: none; }
+
+  .badge-entity {
+    display: inline-block;
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: var(--cyan-dim, #1a3a3a);
+    color: var(--cyan, #5fdfdf);
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  .entity-date {
+    font-size: 10px;
+    color: var(--dim);
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
   /* ── Scheduler panel ────────────────────────────────── */
 
   .sched-item {
@@ -913,12 +943,8 @@
 
   async function fetchTimeline() {
     try {
-      const [taskRes, eventRes] = await Promise.all([
-        fetch('/api/entities/task'),
-        fetch('/api/entities/event'),
-      ]);
-      const tasks = await taskRes.json();
-      const events = await eventRes.json();
+      const res = await fetch('/api/calendar');
+      const calItems = await res.json();
 
       const now = new Date();
       const dates = [];
@@ -933,41 +959,44 @@
       const overdue = [];
       const buckets = { [dates[0]]: [], [dates[1]]: [], [dates[2]]: [] };
 
-      // Assign tasks to buckets
-      for (const e of tasks) {
-        if (e.meta.status === 'done') continue;
-        const due = getValidDate(e.meta.dueDate);
-        const item = {
-          kind: 'task',
-          id: e.meta.id,
-          title: e.meta.title,
-          status: e.meta.status || 'open',
-          priority: e.meta.priority || 'medium',
-          dueDate: due,
-        };
-        if (!due) {
-          // No date → today bucket
-          buckets[dates[0]].push(item);
-        } else if (due < todayStr) {
-          overdue.push(item);
-        } else if (buckets[due]) {
-          buckets[due].push(item);
-        }
-        // Future beyond 2 days → skip
-      }
+      for (const ci of calItems) {
+        const date = getValidDate(ci.date);
 
-      // Assign events to buckets
-      for (const e of events) {
-        const eventDate = ((e.meta.startDate || '') + '').split('T')[0];
-        if (!buckets[eventDate]) continue;
-        buckets[eventDate].push({
-          kind: 'event',
-          title: e.meta.title,
-          startDate: e.meta.startDate,
-          endDate: e.meta.endDate,
-          location: e.meta.location || null,
-          calendarId: e.meta.calendarId || null,
-        });
+        if (ci.entityType === 'task') {
+          const item = {
+            kind: 'task',
+            id: ci.id,
+            title: ci.title,
+            status: ci.meta.status || 'open',
+            priority: ci.meta.priority || 'medium',
+            dueDate: date,
+          };
+          if (!date) {
+            buckets[dates[0]].push(item);
+          } else if (date < todayStr) {
+            overdue.push(item);
+          } else if (buckets[date]) {
+            buckets[date].push(item);
+          }
+        } else if (ci.entityType === 'event') {
+          if (!date || !buckets[date]) continue;
+          buckets[date].push({
+            kind: 'event',
+            title: ci.title,
+            startDate: ci.meta.startDate,
+            endDate: ci.meta.endDate,
+            location: ci.meta.location || null,
+            calendarId: ci.meta.calendarId || null,
+          });
+        } else {
+          // Generic dated entity (custom types)
+          if (!date) continue;
+          if (date < todayStr) {
+            overdue.push({ kind: ci.entityType, id: ci.id, title: ci.title, date, entityType: ci.entityType });
+          } else if (buckets[date]) {
+            buckets[date].push({ kind: ci.entityType, id: ci.id, title: ci.title, date, entityType: ci.entityType });
+          }
+        }
       }
 
       renderTimeline(overdue, buckets, dates);
@@ -1049,19 +1078,24 @@
       const label = labels[i] || dayNames[d.getDay()];
       const items = buckets[date] || [];
 
-      // Sort: events by time first, then tasks by priority
+      // Sort: events first (by time), then tasks (by priority), then other entities (by title)
       items.sort((a, b) => {
-        // Events before tasks
-        if (a.kind === 'event' && b.kind !== 'event') return -1;
-        if (a.kind !== 'event' && b.kind === 'event') return 1;
+        const order = { event: 0, task: 1 };
+        const ao = order[a.kind] ?? 2;
+        const bo = order[b.kind] ?? 2;
+        if (ao !== bo) return ao - bo;
         // Events: by start time
         if (a.kind === 'event' && b.kind === 'event') {
           return (a.startDate || '').localeCompare(b.startDate || '');
         }
         // Tasks: by priority
-        const pa = priorityOrder[a.priority] ?? 2;
-        const pb = priorityOrder[b.priority] ?? 2;
-        return pa - pb;
+        if (a.kind === 'task' && b.kind === 'task') {
+          const pa = priorityOrder[a.priority] ?? 2;
+          const pb = priorityOrder[b.priority] ?? 2;
+          return pa - pb;
+        }
+        // Other: by title
+        return (a.title || '').localeCompare(b.title || '');
       });
 
       sections.push(renderSection(label, date, items, i === 0));
@@ -1112,7 +1146,7 @@
             ${esc(item.title)}${calName ? '<span class="event-cal">' + esc(calName) + '</span>' : ''}
             ${item.location ? '<div class="event-location">' + esc(item.location) + '</div>' : ''}
           </div>`;
-        } else {
+        } else if (item.kind === 'task') {
           return `<div class="task-item" data-task-id="${esc(item.id)}">
             <div class="task-check" title="Mark done"></div>
             <div class="task-info">
@@ -1122,6 +1156,13 @@
                 ${item.dueDate ? ' · due ' + item.dueDate : ''}
               </div>
             </div>
+          </div>`;
+        } else {
+          // Generic calendar entity (custom types)
+          return `<div class="entity-item">
+            <span class="badge badge-entity">${esc(item.entityType || item.kind)}</span>
+            <span class="entity-title">${esc(item.title)}</span>
+            ${item.date ? '<span class="entity-date">' + item.date + '</span>' : ''}
           </div>`;
         }
       }).join('');

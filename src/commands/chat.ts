@@ -396,7 +396,10 @@ ${vaultContext ? `VAULT CONTEXT (from .vault.md files — project goals, notes, 
 The agent manages these entity types. When the user mentions something that maps to an entity, prefer creating it:
 ${entityTypes.map(t => {
     const fieldDesc = t.fields.length > 0
-        ? ` Fields: ${t.fields.map(f => `${f.key}${f.type === 'enum' && f.values ? ` (${f.values.join('|')})` : ''}`).join(', ')}.`
+        ? ` Fields: ${t.fields.map(f => {
+            if (f.type === 'enum' && f.values) return `${f.key}:enum(${f.values.join('|')})`;
+            return `${f.key}:${f.type}`;
+        }).join(', ')}.`
         : '';
     return `- ${t.name} (plural: ${t.plural})${t.description ? ` — ${t.description}` : ''}.${fieldDesc}`;
 }).join('\n')}
@@ -606,7 +609,7 @@ PROCESS FORMAT RULES:
 13. To link entities, use link_entities with source_entity_type, source_entity_title, target_entity_type, target_entity_title, and label
 14. To complete/finish an entity, use the complete_* catalog node (e.g. complete_task)
 15. ONLY use configuration keys that appear in the NODE CONFIGURATION DETAILS above — do not invent keys. The create_* nodes ONLY accept: entity_type, entity_title, entity_body, tags, extra_fields. Do NOT put field names like startDate, priority, status, location directly in configuration.
-16. To set entity-specific fields (e.g. startDate, endDate, priority, status, location, email), use a set_context_value node BEFORE the create_* node to put the value into context, then list those field names in the create node's "extra_fields" config (comma-separated). Example: set_context_value with config {"key":"startDate","value":"2026-03-25"} → create_event with config {"entity_title":"Dentist","entity_body":"Appointment at 2pm","extra_fields":"startDate,endDate"}. IMPORTANT: Date fields MUST use YYYY-MM-DD format (no time component). Put specific times in the entity_body instead.
+16. To set entity-specific fields (e.g. startDate, endDate, priority, status, location, email), use a set_context_value node BEFORE the create_* node to put the value into context, then list those field names in the create node's "extra_fields" config (comma-separated). Example: set_context_value with config {"key":"startDate","value":"2026-03-25"} → create_event with config {"entity_title":"Dentist","entity_body":"Appointment at 2pm","extra_fields":"startDate,endDate"}. IMPORTANT: Match the field type from ENTITY TYPES above — date fields use YYYY-MM-DD, datetime fields use YYYY-MM-DDTHH:mm. String fields must be plain strings (not arrays or objects).
 17. When referencing existing entities (find_*, link_*, update_*, complete_*, set_*), use EXACT titles from the EXISTING ENTITIES list — do NOT guess or paraphrase entity titles
 18. CRITICAL: Use the correct entity type catalog node. An event (appointment, meeting, scheduled activity) MUST use create_event, NOT create_task. A task (action item, todo) MUST use create_task, NOT create_event. Never substitute one entity type for another.
 19. When setting enum fields via set_context_value, use ONLY the valid values from the ENTITY TYPES schema above. For example, task status must be one of [open, in-progress, done, blocked] — do NOT use "todo", "complete", or other values. If unsure, omit the field and let the default apply.
