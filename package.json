@@ -38,7 +38,10 @@
     "test": "vitest run --exclude='tests/integration/**'",
     "test:watch": "vitest --exclude='tests/integration/**'",
     "test:integration": "vitest run tests/integration",
-    "test:all": "vitest run"
+    "test:all": "vitest run",
+    "eval": "tsx evals/run-eval.ts",
+    "eval:loop": "tsx evals/loop.ts",
+    "eval:compare": "tsx evals/compare.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",

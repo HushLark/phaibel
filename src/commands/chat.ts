@@ -410,6 +410,7 @@ IMPORTANT CAPABILITIES:
 - To create a NEW content type the user mentions (e.g. "recipe", "habit", "bookmark"), use "create_content_type".
 - To link two entities together (e.g. a task relates to a goal), use "link_entities".
 - To add tags to an existing entity, use the add_tag_* nodes (e.g. add_tag_task).
+- To set entity-specific fields (startDate, endDate, priority, location, email, etc.) when creating entities, ALSO select "set_context_value" — you'll need it to put field values into context before the create node.
 
 When the user's request implies creating entities, ALWAYS select the appropriate create_* nodes.
 CRITICAL: Match the entity type precisely. An "event" is NOT a "task" — use create_event for events/appointments/meetings and create_task for todos/action items. Each entity type exists for a reason; never substitute one for another.
@@ -604,9 +605,11 @@ PROCESS FORMAT RULES:
 12. To filter by tag, set "tags" in configuration (comma-separated), e.g. { "tags": "year-of-the-house" }
 13. To link entities, use link_entities with source_entity_type, source_entity_title, target_entity_type, target_entity_title, and label
 14. To complete/finish an entity, use the complete_* catalog node (e.g. complete_task)
-15. ONLY use configuration keys that appear in the NODE CONFIGURATION DETAILS above — do not invent keys
-16. When referencing existing entities (find_*, link_*, update_*, complete_*, set_*), use EXACT titles from the EXISTING ENTITIES list — do NOT guess or paraphrase entity titles
-17. CRITICAL: Use the correct entity type catalog node. An event (appointment, meeting, scheduled activity) MUST use create_event, NOT create_task. A task (action item, todo) MUST use create_task, NOT create_event. Never substitute one entity type for another.
+15. ONLY use configuration keys that appear in the NODE CONFIGURATION DETAILS above — do not invent keys. The create_* nodes ONLY accept: entity_type, entity_title, entity_body, tags, extra_fields. Do NOT put field names like startDate, priority, status, location directly in configuration.
+16. To set entity-specific fields (e.g. startDate, endDate, priority, status, location, email), use a set_context_value node BEFORE the create_* node to put the value into context, then list those field names in the create node's "extra_fields" config (comma-separated). Example: set_context_value with config {"key":"startDate","value":"2026-03-25"} → create_event with config {"entity_title":"Dentist","entity_body":"Appointment at 2pm","extra_fields":"startDate,endDate"}. IMPORTANT: Date fields MUST use YYYY-MM-DD format (no time component). Put specific times in the entity_body instead.
+17. When referencing existing entities (find_*, link_*, update_*, complete_*, set_*), use EXACT titles from the EXISTING ENTITIES list — do NOT guess or paraphrase entity titles
+18. CRITICAL: Use the correct entity type catalog node. An event (appointment, meeting, scheduled activity) MUST use create_event, NOT create_task. A task (action item, todo) MUST use create_task, NOT create_event. Never substitute one entity type for another.
+19. When setting enum fields via set_context_value, use ONLY the valid values from the ENTITY TYPES schema above. For example, task status must be one of [open, in-progress, done, blocked] — do NOT use "todo", "complete", or other values. If unsure, omit the field and let the default apply.
 
 EXAMPLE PROCESSES:
 ${examplesStr}

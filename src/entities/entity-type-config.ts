@@ -75,7 +75,7 @@ interface EntityTypesFile {
 
 let _cache: EntityTypeConfig[] | null = null;
 
-function invalidateCache(): void {
+export function invalidateCache(): void {
     _cache = null;
 }
 

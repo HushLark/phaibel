@@ -1,0 +1,213 @@
+/**
+ * Phaibel Evaluation Harness — Assertion System
+ *
+ * Evaluates assertions against before/after vault snapshots and response text.
+ */
+import type {
+    EvalAssertion,
+    AssertionResult,
+    VaultSnapshot,
+    SnapshotEntity,
+} from './types.js';
+
+/**
+ * Run all assertions against the vault snapshots and response text.
+ * Returns an AssertionResult for each assertion.
+ */
+export function evaluateAssertions(
+    assertions: EvalAssertion[],
+    before: VaultSnapshot,
+    after: VaultSnapshot,
+    responseText: string,
+): AssertionResult[] {
+    return assertions.map(a => {
+        try {
+            return checkAssertion(a, before, after, responseText);
+        } catch (err) {
+            return {
+                description: a.description,
+                type: a.type,
+                passed: false,
+                message: `Assertion threw: ${err instanceof Error ? err.message : String(err)}`,
+            };
+        }
+    });
+}
+
+/**
+ * Compute a weighted score from assertion results.
+ * Returns 0.0–1.0.
+ */
+export function computeScore(assertions: EvalAssertion[], results: AssertionResult[]): number {
+    let totalWeight = 0;
+    let passedWeight = 0;
+    for (let i = 0; i < assertions.length; i++) {
+        const weight = assertions[i].weight ?? 1;
+        totalWeight += weight;
+        if (results[i].passed) {
+            passedWeight += weight;
+        }
+    }
+    return totalWeight > 0 ? passedWeight / totalWeight : 1;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ASSERTION CHECKERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function checkAssertion(
+    a: EvalAssertion,
+    before: VaultSnapshot,
+    after: VaultSnapshot,
+    responseText: string,
+): AssertionResult {
+    switch (a.type) {
+        case 'entity_created': return checkEntityCreated(a, before, after);
+        case 'entity_updated': return checkEntityUpdated(a, before, after);
+        case 'entity_type_correct': return checkEntityTypeCorrect(a, after);
+        case 'entity_field': return checkEntityField(a, after);
+        case 'entity_not_created': return checkEntityNotCreated(a, before, after);
+        case 'entity_count': return checkEntityCount(a, after);
+        case 'response_contains': return checkResponseContains(a, responseText);
+    }
+}
+
+function titleMatches(entity: SnapshotEntity, pattern: string): boolean {
+    return entity.title.toLowerCase().includes(pattern.toLowerCase());
+}
+
+function newEntities(before: VaultSnapshot, after: VaultSnapshot, entityType: string): SnapshotEntity[] {
+    const beforeTitles = new Set((before[entityType] ?? []).map(e => e.title));
+    return (after[entityType] ?? []).filter(e => !beforeTitles.has(e.title));
+}
+
+function checkEntityCreated(
+    a: { type: 'entity_created'; entityType: string; titleMatch: string; description: string },
+    before: VaultSnapshot,
+    after: VaultSnapshot,
+): AssertionResult {
+    const created = newEntities(before, after, a.entityType);
+    const match = created.find(e => titleMatches(e, a.titleMatch));
+    if (match) {
+        return { description: a.description, type: a.type, passed: true, actual: match.title, message: `Created ${a.entityType}: "${match.title}"` };
+    }
+    const allNew = created.map(e => e.title);
+    return { description: a.description, type: a.type, passed: false, actual: allNew, message: `No new ${a.entityType} matching "${a.titleMatch}". New: [${allNew.join(', ')}]` };
+}
+
+function checkEntityUpdated(
+    a: { type: 'entity_updated'; entityType: string; titleMatch: string; description: string },
+    before: VaultSnapshot,
+    after: VaultSnapshot,
+): AssertionResult {
+    const beforeEntity = (before[a.entityType] ?? []).find(e => titleMatches(e, a.titleMatch));
+    const afterEntity = (after[a.entityType] ?? []).find(e => titleMatches(e, a.titleMatch));
+    if (!beforeEntity) {
+        return { description: a.description, type: a.type, passed: false, message: `No pre-existing ${a.entityType} matching "${a.titleMatch}"` };
+    }
+    if (!afterEntity) {
+        return { description: a.description, type: a.type, passed: false, message: `${a.entityType} matching "${a.titleMatch}" was deleted` };
+    }
+    const beforeUpdated = beforeEntity.meta.updated;
+    const afterUpdated = afterEntity.meta.updated;
+    // Check timestamp change OR any field value change
+    if (afterUpdated !== beforeUpdated) {
+        return { description: a.description, type: a.type, passed: true, message: `${a.entityType} "${afterEntity.title}" was updated (timestamp changed)` };
+    }
+    // Fallback: check if any metadata field actually changed
+    for (const key of Object.keys(afterEntity.meta)) {
+        if (key === '_filepath') continue;
+        if (JSON.stringify(afterEntity.meta[key]) !== JSON.stringify(beforeEntity.meta[key])) {
+            return { description: a.description, type: a.type, passed: true, message: `${a.entityType} "${afterEntity.title}" was updated (field "${key}" changed)` };
+        }
+    }
+    // Also check body content
+    if (afterEntity.body !== beforeEntity.body) {
+        return { description: a.description, type: a.type, passed: true, message: `${a.entityType} "${afterEntity.title}" was updated (body changed)` };
+    }
+    return { description: a.description, type: a.type, passed: false, message: `${a.entityType} "${afterEntity.title}" was NOT updated (no changes detected)` };
+}
+
+function checkEntityTypeCorrect(
+    a: { type: 'entity_type_correct'; titleMatch: string; expectedType: string; wrongTypes?: string[]; description: string },
+    after: VaultSnapshot,
+): AssertionResult {
+    // Check it exists under the expected type
+    const inExpected = (after[a.expectedType] ?? []).find(e => titleMatches(e, a.titleMatch));
+    if (!inExpected) {
+        // Search all types to report where it ended up
+        for (const [type, entities] of Object.entries(after)) {
+            const found = entities.find(e => titleMatches(e, a.titleMatch));
+            if (found) {
+                return { description: a.description, type: a.type, passed: false, actual: type, message: `"${a.titleMatch}" found as ${type}, expected ${a.expectedType}` };
+            }
+        }
+        return { description: a.description, type: a.type, passed: false, message: `"${a.titleMatch}" not found in any entity type` };
+    }
+
+    // Check it's not in wrong types
+    if (a.wrongTypes) {
+        for (const wt of a.wrongTypes) {
+            const inWrong = (after[wt] ?? []).find(e => titleMatches(e, a.titleMatch));
+            if (inWrong) {
+                return { description: a.description, type: a.type, passed: false, actual: wt, message: `"${a.titleMatch}" also found as ${wt} (should only be ${a.expectedType})` };
+            }
+        }
+    }
+
+    return { description: a.description, type: a.type, passed: true, actual: a.expectedType, message: `"${a.titleMatch}" correctly created as ${a.expectedType}` };
+}
+
+function checkEntityField(
+    a: { type: 'entity_field'; entityType: string; titleMatch: string; field: string; expected: unknown; description: string },
+    after: VaultSnapshot,
+): AssertionResult {
+    const entity = (after[a.entityType] ?? []).find(e => titleMatches(e, a.titleMatch));
+    if (!entity) {
+        return { description: a.description, type: a.type, passed: false, message: `No ${a.entityType} matching "${a.titleMatch}" found` };
+    }
+    const actual = entity.meta[a.field];
+    if (typeof a.expected === 'string' && typeof actual === 'string') {
+        if (actual.toLowerCase().includes(a.expected.toLowerCase())) {
+            return { description: a.description, type: a.type, passed: true, actual, message: `${a.field} = "${actual}" contains "${a.expected}"` };
+        }
+    }
+    if (actual === a.expected) {
+        return { description: a.description, type: a.type, passed: true, actual, message: `${a.field} = ${JSON.stringify(actual)}` };
+    }
+    return { description: a.description, type: a.type, passed: false, actual, message: `${a.field} = ${JSON.stringify(actual)}, expected ${JSON.stringify(a.expected)}` };
+}
+
+function checkEntityNotCreated(
+    a: { type: 'entity_not_created'; entityType: string; titleMatch: string; description: string },
+    before: VaultSnapshot,
+    after: VaultSnapshot,
+): AssertionResult {
+    const created = newEntities(before, after, a.entityType);
+    const match = created.find(e => titleMatches(e, a.titleMatch));
+    if (match) {
+        return { description: a.description, type: a.type, passed: false, actual: match.title, message: `Unwanted ${a.entityType} was created: "${match.title}"` };
+    }
+    return { description: a.description, type: a.type, passed: true, message: `No unwanted ${a.entityType} matching "${a.titleMatch}" was created` };
+}
+
+function checkEntityCount(
+    a: { type: 'entity_count'; entityType: string; expected: number; description: string },
+    after: VaultSnapshot,
+): AssertionResult {
+    const count = (after[a.entityType] ?? []).length;
+    if (count === a.expected) {
+        return { description: a.description, type: a.type, passed: true, actual: count, message: `${a.entityType} count = ${count}` };
+    }
+    return { description: a.description, type: a.type, passed: false, actual: count, message: `${a.entityType} count = ${count}, expected ${a.expected}` };
+}
+
+function checkResponseContains(
+    a: { type: 'response_contains'; match: string; description: string },
+    responseText: string,
+): AssertionResult {
+    if (responseText.toLowerCase().includes(a.match.toLowerCase())) {
+        return { description: a.description, type: a.type, passed: true, message: `Response contains "${a.match}"` };
+    }
+    return { description: a.description, type: a.type, passed: false, actual: responseText.slice(0, 200), message: `Response does not contain "${a.match}"` };
+}
