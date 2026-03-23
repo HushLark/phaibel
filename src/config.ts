@@ -25,7 +25,7 @@ export const PROVIDER_MODELS: Record<string, Partial<Record<LLMCapability, strin
         embed: 'text-embedding-3-small',
     },
     anthropic: {
-        reason: 'claude-opus-4-6',
+        reason: 'claude-sonnet-4-6',
         summarize: 'claude-haiku-4-5-20251001',
         categorize: 'claude-haiku-4-5-20251001',
         format: 'claude-haiku-4-5-20251001',
@@ -37,7 +37,7 @@ export const PROVIDER_MODELS: Record<string, Partial<Record<LLMCapability, strin
 // Preferred provider order per capability when multiple providers are configured.
 // First available provider with a model for the capability wins.
 const CAPABILITY_PREFERRED_PROVIDERS: Record<LLMCapability, string[]> = {
-    reason: ['anthropic', 'openai'],      // Claude Opus excels at complex reasoning
+    reason: ['anthropic', 'openai'],      // Claude Sonnet is fast and excellent at structured reasoning
     chat: ['anthropic', 'openai'],        // Claude Sonnet has the best personality for the agent
     summarize: ['openai', 'anthropic'],   // GPT-4o-mini is very cost-effective for this
     categorize: ['openai', 'anthropic'],  // GPT-4o-mini is very cost-effective for this
