@@ -767,6 +767,142 @@
     cursor: pointer;
   }
 
+  /* ── Onboarding overlay ───────────────────────────── */
+
+  .onboarding-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 10, 20, 0.95);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-y: auto;
+  }
+
+  .onboarding-overlay.hidden { display: none; }
+
+  .onboarding-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    max-width: 560px;
+    width: 90%;
+    padding: 32px;
+    margin: 24px;
+  }
+
+  .onboarding-card h2 {
+    color: var(--cyan);
+    font-size: 18px;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .onboarding-card .subtitle {
+    color: var(--dim);
+    font-size: 12px;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+
+  .onboarding-step { display: none; }
+  .onboarding-step.active { display: block; }
+
+  .personality-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .personality-option {
+    background: var(--bg);
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .personality-option:hover { border-color: var(--cyan-dim); }
+  .personality-option.selected { border-color: var(--cyan); }
+
+  .personality-option .p-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .personality-option .p-desc {
+    font-size: 11px;
+    color: var(--dim);
+    line-height: 1.4;
+  }
+
+  .ob-field {
+    margin-bottom: 14px;
+  }
+
+  .ob-field label {
+    display: block;
+    font-size: 11px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+
+  .ob-field input, .ob-field select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    outline: none;
+  }
+
+  .ob-field input:focus, .ob-field select:focus { border-color: var(--cyan); }
+
+  .ob-field .hint {
+    font-size: 10px;
+    color: var(--dim);
+    margin-top: 2px;
+  }
+
+  .ob-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 20px;
+  }
+
+  .ob-btn {
+    background: var(--border);
+    color: var(--text);
+    border: none;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+
+  .ob-btn.primary {
+    background: var(--cyan);
+    color: var(--bg);
+  }
+
+  .ob-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
   /* ── Responsive ──────────────────────────────────── */
 
   @media (max-width: 700px) {
@@ -774,10 +910,84 @@
       grid-template-columns: 1fr;
       grid-template-rows: auto auto 1fr;
     }
+    .personality-grid { grid-template-columns: 1fr; }
   }
 </style>
 </head>
 <body>
+
+<!-- Onboarding overlay (shown when no vault or interview incomplete) -->
+<div class="onboarding-overlay hidden" id="onboarding">
+  <div class="onboarding-card">
+    <h2>Welcome to Phaibel</h2>
+    <p class="subtitle">Let's set up your personal AI assistant</p>
+
+    <!-- Step 1: Personality -->
+    <div class="onboarding-step active" id="ob-step-1">
+      <div class="personality-grid" id="personality-grid"></div>
+      <div class="ob-buttons">
+        <button class="ob-btn primary" id="ob-next-1" disabled>Next</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Identity -->
+    <div class="onboarding-step" id="ob-step-2">
+      <div class="ob-field">
+        <label>Agent Name</label>
+        <input type="text" id="ob-agent-name" placeholder="e.g. Jarvis, Friday, Alfred" value="Agent">
+      </div>
+      <div class="ob-field">
+        <label>Your Name</label>
+        <input type="text" id="ob-user-name" placeholder="Your name">
+      </div>
+      <div class="ob-field">
+        <label>How should your agent address you?</label>
+        <select id="ob-gender">
+          <option value="male">Sir / Boss / Captain</option>
+          <option value="female">Ma'am / Miss / Madam</option>
+          <option value="other">Boss / Chief / Friend</option>
+        </select>
+      </div>
+      <div class="ob-buttons">
+        <button class="ob-btn" id="ob-back-2">Back</button>
+        <button class="ob-btn primary" id="ob-next-2">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Profile (optional) -->
+    <div class="onboarding-step" id="ob-step-3">
+      <p class="subtitle" style="margin-bottom:16px">Optional — skip any you like</p>
+      <div class="ob-field">
+        <label>Location</label>
+        <input type="text" id="ob-location" placeholder="City / region">
+      </div>
+      <div class="ob-field">
+        <label>Work</label>
+        <input type="text" id="ob-work" placeholder="Role, industry, student, retired…">
+      </div>
+      <div class="ob-field">
+        <label>Goals</label>
+        <input type="text" id="ob-goals" placeholder="What are you working towards?">
+      </div>
+      <div class="ob-field">
+        <label>Relationships</label>
+        <input type="text" id="ob-relationships" placeholder="Partner, kids, family, friends">
+      </div>
+      <div class="ob-field">
+        <label>Health &amp; Fitness</label>
+        <input type="text" id="ob-health" placeholder="Exercise, diet, health goals">
+      </div>
+      <div class="ob-field">
+        <label>Growth</label>
+        <input type="text" id="ob-growth" placeholder="Learning, hobbies, habits">
+      </div>
+      <div class="ob-buttons">
+        <button class="ob-btn" id="ob-back-3">Back</button>
+        <button class="ob-btn primary" id="ob-submit">Get Started</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="app">
   <div class="header">
@@ -830,6 +1040,35 @@
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script>mermaid.initialize({ startOnLoad: false, theme: 'dark', themeVariables: { primaryColor: '#0f3460', primaryTextColor: '#e0e0e0', primaryBorderColor: '#00d4ff', lineColor: '#00d4ff', secondaryColor: '#16213e', tertiaryColor: '#1a1a2e', fontFamily: 'monospace' } });</script>
 <script>
+// Global handler for task checkboxes (inline onclick avoids delegation issues)
+async function markTaskDone(checkEl) {
+  const item = checkEl.closest('.task-item');
+  if (!item) return;
+  const id = item.dataset.taskId;
+  if (!id) return;
+  const entityType = item.dataset.entityType || 'task';
+  checkEl.style.background = 'var(--cyan)';
+  item.style.opacity = '0.4';
+  try {
+    const res = await fetch('/api/entities/' + encodeURIComponent(entityType) + '/' + encodeURIComponent(id), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'done' }),
+    });
+    if (res.ok) {
+      item.remove();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      console.error('task-check: PATCH failed', res.status, err);
+      checkEl.style.background = 'red';
+      item.style.opacity = '1';
+    }
+  } catch (err) {
+    console.error('task-check: fetch error', err);
+    checkEl.style.background = 'red';
+    item.style.opacity = '1';
+  }
+}
 (function() {
   const timelineBody = document.getElementById('timeline-body');
   const schedulerBody = document.getElementById('scheduler-body');
@@ -1104,34 +1343,7 @@
     const html = sections.join('');
     timelineBody.innerHTML = html || '<div class="empty-state">Nothing on the horizon. All clear!</div>';
 
-    // Wire up task checkboxes
-    timelineBody.querySelectorAll('.task-check').forEach(el => {
-      el.addEventListener('click', async () => {
-        const item = el.closest('.task-item');
-        if (!item) return;
-        const id = item.dataset.taskId;
-        if (!id) { console.warn('task-check: no data-task-id on', item); return; }
-        const entityType = item.dataset.entityType || 'task';
-        item.style.opacity = '0.4';
-        try {
-          const res = await fetch('/api/entities/' + encodeURIComponent(entityType) + '/' + encodeURIComponent(id), {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'done' }),
-          });
-          if (res.ok) {
-            item.remove();
-          } else {
-            const err = await res.json().catch(() => ({}));
-            console.error('task-check: PATCH failed', res.status, err);
-            item.style.opacity = '1';
-          }
-        } catch (e) {
-          console.error('task-check: fetch error', e);
-          item.style.opacity = '1';
-        }
-      });
-    });
+    // Task checkboxes are handled by the delegated listener on timelineBody
   }
 
   function renderSection(label, date, items, isHighlight) {
@@ -1153,7 +1365,7 @@
           </div>`;
         } else if (item.kind === 'task') {
           return `<div class="task-item" data-task-id="${esc(item.id)}" data-entity-type="task">
-            <div class="task-check" title="Mark done"></div>
+            <div class="task-check" title="Mark done" onclick="markTaskDone(this)"></div>
             <div class="task-info">
               <div class="task-title">${esc(item.title)}</div>
               <div class="task-meta">
@@ -1647,12 +1859,121 @@
     } catch { return ''; }
   }
 
+  // ── Onboarding ──────────────────────────────────────────────
+
+  const onboardingOverlay = document.getElementById('onboarding');
+  let obPersonality = '';
+
+  async function checkOnboarding() {
+    try {
+      const res = await fetch('/api/status');
+      const data = await res.json();
+      if (!data.vaultRoot || !data.interviewComplete) {
+        showOnboarding();
+        return true;
+      }
+    } catch { /* ignore */ }
+    return false;
+  }
+
+  async function showOnboarding() {
+    onboardingOverlay.classList.remove('hidden');
+    // Load personalities
+    try {
+      const res = await fetch('/api/personalities');
+      const list = await res.json();
+      const grid = document.getElementById('personality-grid');
+      grid.innerHTML = list.map(function(p) {
+        return '<div class="personality-option" data-id="' + esc(p.id) + '">'
+          + '<div class="p-label">' + esc(p.label) + '</div>'
+          + '<div class="p-desc">' + esc(p.description) + '</div>'
+          + '</div>';
+      }).join('');
+
+      grid.addEventListener('click', function(e) {
+        var opt = e.target.closest('.personality-option');
+        if (!opt) return;
+        grid.querySelectorAll('.personality-option').forEach(function(el) { el.classList.remove('selected'); });
+        opt.classList.add('selected');
+        obPersonality = opt.dataset.id;
+        document.getElementById('ob-next-1').disabled = false;
+      });
+    } catch (err) {
+      console.error('Failed to load personalities', err);
+    }
+
+    // Step navigation
+    document.getElementById('ob-next-1').addEventListener('click', function() { obGoStep(2); });
+    document.getElementById('ob-back-2').addEventListener('click', function() { obGoStep(1); });
+    document.getElementById('ob-next-2').addEventListener('click', function() {
+      if (!document.getElementById('ob-user-name').value.trim()) {
+        document.getElementById('ob-user-name').focus();
+        return;
+      }
+      obGoStep(3);
+    });
+    document.getElementById('ob-back-3').addEventListener('click', function() { obGoStep(2); });
+    document.getElementById('ob-submit').addEventListener('click', submitOnboarding);
+  }
+
+  function obGoStep(n) {
+    document.querySelectorAll('.onboarding-step').forEach(function(el) { el.classList.remove('active'); });
+    document.getElementById('ob-step-' + n).classList.add('active');
+  }
+
+  async function submitOnboarding() {
+    var btn = document.getElementById('ob-submit');
+    btn.disabled = true;
+    btn.textContent = 'Setting up…';
+
+    var payload = {
+      personality: obPersonality,
+      agentName: document.getElementById('ob-agent-name').value.trim() || 'Agent',
+      userName: document.getElementById('ob-user-name').value.trim(),
+      gender: document.getElementById('ob-gender').value,
+      answers: {
+        location: document.getElementById('ob-location').value.trim() || undefined,
+        work: document.getElementById('ob-work').value.trim() || undefined,
+        workGoals: document.getElementById('ob-goals').value.trim() || undefined,
+        relationships: document.getElementById('ob-relationships').value.trim() || undefined,
+        health: document.getElementById('ob-health').value.trim() || undefined,
+        growth: document.getElementById('ob-growth').value.trim() || undefined,
+      },
+    };
+
+    try {
+      var res = await fetch('/api/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        var err = await res.json().catch(function() { return {}; });
+        throw new Error(err.error || 'Setup failed');
+      }
+      // Success — reload the page
+      onboardingOverlay.classList.add('hidden');
+      location.reload();
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Get Started';
+      alert('Setup failed: ' + (err.message || err));
+    }
+  }
+
   // ── Init ───────────────────────────────────────────────────
 
-  fetchCalendarNames().then(() => fetchTimeline());
-  fetchStatus();
-  fetchScheduler();
-  connectWs();
+  checkOnboarding().then(function(needsOnboarding) {
+    if (!needsOnboarding) {
+      fetchCalendarNames().then(function() { fetchTimeline(); });
+      fetchScheduler();
+      connectWs();
+    } else {
+      // Still connect WS and fetch basic status even during onboarding
+      connectWs();
+    }
+    fetchStatus();
+  });
 
   // Poll status and scheduler every 30s
   setInterval(fetchStatus, 30000);

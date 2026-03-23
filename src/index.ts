@@ -6,29 +6,13 @@ import './service/index.js';
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { todayCommand } from './commands/today.js';
-import { weekCommand } from './commands/week.js';
-import { rememberCommand } from './commands/remember.js';
 import { configCommand } from './commands/config.js';
 import { syncCommand } from './commands/sync.js';
 import { initCommand } from './commands/init.js';
-import { noteCommand } from './commands/note.js';
-import { todoCommand } from './commands/todo.js';
-import { eventCommand } from './commands/event.js';
-import { researchCommand } from './commands/research.js';
-import { goalCommand } from './commands/goal.js';
-import { recurrenceCommand } from './commands/recurrence.js';
-import { personCommand } from './commands/person.js';
-import { inboxCommand } from './commands/inbox.js';
 import { serviceCommand, queueCommand, indexCommand } from './commands/service.js';
-import { createShellCommand } from './commands/shell.js';
 import { feralCommand } from './commands/feral.js';
-import { interviewCommand } from './commands/interview.js';
-import { todontCommand } from './commands/todont.js';
 import { setupCommand } from './commands/setup.js';
-import { calCommand } from './commands/cal.js';
 import { cronCommand } from './commands/cron.js';
-import { pampCommand } from './commands/pamp.js';
 import { skillCommand } from './commands/skill.js';
 import { entityTypeCommand } from './commands/entity-type.js';
 import { entityCommand } from './commands/entity.js';
@@ -47,36 +31,20 @@ program
   .description(chalk.cyan('🤖 Phaibel - Your AI personal assistant'))
   .version(pkg.version);
 
-// Register commands
+// Register admin/tool commands
 program.addCommand(initCommand);
-program.addCommand(todayCommand);
-program.addCommand(weekCommand);
-program.addCommand(rememberCommand);
 program.addCommand(configCommand);
 program.addCommand(syncCommand);
-program.addCommand(noteCommand);
-program.addCommand(todoCommand);
-program.addCommand(eventCommand);
-program.addCommand(researchCommand);
-program.addCommand(goalCommand);
-program.addCommand(recurrenceCommand);
-program.addCommand(personCommand);
-program.addCommand(todontCommand);
-program.addCommand(inboxCommand);
 program.addCommand(serviceCommand);
 program.addCommand(queueCommand);
 program.addCommand(indexCommand);
 program.addCommand(feralCommand);
-program.addCommand(interviewCommand);
 program.addCommand(timeCommand);
 program.addCommand(setupCommand);
 program.addCommand(entityTypeCommand);
 program.addCommand(entityCommand);
-program.addCommand(calCommand);
 program.addCommand(cronCommand);
-program.addCommand(pampCommand);
 program.addCommand(skillCommand);
-program.addCommand(createShellCommand(program));
 
 // Tool command - run any registered tool
 program
@@ -101,7 +69,6 @@ program
 
     console.log(chalk.gray(`Running ${tool.name}...`));
 
-    // Build a minimal execution context for direct CLI use
     const logger = {
       debug: (msg: string) => console.log(chalk.gray(`  [debug] ${msg}`)),
       info: (msg: string) => console.log(chalk.gray(`  [info]  ${msg}`)),
@@ -153,15 +120,14 @@ program
     }
   });
 
-// Default: launch interactive shell when no command is given
+// Default: show help (no more interactive shell)
 program
-  .action(async () => {
-    // Delegate to the shell command
-    await program.parseAsync(['node', 'phaibel', 'shell']);
+  .action(() => {
+    program.help();
   });
 
 // In service daemon mode, service/index.ts already started the server —
-// skip Commander parsing so we don't print help text or launch the shell.
+// skip Commander parsing so we don't print help text.
 if (process.env.PHAIBEL_SERVICE !== '1') {
   program.parse();
 }

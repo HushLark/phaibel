@@ -495,8 +495,9 @@ export async function handleApiRoute(
                 updatedMeta[key] = value;
             }
 
-            // Validate against schema
-            const validationErrors = validateEntity(updatedMeta, typeConfig, false);
+            // Validate only the fields being patched (not pre-existing data)
+            const patchedFields = new Set(Object.keys(body).filter(k => k !== 'id' && k !== 'entityType'));
+            const validationErrors = validateEntity(updatedMeta, typeConfig, false, patchedFields);
             if (validationErrors.length > 0) {
                 error(res, 400, `Validation failed: ${formatValidationErrors(validationErrors)}`);
                 return true;

@@ -12,11 +12,14 @@ import { feralChatHeadless, type ChatHistoryEntry } from '../commands/chat.js';
 import { appendReaction } from '../utils/chat-logger.js';
 import { getQueueManager } from './queue/manager.js';
 import { getEntityIndex } from '../entities/entity-index.js';
-import { getVaultRoot, getAgentName } from '../state/manager.js';
+import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, saveProfile } from '../state/manager.js';
 import { getCronScheduler, loadCronConfig, saveCronConfig } from './cron/scheduler.js';
-import { loadCalConfig } from '../commands/cal.js';
+import { loadCalConfig, saveCalConfig } from '../commands/cal.js';
 import { handleApiRoute } from './api-router.js';
 import { debug } from '../utils/debug.js';
+import { PERSONALITIES } from '../personalities.js';
+import { initEntityTypes, loadEntityTypes } from '../entities/entity-type-config.js';
+import { SYSTEM_DIR } from '../paths.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -174,6 +177,32 @@ export class WebServer {
                 const status = getCronScheduler().getStatus();
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ summary, ...status }));
+            } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+            }
+            return;
+        }
+
+        // GET /api/personalities — personality options for onboarding
+        if (req.method === 'GET' && url.pathname === '/api/personalities') {
+            const list = Object.values(PERSONALITIES).map(p => ({
+                id: p.id,
+                label: p.label,
+                description: p.description,
+            }));
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(list));
+            return;
+        }
+
+        // POST /api/setup — onboarding: create vault + save profile
+        if (req.method === 'POST' && url.pathname === '/api/setup') {
+            try {
+                const body = JSON.parse(await this.readBody(req));
+                const result = await this.handleSetup(body);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(result));
             } catch (err) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
@@ -407,12 +436,20 @@ export class WebServer {
             // default
         }
 
+        let interviewComplete = false;
+        try {
+            interviewComplete = await isInterviewComplete();
+        } catch {
+            // No vault yet
+        }
+
         return {
             uptime: Math.round(process.uptime()),
             queueSize,
             graph: { nodes: graphNodes, edges: graphEdges },
             vaultRoot,
             agentName,
+            interviewComplete,
             memory: {
                 rss: Math.round(mem.rss / 1024 / 1024),
                 heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
@@ -439,6 +476,161 @@ export class WebServer {
         } catch (err) {
             return { ok: false, error: err instanceof Error ? err.message : String(err) };
         }
+    }
+
+    private async handleSetup(body: {
+        vaultPath?: string;
+        personality: string;
+        agentName: string;
+        userName: string;
+        gender: string;
+        answers?: {
+            location?: string;
+            work?: string;
+            workGoals?: string;
+            relationships?: string;
+            health?: string;
+            growth?: string;
+            struggles?: string;
+            helpStyle?: string;
+        };
+        personalCalUrl?: string;
+        workCalUrl?: string;
+    }): Promise<{ ok: true; vaultRoot: string; agentName: string }> {
+        const vaultPath = body.vaultPath || process.cwd();
+
+        // 1. Create vault if it doesn't exist
+        const vaultFilePath = path.join(vaultPath, '.vault.md');
+        try {
+            await fs.access(vaultFilePath);
+            debug('setup', 'Vault already exists at ' + vaultPath);
+        } catch {
+            // Create vault
+            const today = new Date().toISOString().split('T')[0];
+            const vaultName = path.basename(vaultPath);
+            const rootVaultFile = `---
+title: "${vaultName} Vault"
+created: ${today}
+tags: [context, system, root]
+---
+
+# ${vaultName}
+
+## Agent
+
+This vault is managed by a Personal Digital Agent that helps you get organised and manage your time. The agent's personality and name are configured during the onboarding interview.
+
+## Memory
+
+This vault is the agent's memory. Content is stored as Markdown files with YAML frontmatter, organised by type (tasks, events, notes, goals, people, etc.). All content can be linked in a knowledge graph — content items are nodes, relationships are edges. The agent should proactively link related content and use these connections to give better advice.
+
+## Rules
+
+- All files use YAML frontmatter for structured metadata
+- Prefer creating entities over giving advice — if the user describes something actionable, make it
+- Link related content when the connection is clear (task → goal, person → event, etc.)
+- Be concise in responses — the user values their time
+- When presenting lists, keep them scannable
+- Reference content by name so the user knows exactly what changed
+
+## User Preferences
+
+- Timezone: Local machine time
+- Date format: YYYY-MM-DD
+`;
+            await fs.writeFile(vaultFilePath, rootVaultFile);
+            await fs.mkdir(SYSTEM_DIR, { recursive: true });
+            await fs.mkdir(path.join(vaultPath, '.phaibel'), { recursive: true });
+
+            // Set PHAIBEL_VAULT so subsequent calls find the vault
+            process.env.PHAIBEL_VAULT = vaultPath;
+
+            await initEntityTypes();
+
+            const entityTypes = await loadEntityTypes();
+            const folders = entityTypes.map(t => t.directory);
+            if (!folders.includes('inbox')) folders.push('inbox');
+            for (const folder of folders) {
+                await fs.mkdir(path.join(vaultPath, folder), { recursive: true });
+            }
+
+            // Create .gitignore
+            const gitignore = `.state.json\n.phaibel/\n.DS_Store\n`;
+            try {
+                await fs.access(path.join(vaultPath, '.gitignore'));
+                await fs.appendFile(path.join(vaultPath, '.gitignore'), '\n' + gitignore);
+            } catch {
+                await fs.writeFile(path.join(vaultPath, '.gitignore'), gitignore);
+            }
+
+            debug('setup', 'Vault created at ' + vaultPath);
+        }
+
+        // Ensure env is set for state operations
+        process.env.PHAIBEL_VAULT = vaultPath;
+
+        // 2. Save profile
+        await saveProfile({
+            userName: body.userName,
+            agentName: body.agentName,
+            personality: body.personality as 'butler' | 'rockstar' | 'executive' | 'friend',
+            gender: body.gender as 'male' | 'female' | 'other',
+            workType: body.answers?.work || undefined,
+            familySituation: body.answers?.relationships || undefined,
+            cityLive: body.answers?.location || undefined,
+            personalCalUrl: body.personalCalUrl || undefined,
+            workCalUrl: body.workCalUrl || undefined,
+        });
+
+        // 3. Write "About You" block to .vault.md
+        const aboutLines: string[] = [
+            '<!-- 10Q:START -->',
+            '## About You',
+            '',
+            `- name: ${body.userName}`,
+            `- gender: ${body.gender}`,
+        ];
+        if (body.answers?.location) aboutLines.push(`- location: ${body.answers.location}`);
+        if (body.answers?.work) aboutLines.push(`- work: ${body.answers.work}`);
+        if (body.answers?.workGoals) aboutLines.push(`- goals: ${body.answers.workGoals}`);
+        if (body.answers?.relationships) aboutLines.push(`- relationships: ${body.answers.relationships}`);
+        if (body.answers?.health) aboutLines.push(`- health: ${body.answers.health}`);
+        if (body.answers?.growth) aboutLines.push(`- growth: ${body.answers.growth}`);
+        if (body.answers?.struggles) aboutLines.push(`- struggles: ${body.answers.struggles}`);
+        if (body.answers?.helpStyle) aboutLines.push(`- help_style: ${body.answers.helpStyle}`);
+        aboutLines.push('<!-- 10Q:END -->');
+
+        const aboutBlock = aboutLines.join('\n');
+
+        try {
+            let content = await fs.readFile(vaultFilePath, 'utf-8');
+            if (content.includes('<!-- 10Q:START -->')) {
+                content = content.replace(/<!-- 10Q:START -->[\s\S]*?<!-- 10Q:END -->/, aboutBlock);
+            } else {
+                content = content.trimEnd() + '\n\n' + aboutBlock + '\n';
+            }
+            await fs.writeFile(vaultFilePath, content);
+        } catch (err) {
+            debug('setup', `Failed to write about block: ${err}`);
+        }
+
+        // 4. Auto-configure calendars
+        if (body.personalCalUrl || body.workCalUrl) {
+            try {
+                const cfg = await loadCalConfig();
+                if (body.personalCalUrl && !cfg.calendars.some((c: { id: string }) => c.id === 'personal')) {
+                    cfg.calendars.push({ id: 'personal', name: 'Personal', url: body.personalCalUrl });
+                }
+                if (body.workCalUrl && !cfg.calendars.some((c: { id: string }) => c.id === 'work')) {
+                    cfg.calendars.push({ id: 'work', name: 'Work', url: body.workCalUrl });
+                }
+                await saveCalConfig(cfg);
+            } catch (err) {
+                debug('setup', `Failed to configure calendars: ${err}`);
+            }
+        }
+
+        return { ok: true, vaultRoot: vaultPath, agentName: body.agentName };
     }
 
     private readBody(req: http.IncomingMessage): Promise<string> {

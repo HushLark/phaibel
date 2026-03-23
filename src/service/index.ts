@@ -237,34 +237,40 @@ async function main(): Promise<void> {
     await server.start(SOCKET_PATH);
     await processor.start();
 
-    // Start cron scheduler
+    // Vault-dependent startup — skip gracefully if no vault exists yet.
+    // The web server can still serve the HTML client for onboarding.
     try {
-        await cron.start();
-    } catch (err) {
-        console.error('Failed to start cron scheduler:', err);
-    }
-
-    // Build entity index
-    try {
-        const index = getEntityIndex();
-        await index.build();
-        const stats = index.getStats();
-        console.log(`Entity index: ${stats.nodeCount} nodes, ${stats.edgeCount} edges`);
-
-        // Load and sync embedding index
+        // Start cron scheduler
         try {
-            const embeddingIndex = getEmbeddingIndex();
-            await embeddingIndex.load();
-            const result = await embeddingIndex.sync(index);
-            console.log(`Embedding index: ${result.added} added, ${result.updated} updated, ${result.removed} removed`);
+            await cron.start();
         } catch (err) {
-            debug('embeddings', `Embedding index sync skipped: ${err}`);
+            debug('service', `Cron scheduler skipped: ${err}`);
+        }
+
+        // Build entity index
+        try {
+            const index = getEntityIndex();
+            await index.build();
+            const stats = index.getStats();
+            console.log(`Entity index: ${stats.nodeCount} nodes, ${stats.edgeCount} edges`);
+
+            // Load and sync embedding index
+            try {
+                const embeddingIndex = getEmbeddingIndex();
+                await embeddingIndex.load();
+                const result = await embeddingIndex.sync(index);
+                console.log(`Embedding index: ${result.added} added, ${result.updated} updated, ${result.removed} removed`);
+            } catch (err) {
+                debug('embeddings', `Embedding index sync skipped: ${err}`);
+            }
+        } catch (err) {
+            debug('service', `Entity index skipped: ${err}`);
         }
     } catch (err) {
-        console.error('Failed to build entity index:', err);
+        console.log('No vault found — skipping vault-dependent startup. Use the web client to set up.');
     }
 
-    // Start web server
+    // Start web server (always — needed for onboarding)
     try {
         await webServer.start(3737);
         console.log('Web client at http://localhost:3737');

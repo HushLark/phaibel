@@ -118,8 +118,13 @@ This vault is the agent's memory. Content is stored as Markdown files with YAML 
         }
 
         console.log(chalk.green('\n✓ Vault created!'));
+        console.log(chalk.gray(`\nCreated:`));
+        console.log(chalk.gray(`  .vault.md            - Root context`));
+        for (const folder of folders) {
+            console.log(chalk.gray(`  ${folder}/`));
+        }
 
-        // ── System setup (only on first-ever init) ────────────────────
+        // ── API key setup (only on first-ever init) ─────────────────
         const configured = await getConfiguredProviders();
         if (configured.length === 0) {
             console.log(chalk.cyan('\n🔑 An API key is needed for AI capabilities.\n'));
@@ -143,29 +148,25 @@ This vault is the agent's memory. Content is stored as Markdown files with YAML 
 
             await setApiKey(provider, apiKey);
             console.log(chalk.green(`\n✓ ${provider} API key saved to ~/.phaibel/`));
+        }
 
-            // Start service on first setup
-            console.log(chalk.gray('\nStarting service...'));
-            try {
-                const status = await startDaemon();
-                if (status.running) {
-                    console.log(chalk.green('✓ Service running!'));
-                    console.log(chalk.cyan('  Web client: http://localhost:3737\n'));
-                } else {
-                    console.log(chalk.yellow('Service did not start. Run `phaibel service start` to try again.\n'));
-                }
-            } catch (err) {
-                debug('init', err);
-                console.log(chalk.yellow('Could not auto-start service. Run `phaibel service start` manually.\n'));
+        // ── Start service and open web client ───────────────────────
+        console.log(chalk.gray('\nStarting service...'));
+        try {
+            const status = await startDaemon();
+            if (status.running) {
+                console.log(chalk.green('✓ Service running!'));
+                console.log(chalk.cyan('\n🤖 Open the web client to finish setup:'));
+                console.log(chalk.cyan.bold('   http://localhost:3737\n'));
+            } else {
+                console.log(chalk.yellow('Service did not start.'));
+                console.log(chalk.gray('Run `phaibel service start` then open http://localhost:3737'));
             }
+        } catch (err) {
+            debug('init', err);
+            console.log(chalk.yellow('Could not auto-start service.'));
+            console.log(chalk.gray('Run `phaibel service start` then open http://localhost:3737'));
         }
-
-        console.log(chalk.gray(`Created:`));
-        console.log(chalk.gray(`  .vault.md            - Root context`));
-        for (const folder of folders) {
-            console.log(chalk.gray(`  ${folder}/`));
-        }
-        console.log(chalk.cyan('\nRun `phaibel` to get started!'));
     });
 
 export default initCommand;

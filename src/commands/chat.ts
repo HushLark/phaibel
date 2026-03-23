@@ -14,7 +14,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import chalk from 'chalk';
-import ora from 'ora';
 import inquirer from 'inquirer';
 import { bootstrapFeral } from '../feral/bootstrap.js';
 import { hydrateProcessFromString } from '../feral/process/process-json-hydrator.js';
@@ -832,41 +831,6 @@ RESPONSE GUIDELINES:
     );
 
     return response.trim();
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CORE: feralChat — CLI wrapper with ora spinner
-// ─────────────────────────────────────────────────────────────────────────────
-
-export async function feralChat(userInput: string, history?: ChatHistoryEntry[]): Promise<string | null> {
-    const spinner = ora({ text: chalk.dim('Thinking…'), color: 'cyan' }).start();
-
-    try {
-        const response = await feralChatHeadless(
-            userInput,
-            (s) => { spinner.text = chalk.dim(s); },
-            undefined,
-            undefined,
-            (chatId) => { spinner.text = chalk.dim(`[${chatId}] Thinking…`); },
-            history,
-        );
-
-        spinner.stop();
-        console.log(chalk.cyan(`\n  ${response.split('\n').join('\n  ')}\n`));
-        return response;
-    } catch (error) {
-        spinner.stop();
-        const msg = error instanceof Error ? error.message : String(error);
-        debug('chat', `Autonomous chat failed: ${msg}`);
-        if (msg.includes('credit balance') || msg.includes('too low') || msg.includes('billing')) {
-            console.log(chalk.red('\n  The AI provider is out of credits.'));
-            console.log(chalk.dim('  Top up at: https://console.anthropic.com/settings/billing\n'));
-        } else {
-            console.log(chalk.yellow(`\n  Hmm, something went wrong: ${msg}`));
-            console.log(chalk.dim('  Try rephrasing, or use a specific command like "todo", "note", "today".\n'));
-        }
-        return null;
-    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
