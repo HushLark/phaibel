@@ -154,6 +154,20 @@ const EXAMPLE_PROCESSES = [
         },
     },
     {
+        description: 'Create an event with fields set via initial context (no set_context_value nodes needed)',
+        json: {
+            schema_version: 1,
+            key: 'event.create',
+            description: 'Create a dentist appointment event with date, time, and location',
+            context: { startDate: '2026-04-10T09:00:00-06:00', endDate: '2026-04-10T10:00:00-06:00', location: 'Downtown Dental, 123 Main St' },
+            nodes: [
+                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create' } },
+                { key: 'create', catalog_node_key: 'create_event', configuration: { entity_title: 'Dentist Appointment', entity_body: 'Regular dental checkup', extra_fields: 'startDate,endDate,location' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
+                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
+            ],
+        },
+    },
+    {
         description: 'While loop: list tasks, iterate over each one, and use LLM to add a summary to each task body',
         json: {
             schema_version: 1,
@@ -621,11 +635,11 @@ PROCESS FORMAT RULES:
 13. To link entities, use link_entities with source_entity_type, source_entity_title, target_entity_type, target_entity_title, and label
 14. To complete/finish an entity, use the complete_* catalog node (e.g. complete_task)
 15. ONLY use configuration keys that appear in the NODE CONFIGURATION DETAILS above — do not invent keys. The create_* nodes ONLY accept: entity_type, entity_title, entity_body, tags, extra_fields. Do NOT put field names like startDate, priority, status, location directly in configuration.
-16. To set entity-specific fields (e.g. startDate, endDate, priority, status, location, email), use a set_context_value node BEFORE the create_* node to put the value into context, then list those field names in the create node's "extra_fields" config (comma-separated). The set_context_value config keys are: "context_path" (the field name), "value" (the value), and "value_type" (REQUIRED for date/datetime). DATE FORMAT RULES: date fields → YYYY-MM-DD (e.g. "2026-03-25"), datetime fields → ISO 8601 with timezone offset (e.g. "2026-03-25T14:00:00-06:00"). Always set value_type to "date" or "datetime" to match the field type from ENTITY TYPES above. String fields must be plain strings, enum fields must use one of the listed values.
+16. To set entity-specific fields (e.g. startDate, endDate, priority, status, location, email): For single-entity processes, put field values in the process "context" object and list field names in extra_fields. Example: "context": { "startDate": "2026-03-25T14:00:00-06:00", "endDate": "2026-03-25T15:00:00-06:00", "location": "Office" } with extra_fields: "startDate,endDate,location". For multi-entity processes where different entities need different values for the same field (e.g. task status="open" vs goal status="active"), use set_context_value nodes between the create nodes to change the value. DATE FORMAT RULES: date fields → YYYY-MM-DD, datetime fields → ISO 8601 with timezone offset. The set_context_value config keys are: "context_path" (the field name), "value" (the value), and "value_type" (REQUIRED for date/datetime).
 17. When referencing existing entities (find_*, link_*, update_*, complete_*, set_*), use EXACT titles from the EXISTING ENTITIES list — do NOT guess or paraphrase entity titles
 18. CRITICAL: Use the correct entity type catalog node. An event (appointment, meeting, scheduled activity) MUST use create_event, NOT create_task. A task (action item, todo) MUST use create_task, NOT create_event. Never substitute one entity type for another.
-19. When setting enum fields via set_context_value, use ONLY the valid values from the ENTITY TYPES schema above. For example, task status must be one of [open, in-progress, done, blocked] — do NOT use "todo", "complete", or other values. If unsure, omit the field and let the default apply.
-20. Events ALWAYS require BOTH startDate AND endDate (both are datetime type). Use ISO 8601 with timezone offset: "YYYY-MM-DDTHH:mm:ssZ" (e.g. "2026-03-25T14:00:00-06:00"). If the user doesn't mention a time, default to 09:00 start and 10:00 end in their timezone. If the user only mentions one date, set endDate to 1 hour after startDate. Always use set_context_value with value_type "datetime" for both fields, and include both in extra_fields: "startDate,endDate".
+19. When setting enum fields (in context object or via set_context_value), use ONLY the valid values from the ENTITY TYPES schema above. For example, task status must be one of [open, in-progress, done, blocked] — do NOT use "todo", "complete", or other values. If unsure, omit the field and let the default apply.
+20. Events ALWAYS require BOTH startDate AND endDate (both are datetime type). Use ISO 8601 with timezone offset: "YYYY-MM-DDTHH:mm:ssZ" (e.g. "2026-03-25T14:00:00-06:00"). If the user doesn't mention a time, default to 09:00 start and 10:00 end in their timezone. If the user only mentions one date, set endDate to 1 hour after startDate. Put both in the process context object and include both in extra_fields: "startDate,endDate".
 21. Prefer ACTION over QUESTIONS. Use sensible defaults for missing fields (today's date, "medium" priority, etc.) rather than asking. Only use prompt_input/prompt_select when the user explicitly asks for help choosing OR a required field truly cannot be inferred. Never chain multiple prompt nodes — one question max per process. If you must ask, wire the prompt node's "ok" edge to the create node so the answer flows into context.
 
 EXAMPLE PROCESSES:

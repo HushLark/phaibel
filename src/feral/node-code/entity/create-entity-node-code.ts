@@ -105,11 +105,21 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         if (typeConfig) {
             // Auto-populate required fields that have defaults or can be inferred
             for (const field of typeConfig.fields) {
-                if (meta[field.key] !== undefined) continue;
+                const val = meta[field.key];
                 // A required "name" field defaults to the entity title
-                if (field.required && field.key === 'name' && field.type === 'string') {
+                if (val === undefined && field.required && field.key === 'name' && field.type === 'string') {
                     meta[field.key] = title;
-                } else if (field.required && field.default !== undefined) {
+                    continue;
+                }
+                // For enum fields, if the value isn't valid for this type, fall back to default
+                if (field.type === 'enum' && field.values?.length && val !== undefined) {
+                    if (!field.values.includes(val as string) && field.default !== undefined) {
+                        meta[field.key] = field.default;
+                        continue;
+                    }
+                }
+                // Apply defaults for missing required fields
+                if (val === undefined && field.required && field.default !== undefined) {
                     meta[field.key] = field.default;
                 }
             }
