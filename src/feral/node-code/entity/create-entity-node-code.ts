@@ -103,6 +103,17 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         // Validate fields against entity type schema
         const typeConfig = await getEntityType(entityType);
         if (typeConfig) {
+            // Auto-populate required fields that have defaults or can be inferred
+            for (const field of typeConfig.fields) {
+                if (meta[field.key] !== undefined) continue;
+                // A required "name" field defaults to the entity title
+                if (field.required && field.key === 'name' && field.type === 'string') {
+                    meta[field.key] = title;
+                } else if (field.required && field.default !== undefined) {
+                    meta[field.key] = field.default;
+                }
+            }
+
             const errors = validateEntity(meta, typeConfig, true);
             if (errors.length > 0) {
                 const msg = `Validation failed for ${entityType}: ${formatValidationErrors(errors)}`;

@@ -46,8 +46,9 @@ Rules:
     values   : string[]  (allowed values)
     default  : string    (the default value, must be in values)
 - STRICT LIMIT: 3–5 fields maximum. Think "what would I jot on a sticky note?" — only the essential identifying details.
-  Example: a "flight" needs date, airline, flightNumber, seat — NOT cabin class, aircraft type, wifi, entertainment, boarding time.
+  Example: a "flight" needs departureDate, airline, flightNumber — NOT cabin class, aircraft type, wifi, entertainment, boarding time.
   Example: a "recipe" needs prepTime, servings — NOT cuisine, difficulty, calories, equipment.
+- NEVER create a field called "name" or "title". Every entity already has a built-in title — adding a name/title field causes duplication and validation failures.
 - Only add a completionField/completionValue if the entity genuinely has a done/archived/complete state.
 - Prefer "date" for date-only fields and "datetime" for fields that need a time component.
 - calendarDateField: If the type has a date or datetime field that represents WHEN this thing happens or is due, set calendarDateField to that field's key so it appears on the user's timeline. Examples: a flight's "departureDate", an appointment's "date", a deadline's "dueDate". Set to null if the type has no meaningful temporal anchor.

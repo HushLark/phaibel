@@ -50,6 +50,7 @@ Rules:
     values   : string[]
     default  : string  (must be in values)
 - Preserve existing fields unless the changes explicitly remove or rename them.
+- NEVER create a field called "name" or "title". Every entity already has a built-in title — adding a name/title field causes duplication and validation failures. If one exists, remove it.
 - calendarDateField: If the type has a date or datetime field that represents WHEN this thing happens or is due, set calendarDateField to that field's key so it appears on the user's timeline. Preserve the existing value unless the changes affect it.
 - The object must also include:
     calendarDateField : string | null   (which date/datetime field places this entity on the timeline)`;
