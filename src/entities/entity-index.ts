@@ -26,6 +26,8 @@ export interface IndexNode {
     filepath: string;
     tags: string[];          // cached from frontmatter
     summary: string;         // cached from frontmatter (LLM-generated)
+    bodySnippet: string;     // first 500 chars of body content (for embedding)
+    meta: Record<string, unknown>;  // full frontmatter metadata
 }
 
 export interface IndexSearchResult {
@@ -103,7 +105,7 @@ export class EntityIndex {
 
                     try {
                         const raw = await fs.readFile(filepath, 'utf-8');
-                        const { meta } = parseEntity(filepath, raw);
+                        const { meta, content } = parseEntity(filepath, raw);
                         const id = (meta.id as string) || path.basename(file, '.md');
                         const key = EntityIndex.key(entityType, id);
 
@@ -114,6 +116,8 @@ export class EntityIndex {
                             filepath,
                             tags: Array.isArray(meta.tags) ? (meta.tags as string[]) : [],
                             summary: (meta.summary as string) ?? '',
+                            bodySnippet: content.slice(0, 500),
+                            meta,
                         });
                     } catch (err) {
                         debug('index', `Failed to parse ${filepath}: ${err}`);
@@ -219,8 +223,18 @@ export class EntityIndex {
     async addOrUpdate(type: EntityTypeName, id: string, title: string, filepath: string, tags?: string[], summary?: string): Promise<void> {
         const key = EntityIndex.key(type, id);
 
+        // Read file for bodySnippet and full meta
+        let bodySnippet = '';
+        let meta: Record<string, unknown> = {};
+        try {
+            const raw = await fs.readFile(filepath, 'utf-8');
+            const parsed = parseEntity(filepath, raw);
+            bodySnippet = parsed.content.slice(0, 500);
+            meta = parsed.meta;
+        } catch { /* keep defaults */ }
+
         // Upsert node
-        this.nodes.set(key, { id, type, title, filepath, tags: tags ?? [], summary: summary ?? '' });
+        this.nodes.set(key, { id, type, title, filepath, tags: tags ?? [], summary: summary ?? '', bodySnippet, meta });
 
         // Remove old outbound edges from this node
         this.edges = this.edges.filter(e => e.source !== key);

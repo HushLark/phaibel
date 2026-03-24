@@ -219,7 +219,7 @@ async function syncOneCalendar(
     });
 
     // 4. Build UID map scoped to this calendar (or legacy events with no calendarId)
-    const existingEntities = await listEntities('event');
+    const existingEntities = await listEntities('event', { metaOnly: true });
     const uidMap = new Map<string, { filepath: string; meta: Record<string, unknown>; content: string }>();
     for (const ent of existingEntities) {
         const uid = ent.meta.calendarUid as string | undefined;

@@ -63,13 +63,16 @@ function cosineSimilarity(a: number[], b: number[]): number {
     return denom === 0 ? 0 : dot / denom;
 }
 
-function buildEmbeddingText(node: Pick<IndexNode, 'title' | 'tags' | 'summary'>): string {
+function buildEmbeddingText(node: Pick<IndexNode, 'title' | 'tags' | 'summary' | 'bodySnippet'>): string {
     const parts = [node.title];
     if (node.tags.length > 0) {
         parts.push(`tags: ${node.tags.join(', ')}`);
     }
     if (node.summary) {
         parts.push(node.summary);
+    }
+    if (node.bodySnippet) {
+        parts.push(node.bodySnippet.slice(0, 500));
     }
     return parts.join(' | ');
 }
@@ -87,6 +90,11 @@ export class EmbeddingIndex {
     };
     private dirty = false;
     private _loaded = false;
+
+    // Query vector cache — avoids hitting OpenAI API for repeated queries
+    private queryCache = new Map<string, { vector: number[]; ts: number }>();
+    private static QUERY_CACHE_MAX = 100;
+    private static QUERY_CACHE_TTL = 300_000; // 5 minutes
 
     get isLoaded(): boolean {
         return this._loaded;
@@ -179,7 +187,7 @@ export class EmbeddingIndex {
         return result;
     }
 
-    async upsert(key: string, node: Pick<IndexNode, 'title' | 'tags' | 'summary'>): Promise<void> {
+    async upsert(key: string, node: Pick<IndexNode, 'title' | 'tags' | 'summary' | 'bodySnippet'>): Promise<void> {
         const text = buildEmbeddingText(node);
         const existing = this.store.entries[key];
 
@@ -209,17 +217,36 @@ export class EmbeddingIndex {
         }
     }
 
+    private async getQueryVector(query: string): Promise<number[] | null> {
+        const cached = this.queryCache.get(query);
+        if (cached && Date.now() - cached.ts < EmbeddingIndex.QUERY_CACHE_TTL) {
+            return cached.vector;
+        }
+        try {
+            const [vector] = await getEmbeddings([query], DIMENSIONS);
+            // Evict oldest if full
+            if (this.queryCache.size >= EmbeddingIndex.QUERY_CACHE_MAX) {
+                let oldestKey: string | null = null;
+                let oldestTs = Infinity;
+                for (const [k, v] of this.queryCache) {
+                    if (v.ts < oldestTs) { oldestTs = v.ts; oldestKey = k; }
+                }
+                if (oldestKey) this.queryCache.delete(oldestKey);
+            }
+            this.queryCache.set(query, { vector, ts: Date.now() });
+            return vector;
+        } catch (err) {
+            debug('embeddings', `Failed to embed query: ${err}`);
+            return null;
+        }
+    }
+
     async search(query: string, topK = 5, entityType?: EntityTypeName): Promise<EmbeddingSearchResult[]> {
         const entries = Object.entries(this.store.entries);
         if (entries.length === 0) return [];
 
-        let queryVector: number[];
-        try {
-            [queryVector] = await getEmbeddings([query], DIMENSIONS);
-        } catch (err) {
-            debug('embeddings', `Failed to embed query: ${err}`);
-            return [];
-        }
+        const queryVector = await this.getQueryVector(query);
+        if (!queryVector) return [];
 
         const results: EmbeddingSearchResult[] = [];
 

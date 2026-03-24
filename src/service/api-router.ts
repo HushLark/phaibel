@@ -109,7 +109,7 @@ export async function handleApiRoute(
 
         for (const t of calendarTypes) {
             try {
-                const entities = await listEntities(t.name);
+                const entities = await listEntities(t.name, { metaOnly: true });
                 for (const e of entities) {
                     // Skip completed entities
                     if (t.completionField && e.meta[t.completionField] === (t.completionValue ?? 'done')) continue;

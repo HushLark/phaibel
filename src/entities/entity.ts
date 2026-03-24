@@ -400,11 +400,48 @@ export async function searchEntities(
         const tagPrefix = (options?.tags ?? []).map(t => `tag:${t}`).join(' ');
         const fullQuery = tagPrefix ? `${tagPrefix} ${query}` : query;
 
-        const indexResults = index.search(fullQuery, entityType);
+        // 1. Keyword search via entity index
+        const keywordResults = index.search(fullQuery, entityType);
+
+        // 2. Semantic search via embedding index (if available)
+        const embeddingIndex = getEmbeddingIndex();
+        const mergedScores = new Map<string, { node: typeof keywordResults[0]['node']; score: number }>();
+
+        // Normalize keyword scores to 0-1 range
+        const maxKeyword = keywordResults.length > 0 ? keywordResults[0].score : 1;
+        for (const { node, score } of keywordResults) {
+            const key = `${node.type}:${node.id}`;
+            const normalized = maxKeyword > 0 ? score / maxKeyword : 0;
+            mergedScores.set(key, { node, score: normalized * 0.6 });
+        }
+
+        if (embeddingIndex.isLoaded && query) {
+            try {
+                const semanticResults = await embeddingIndex.search(query, 20, entityType ?? undefined);
+                for (const { key, similarity } of semanticResults) {
+                    const existing = mergedScores.get(key);
+                    if (existing) {
+                        // Combine: keyword weight + semantic weight
+                        existing.score += similarity * 0.4;
+                    } else {
+                        // Semantic-only hit — find node from index
+                        const node = index.getNode(key);
+                        if (node) {
+                            mergedScores.set(key, { node, score: similarity * 0.4 });
+                        }
+                    }
+                }
+            } catch (err) {
+                debug('entities', `Semantic search failed, using keyword-only: ${err}`);
+            }
+        }
+
+        // Sort by combined score descending
+        const sorted = [...mergedScores.values()].sort((a, b) => b.score - a.score);
 
         // Read full content from disk for matched nodes
         const results: { filepath: string; meta: Record<string, unknown>; content: string; score: number }[] = [];
-        for (const { node, score } of indexResults) {
+        for (const { node, score } of sorted) {
             try {
                 const rawContent = await fs.readFile(node.filepath, 'utf-8');
                 const { meta, content } = parseEntity(node.filepath, rawContent);
@@ -489,11 +526,51 @@ export async function searchEntities(
 
 /**
  * List all entities of a given type in the active project.
+ * When `metaOnly: true` and the index is built, returns metadata from the in-memory
+ * index without reading files from disk — O(1) instead of O(n) file reads.
  */
 export async function listEntities(
     entityType: EntityTypeName,
-    options?: { tags?: string[] },
+    options?: { tags?: string[]; metaOnly?: boolean },
 ): Promise<{ filepath: string; meta: Record<string, unknown>; content: string }[]> {
+    // Fast path: use in-memory index when available
+    const index = getEntityIndex();
+    if (index.isBuilt) {
+        let nodes = index.getNodes(entityType);
+
+        // Filter by tags if requested
+        if (options?.tags && options.tags.length > 0) {
+            const filterTags = options.tags.map(t => t.toLowerCase());
+            nodes = nodes.filter(n => {
+                const nodeTags = n.tags.map(t => t.toLowerCase());
+                return filterTags.some(ft => nodeTags.includes(ft));
+            });
+        }
+
+        if (options?.metaOnly) {
+            // Return index data directly — no disk reads
+            return nodes.map(n => ({
+                filepath: n.filepath,
+                meta: n.meta,
+                content: '',
+            }));
+        }
+
+        // Read full content from disk for matched nodes
+        const results: { filepath: string; meta: Record<string, unknown>; content: string }[] = [];
+        for (const n of nodes) {
+            try {
+                const rawContent = await fs.readFile(n.filepath, 'utf-8');
+                const { meta, content } = parseEntity(n.filepath, rawContent);
+                results.push({ filepath: n.filepath, meta, content });
+            } catch (err) {
+                debug('entities', `Index hit but file read failed for ${n.filepath}: ${err}`);
+            }
+        }
+        return results;
+    }
+
+    // Fallback: filesystem scan
     let dir: string;
     try {
         dir = await getEntityDir(entityType);

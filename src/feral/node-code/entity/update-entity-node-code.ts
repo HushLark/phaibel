@@ -146,7 +146,7 @@ export class UpdateEntityNodeCode extends AbstractNodeCode {
         if (embeddingIndex.isLoaded) {
             const id = found.meta.id as string;
             const updatedTags = Array.isArray(found.meta.tags) ? found.meta.tags as string[] : [];
-            await embeddingIndex.upsert(`${entityType}:${id}`, { title, tags: updatedTags, summary: summary ?? '' });
+            await embeddingIndex.upsert(`${entityType}:${id}`, { title, tags: updatedTags, summary: summary ?? '', bodySnippet: '' });
         }
 
         return this.result(ResultStatus.OK, `Updated ${entityType} "${title}".`);

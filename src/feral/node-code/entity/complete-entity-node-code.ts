@@ -79,7 +79,7 @@ export class CompleteEntityNodeCode extends AbstractNodeCode {
             const id = found.meta.id as string;
             const tags = Array.isArray(found.meta.tags) ? found.meta.tags as string[] : [];
             const summary = (found.meta.summary as string) ?? '';
-            await embeddingIndex.upsert(`${entityType}:${id}`, { title, tags, summary });
+            await embeddingIndex.upsert(`${entityType}:${id}`, { title, tags, summary, bodySnippet: '' });
         }
 
         return this.result(ResultStatus.OK, `Marked ${entityType} "${title}" as complete.`);

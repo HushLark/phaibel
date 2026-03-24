@@ -130,7 +130,7 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         // Update embedding index
         const embeddingIndex = getEmbeddingIndex();
         if (embeddingIndex.isLoaded) {
-            await embeddingIndex.upsert(`${entityType}:${id}`, { title, tags, summary: summary ?? '' });
+            await embeddingIndex.upsert(`${entityType}:${id}`, { title, tags, summary: summary ?? '', bodySnippet: '' });
         }
 
         return this.result(ResultStatus.OK, `Created ${entityType} "${title}" at ${filepath}.`);

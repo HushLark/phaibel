@@ -37,7 +37,7 @@ const DEFAULT_CONFIG: CronConfig = {
         'recurrence-generate': { enabled: false, intervalMinutes: 1440 },
         'process-lifecycle':   { enabled: false, intervalMinutes: 60 },
         'pamp-check':          { enabled: false, intervalMinutes: 15 },
-        'embedding-sync':      { enabled: false, intervalMinutes: 1440 },
+        'embedding-sync':      { enabled: true, intervalMinutes: 1440 },
         'feedback-analysis':   { enabled: false, intervalMinutes: 1440 },
         'innovate':            { enabled: false, intervalMinutes: 1440 },
     },
