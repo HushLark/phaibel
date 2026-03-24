@@ -4,8 +4,6 @@ An AI-powered personal assistant that manages your tasks, events, notes, goals, 
 
 Choose from 4 personalities and name your agent to make it truly yours.
 
-> **Requires an API key from [OpenAI](https://platform.openai.com) and/or [Anthropic](https://console.anthropic.com).**
-
 ```
      ___                    __
 @@@@@@%%%%%%%%%%%%%%%%%##############%%#######%%%%%%%%%%%%%%@@@@@@@@@@@%%#########*+*#+++=:::::::::-
@@ -17,7 +15,7 @@ Choose from 4 personalities and name your agent to make it truly yours.
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%%%%%%#+=+####***+-::........:--::...................:=--=-:::::----:
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%###%*==+*****+=-:.-*%%%%%%%##*-:...................:=---===++**+===
 @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@%#*****=-=++===::=#%@@@@@@@%####%*=:............:::--++---==++***+===
-@@@@@@@@@@@@@@%%%%%%%%%%%%%%@%#+==++---==----#@@@@@@%@@@%%##%%%##=..........:---==++-:-==+++++==--
+@@@@@@@@@@@@%%%%%%%%%%%%%%@%#+==++---==----#@@@@@@%@@@%%##%%%##=..........:---==++-:-==+++++==--
 @@@@@@@@%%%%%%%%%%%%%%%%%%%%%%%#*=--==-:-=--:=@@@@@@@@@@@@@%%##%@%%%*:......::-----=++-:-====+++=---
 @@@@@%%%%%%%%%%%%%%%%%%%%%#%#%%#+---==-:---:-*@@@@@@@@%#*++====*%%%#*-......-------=++-:-==+++++=---
 @@@@@@%%%%%%%%%%###############*=---==-:---::*@@@%#***++===-----*##*+-......:---====++-:-===++++=---
@@ -42,55 +40,25 @@ Choose from 4 personalities and name your agent to make it truly yours.
 
 ## Quick Start
 
-### 1. Install
+1. **Install and create a vault**
+   ```bash
+   npm install -g phaibel
+   mkdir my-vault && cd my-vault
+   phaibel init
+   ```
 
-```bash
-# Install globally
-npm install -g phaibel
+2. **Configure an API key** (prompted during init)
+   > Requires a key from [OpenAI](https://platform.openai.com) and/or [Anthropic](https://console.anthropic.com)
 
-# Or build from source
-git clone https://github.com/clift-labs/phaibel.git
-cd phaibel
-npm install
-npm run build
-npm link
-```
+3. **Open the web client at [http://localhost:3737](http://localhost:3737)**
 
-### 2. Create a vault
+   The service starts automatically after init. On first visit you'll choose a personality, name your agent, and optionally fill in some context about yourself. Then just start chatting:
 
-Navigate to a directory where you want your data stored:
-
-```bash
-mkdir my-vault && cd my-vault
-phaibel init
-```
-
-This creates a `.vault.md` marker, entity directories (todos, events, notes, etc.), and prompts you to configure an AI provider API key.
-
-### 3. Start the service
-
-```bash
-phaibel service start
-```
-
-### 4. Open the web client
-
-Visit **http://localhost:3737** in your browser.
-
-If this is a new vault, you'll see an onboarding wizard that walks you through:
-
-1. **Personality** — choose how your agent communicates
-2. **Identity** — name your agent and introduce yourself
-3. **Profile** — optional context about your work, goals, and life
-
-After onboarding, chat with your agent using natural language:
-
-```
-remind me to call the dentist tomorrow
-what's on my plate today?
-create a goal to run a half marathon by June
-add a note about the meeting with Sarah
-```
+   ```
+   remind me to call the dentist tomorrow
+   what's on my plate today?
+   create a goal to run a half marathon by June
+   ```
 
 ## Personalities
 
@@ -103,7 +71,7 @@ add a note about the meeting with Sarah
 
 ## CLI Commands
 
-The CLI is an admin toolkit for managing Phaibel. The web client at `http://localhost:3737` is the primary user interface.
+The CLI is an admin toolkit. The web client at `http://localhost:3737` is the primary user interface.
 
 Run `phaibel --help` to see all commands:
 
@@ -115,6 +83,7 @@ Run `phaibel --help` to see all commands:
 | `phaibel queue status\|pause\|resume\|clear` | Inspect the task queue |
 | `phaibel index stats\|rebuild\|graph\|neighbors` | Manage the entity relationship graph |
 | `phaibel cron list\|enable\|disable\|run` | Manage scheduled background jobs |
+| `phaibel calendar add\|remove\|list\|sync` | Manage Google Calendar ICS feeds |
 | `phaibel feral` | Inspect the Feral CCF flow engine |
 | `phaibel sync` | Git-based vault sync |
 | `phaibel setup` | Update your name and preferences |
@@ -160,7 +129,7 @@ When both providers are configured, Phaibel picks the best model for each task:
 
 | Capability | What it does | OpenAI default | Anthropic default |
 |------------|-------------|----------------|-------------------|
-| reason | Complex thinking | gpt-4o | claude-opus-4-6 |
+| reason | Complex thinking | gpt-4o | claude-sonnet-4-6 |
 | chat | Conversation | gpt-4o | claude-sonnet-4-6 |
 | summarize | Condensing info | gpt-4o-mini | claude-haiku-4-5 |
 | categorize | Classification | gpt-4o-mini | claude-haiku-4-5 |
@@ -213,10 +182,17 @@ Every entity is a plain `.md` file. Edit them with any text editor, sync with Gi
 ## Development
 
 ```bash
+git clone https://github.com/clift-labs/phaibel.git
+cd phaibel
+npm install
+npm run build
+npm link
+```
+
+```bash
 npm run dev          # Run with tsx (hot reload)
 npm test             # Run unit tests
 npm run test:all     # Run all tests including integration
-npm run build        # Compile TypeScript to dist/
 ```
 
 ## Requirements
