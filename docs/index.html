@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phaibel — Your Intelligent Personal Assistant</title>
+  <meta name="description" content="Phaibel is an AI-powered Intelligent Personal Assistant that manages your calendars, todos, emails, and digital life. Built on the Feral CCF code composition framework.">
+  <meta property="og:title" content="Phaibel — Your Intelligent Personal Assistant">
+  <meta property="og:description" content="The next wave after smartphones. An IPA that writes unique software for every request.">
+  <meta property="og:image" content="https://phaibel.com/images/Phaibel-Wrist-Image--20260324.png">
+  <meta property="og:url" content="https://phaibel.com">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="preload" as="image" href="images/Phaibel-Wrist-Image--20260324.png">
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-WKJHE2GM8J"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-WKJHE2GM8J');
+  </script>
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg: #0a0a0f;
+      --bg-surface: #14141f;
+      --bg-card: #1a1a2e;
+      --text: #e8e8ef;
+      --text-dim: #8888a0;
+      --accent: #6366f1;
+      --accent-warm: #f59e0b;
+      --accent-green: #10b981;
+      --purple: #a78bfa;
+      --orange: #f97316;
+      --blue: #3b82f6;
+      --green: #10b981;
+      --radius: 12px;
+      --max-w: 1100px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Nav ─────────────────────────────────── */
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10, 10, 15, 0.8);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .nav-inner {
+      max-width: var(--max-w); margin: 0 auto;
+      padding: 0 24px; height: 64px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .nav-logo {
+      font-size: 1.25rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-decoration: none;
+    }
+    .nav-links { display: flex; gap: 32px; list-style: none; }
+    .nav-links a {
+      color: var(--text-dim); text-decoration: none; font-size: 0.875rem;
+      font-weight: 500; transition: color 0.2s;
+    }
+    .nav-links a:hover, .nav-links a.active { color: var(--text); }
+    .hamburger {
+      display: none; background: none; border: none; color: var(--text);
+      font-size: 1.5rem; cursor: pointer; padding: 4px;
+    }
+
+    @media (max-width: 768px) {
+      .hamburger { display: block; }
+      .nav-links {
+        display: none; flex-direction: column; gap: 0;
+        position: absolute; top: 64px; left: 0; right: 0;
+        background: rgba(10, 10, 15, 0.95);
+        backdrop-filter: blur(16px);
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+      }
+      .nav-links.open { display: flex; }
+      .nav-links a { padding: 16px 24px; display: block; }
+    }
+
+    /* ── Sections ────────────────────────────── */
+    section { padding: 96px 24px; }
+    @media (max-width: 768px) { section { padding: 64px 16px; } }
+    .container { max-width: var(--max-w); margin: 0 auto; }
+
+    h2 {
+      font-size: clamp(1.75rem, 4vw, 2.5rem); font-weight: 700;
+      margin-bottom: 16px; letter-spacing: -0.02em;
+    }
+    .section-sub {
+      color: var(--text-dim); font-size: 1.125rem;
+      max-width: 640px; margin-bottom: 48px;
+    }
+
+    /* ── Fade-in animation ───────────────────── */
+    .fade-in {
+      opacity: 0; transform: translateY(24px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .fade-in.visible { opacity: 1; transform: none; }
+
+    /* ── Hero ────────────────────────────────── */
+    #hero {
+      padding-top: 140px; padding-bottom: 64px; text-align: center;
+      position: relative; overflow: hidden;
+    }
+    #hero::before {
+      content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 800px; height: 800px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .hero-badge {
+      display: inline-block; padding: 6px 16px; border-radius: 999px;
+      background: rgba(99,102,241,0.15); color: var(--accent);
+      font-size: 0.8rem; font-weight: 600; margin-bottom: 24px;
+      letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    .hero-title {
+      font-size: clamp(2.5rem, 6vw, 4rem); font-weight: 700;
+      letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 20px;
+    }
+    .hero-title span {
+      background: linear-gradient(135deg, var(--accent), var(--accent-warm));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      color: var(--text-dim); font-size: clamp(1rem, 2vw, 1.25rem);
+      max-width: 640px; margin: 0 auto 32px;
+    }
+    .hero-ctas { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 48px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; border-radius: 999px; font-weight: 600;
+      font-size: 0.95rem; text-decoration: none; transition: all 0.2s;
+      border: none; cursor: pointer;
+    }
+    .btn-primary {
+      background: var(--accent); color: #fff;
+      box-shadow: 0 4px 24px rgba(99,102,241,0.3);
+    }
+    .btn-primary:hover { background: #5558e6; transform: translateY(-1px); }
+    .btn-secondary {
+      background: rgba(255,255,255,0.06); color: var(--text);
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .btn-secondary:hover { background: rgba(255,255,255,0.1); }
+    .hero-image {
+      max-width: 900px; width: 100%; margin: 0 auto; display: block;
+      border-radius: 16px;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.5), 0 0 120px rgba(99,102,241,0.08);
+    }
+
+    /* ── IPA Section ─────────────────────────── */
+    #ipa { background: var(--bg-surface); }
+    .ipa-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px;
+    }
+    @media (max-width: 768px) { .ipa-grid { grid-template-columns: 1fr; } }
+    .ipa-card {
+      padding: 32px; border-radius: var(--radius);
+      background: var(--bg-card); border: 1px solid rgba(255,255,255,0.06);
+    }
+    .ipa-icon {
+      font-size: 2rem; margin-bottom: 16px;
+      width: 56px; height: 56px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(99,102,241,0.1);
+    }
+    .ipa-card h3 { font-size: 1.125rem; margin-bottom: 8px; }
+    .ipa-card p { color: var(--text-dim); font-size: 0.95rem; }
+
+    /* ── How It Works ────────────────────────── */
+    #how { }
+    .how-content {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center;
+    }
+    @media (max-width: 768px) { .how-content { grid-template-columns: 1fr; gap: 40px; } }
+    .how-text h3 { font-size: 1.25rem; margin-bottom: 8px; color: var(--accent-warm); }
+    .how-text p { color: var(--text-dim); margin-bottom: 24px; }
+    .how-step {
+      display: flex; gap: 16px; margin-bottom: 24px;
+    }
+    .how-step-num {
+      flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%;
+      background: rgba(99,102,241,0.15); color: var(--accent);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.875rem;
+    }
+    .how-step-body h4 { font-size: 1rem; margin-bottom: 4px; }
+    .how-step-body p { color: var(--text-dim); font-size: 0.9rem; margin-bottom: 0; }
+
+    /* Process flow diagram */
+    .process-flow {
+      position: relative; padding: 32px;
+      background: var(--bg-surface); border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .flow-node {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 18px; border-radius: 8px; font-size: 0.85rem;
+      font-weight: 600; margin: 6px; white-space: nowrap;
+      opacity: 0; transform: scale(0.8);
+      transition: opacity 0.4s ease, transform 0.4s ease;
+    }
+    .flow-node.show { opacity: 1; transform: scale(1); }
+    .flow-node.orange { background: rgba(249,115,22,0.2); color: var(--orange); border: 1px solid rgba(249,115,22,0.3); }
+    .flow-node.blue { background: rgba(59,130,246,0.2); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
+    .flow-node.green { background: rgba(16,185,129,0.2); color: var(--green); border: 1px solid rgba(16,185,129,0.3); }
+    .flow-node.purple { background: rgba(167,139,250,0.2); color: var(--purple); border: 1px solid rgba(167,139,250,0.3); }
+    .flow-arrow {
+      color: var(--text-dim); font-size: 1.25rem; margin: 6px 4px;
+      display: inline-block; vertical-align: middle;
+      opacity: 0; transition: opacity 0.4s ease;
+    }
+    .flow-arrow.show { opacity: 1; }
+    .flow-label {
+      text-align: center; color: var(--text-dim); font-size: 0.8rem;
+      margin-top: 16px; font-style: italic;
+    }
+    .flow-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
+
+    /* ── Personalities ───────────────────────── */
+    #personalities { background: var(--bg-surface); }
+    .personality-grid {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px;
+    }
+    @media (max-width: 768px) { .personality-grid { grid-template-columns: 1fr; } }
+    .personality-card {
+      padding: 32px; border-radius: var(--radius);
+      background: var(--bg-card); border: 1px solid rgba(255,255,255,0.06);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .personality-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+    }
+    .personality-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .personality-icon {
+      width: 44px; height: 44px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.5rem;
+    }
+    .personality-card.butler .personality-icon { background: rgba(167,139,250,0.15); }
+    .personality-card.rockstar .personality-icon { background: rgba(249,115,22,0.15); }
+    .personality-card.executive .personality-icon { background: rgba(59,130,246,0.15); }
+    .personality-card.friend .personality-icon { background: rgba(16,185,129,0.15); }
+    .personality-name { font-weight: 700; font-size: 1.125rem; }
+    .personality-card.butler .personality-name { color: var(--purple); }
+    .personality-card.rockstar .personality-name { color: var(--orange); }
+    .personality-card.executive .personality-name { color: var(--blue); }
+    .personality-card.friend .personality-name { color: var(--green); }
+    .personality-desc { color: var(--text-dim); font-size: 0.95rem; margin-bottom: 16px; }
+    .personality-quote {
+      font-style: italic; font-size: 0.9rem; color: var(--text);
+      padding-left: 16px; border-left: 2px solid rgba(255,255,255,0.1);
+    }
+
+    /* ── Quick Start ──────────────────────────── */
+    #quickstart { }
+    .terminal {
+      background: #0d1117; border-radius: var(--radius); overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.08); max-width: 640px; margin-bottom: 40px;
+    }
+    .terminal-bar {
+      display: flex; gap: 8px; padding: 12px 16px;
+      background: rgba(255,255,255,0.03);
+    }
+    .terminal-dot { width: 12px; height: 12px; border-radius: 50%; }
+    .terminal-dot.red { background: #ff5f57; }
+    .terminal-dot.yellow { background: #febc2e; }
+    .terminal-dot.green { background: #28c840; }
+    .terminal-code {
+      padding: 20px 24px; font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+      font-size: 0.9rem; line-height: 1.8;
+    }
+    .terminal-code .prompt { color: var(--accent-green); }
+    .terminal-code .cmd { color: var(--text); }
+    .terminal-code .comment { color: #6a737d; }
+    .chat-bubbles { display: flex; flex-direction: column; gap: 12px; max-width: 480px; }
+    .bubble {
+      padding: 14px 20px; border-radius: 18px; font-size: 0.95rem;
+      max-width: 85%; position: relative;
+    }
+    .bubble-user {
+      background: var(--accent); color: #fff; align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .bubble-agent {
+      background: var(--bg-card); color: var(--text);
+      border: 1px solid rgba(255,255,255,0.08);
+      align-self: flex-start; border-bottom-left-radius: 4px;
+    }
+    .byok {
+      display: flex; align-items: center; gap: 12px;
+      padding: 20px 24px; border-radius: var(--radius);
+      background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.15);
+      margin-top: 32px; max-width: 640px;
+    }
+    .byok-icon { font-size: 1.5rem; flex-shrink: 0; }
+    .byok p { color: var(--text-dim); font-size: 0.9rem; }
+    .byok strong { color: var(--accent-warm); }
+
+    /* ── CTA ──────────────────────────────────── */
+    #cta {
+      text-align: center; background: var(--bg-surface);
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    #cta h2 { margin-bottom: 16px; }
+    #cta p { color: var(--text-dim); max-width: 520px; margin: 0 auto 32px; font-size: 1.05rem; }
+    .cta-buttons { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; }
+    .github-btn {
+      background: #fff; color: #0a0a0f;
+    }
+    .github-btn:hover { background: #e8e8ef; }
+
+    /* ── Footer ───────────────────────────────── */
+    footer {
+      padding: 48px 24px; text-align: center;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    .footer-logo {
+      font-size: 1.125rem; font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--purple));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; margin-bottom: 16px;
+    }
+    .footer-links { display: flex; gap: 24px; justify-content: center; margin-bottom: 16px; }
+    .footer-links a { color: var(--text-dim); text-decoration: none; font-size: 0.875rem; }
+    .footer-links a:hover { color: var(--text); }
+    .footer-copy { color: var(--text-dim); font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+
+  <!-- Nav -->
+  <nav>
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">Phaibel</a>
+      <button class="hamburger" aria-label="Menu">&#9776;</button>
+      <ul class="nav-links">
+        <li><a href="#ipa">What is an IPA?</a></li>
+        <li><a href="#how">How It Works</a></li>
+        <li><a href="#personalities">Personalities</a></li>
+        <li><a href="#quickstart">Quick Start</a></li>
+        <li><a href="https://github.com/clift-labs/phaibel" target="_blank" rel="noopener">GitHub</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section id="hero">
+    <div class="container">
+      <div class="hero-badge">Intelligent Personal Assistant</div>
+      <h1 class="hero-title">Your Life, <span>Handled.</span></h1>
+      <p class="hero-sub">Phaibel is an AI agent that writes unique software for every request — managing your calendars, todos, emails, messages, and digital life, all orchestrated automatically.</p>
+      <div class="hero-ctas">
+        <a href="#quickstart" class="btn btn-primary">Get Started</a>
+        <a href="https://github.com/clift-labs/phaibel" class="btn btn-secondary" target="_blank" rel="noopener">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <img src="images/Phaibel-Wrist-Image--20260324.png" alt="Phaibel intelligent assistant showing a process flow — checking weather, finding restaurants, scheduling a date, and sending a message — all from a natural language request" class="hero-image" width="1536" height="1024" loading="eager">
+    </div>
+  </section>
+
+  <!-- What is an IPA? -->
+  <section id="ipa">
+    <div class="container">
+      <h2 class="fade-in">The Next Wave After Smartphones</h2>
+      <p class="section-sub fade-in">Smartphones gave us apps. Intelligent Personal Assistants give us an agent that uses those apps for you.</p>
+      <div class="ipa-grid">
+        <div class="ipa-card fade-in">
+          <div class="ipa-icon">📅</div>
+          <h3>Calendars &amp; Events</h3>
+          <p>Syncs your Google Calendar, schedules events, manages conflicts, and reminds you before things happen.</p>
+        </div>
+        <div class="ipa-card fade-in">
+          <div class="ipa-icon">💬</div>
+          <h3>Messages &amp; Email</h3>
+          <p>Drafts replies, surfaces important threads, and keeps your communications organized without the noise.</p>
+        </div>
+        <div class="ipa-card fade-in">
+          <div class="ipa-icon">✅</div>
+          <h3>Tasks &amp; Goals</h3>
+          <p>Tracks your todos, breaks down goals into actionable steps, manages recurring tasks, and knows what matters most.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section id="how">
+    <div class="container">
+      <h2 class="fade-in">A Unique Process for Every Request</h2>
+      <p class="section-sub fade-in">Most assistants follow rigid scripts. Phaibel writes a custom software process for every single request using the Feral CCF engine.</p>
+      <div class="how-content">
+        <div class="how-text fade-in">
+          <div class="how-step">
+            <div class="how-step-num">1</div>
+            <div class="how-step-body">
+              <h4>You speak naturally</h4>
+              <p>"Set up a date night with my wife on the patio"</p>
+            </div>
+          </div>
+          <div class="how-step">
+            <div class="how-step-num">2</div>
+            <div class="how-step-body">
+              <h4>Phaibel assembles a process</h4>
+              <p>Selects the right nodes from its catalog — weather, calendar, messaging, scheduling — and wires them into a directed graph.</p>
+            </div>
+          </div>
+          <div class="how-step">
+            <div class="how-step-num">3</div>
+            <div class="how-step-body">
+              <h4>The process executes</h4>
+              <p>Each node runs, passing results forward. You see exactly what happened — no black box.</p>
+            </div>
+          </div>
+        </div>
+        <div class="process-flow fade-in" id="flowDiagram">
+          <div class="flow-row">
+            <div class="flow-node purple">🗣️ Spoken Request</div>
+          </div>
+          <div class="flow-row">
+            <span class="flow-arrow">↓</span>
+          </div>
+          <div class="flow-row">
+            <div class="flow-node orange">☀️ Check Weather</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-node blue">🍽️ Find Restaurant</div>
+          </div>
+          <div class="flow-row">
+            <span class="flow-arrow">↓</span>
+            <span class="flow-arrow" style="visibility:hidden">→</span>
+            <span class="flow-arrow">↓</span>
+          </div>
+          <div class="flow-row">
+            <div class="flow-node green">📅 Schedule Date</div>
+            <span class="flow-arrow">→</span>
+            <div class="flow-node purple">💬 Send Message</div>
+          </div>
+          <div class="flow-row">
+            <span class="flow-arrow">↓</span>
+          </div>
+          <div class="flow-row">
+            <div class="flow-node blue">✅ Done</div>
+          </div>
+          <p class="flow-label">Every request gets its own unique process graph</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Personalities -->
+  <section id="personalities">
+    <div class="container">
+      <h2 class="fade-in">Choose Your Style</h2>
+      <p class="section-sub fade-in">Pick a personality that matches how you want your assistant to communicate.</p>
+      <div class="personality-grid">
+        <div class="personality-card butler fade-in">
+          <div class="personality-header">
+            <div class="personality-icon">🎩</div>
+            <div class="personality-name">British Butler</div>
+          </div>
+          <p class="personality-desc">Formal, composed, measured. A loyal, proper English butler — genuinely delighted to be of service.</p>
+          <p class="personality-quote">"Very good, sir. I shall attend to that forthwith."</p>
+        </div>
+        <div class="personality-card rockstar fade-in">
+          <div class="personality-header">
+            <div class="personality-icon">🎸</div>
+            <div class="personality-name">Rock Star</div>
+          </div>
+          <p class="personality-desc">High-energy, irreverent, enthusiastic. Uses slang and music metaphors to keep things exciting.</p>
+          <p class="personality-quote">"Let's SHRED this to-do list! I'm vibing already!"</p>
+        </div>
+        <div class="personality-card executive fade-in">
+          <div class="personality-header">
+            <div class="personality-icon">💼</div>
+            <div class="personality-name">Executive Assistant</div>
+          </div>
+          <p class="personality-desc">Professional, crisp, efficient. Warm but business-like — gets things done with zero fuss.</p>
+          <p class="personality-quote">"Done. Next item on your agenda."</p>
+        </div>
+        <div class="personality-card friend fade-in">
+          <div class="personality-header">
+            <div class="personality-icon">👋</div>
+            <div class="personality-name">Friend</div>
+          </div>
+          <p class="personality-desc">Warm, casual, supportive. Like a helpful buddy who happens to be great at organizing your life.</p>
+          <p class="personality-quote">"Hey! I took care of that for you. What's next?"</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Quick Start -->
+  <section id="quickstart">
+    <div class="container">
+      <h2 class="fade-in">Up and Running in 60 Seconds</h2>
+      <p class="section-sub fade-in">Install, create a vault, and start chatting with your agent.</p>
+      <div class="terminal fade-in">
+        <div class="terminal-bar">
+          <div class="terminal-dot red"></div>
+          <div class="terminal-dot yellow"></div>
+          <div class="terminal-dot green"></div>
+        </div>
+        <div class="terminal-code">
+          <div><span class="prompt">$</span> <span class="cmd">npm install -g phaibel</span></div>
+          <div><span class="prompt">$</span> <span class="cmd">mkdir my-vault && cd my-vault</span></div>
+          <div><span class="prompt">$</span> <span class="cmd">phaibel init</span></div>
+          <div><span class="comment"># Opens http://localhost:3737 — choose a personality and start chatting</span></div>
+        </div>
+      </div>
+      <div class="chat-bubbles fade-in">
+        <div class="bubble bubble-user">Remind me to call the dentist tomorrow</div>
+        <div class="bubble bubble-agent">Done! I've created a todo "Call the dentist" due tomorrow morning. I'll remind you at 9 AM.</div>
+        <div class="bubble bubble-user">What's on my plate today?</div>
+        <div class="bubble bubble-agent">You've got 3 tasks due and a meeting at 2 PM. Want me to prioritize them?</div>
+      </div>
+      <div class="byok fade-in">
+        <div class="byok-icon">🔑</div>
+        <p><strong>Bring Your Own Key.</strong> Your API keys from OpenAI or Anthropic stay on your machine. Phaibel never phones home.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section id="cta">
+    <div class="container">
+      <h2 class="fade-in">Open Source. Your Data. Your Agent.</h2>
+      <p class="fade-in">MIT licensed. Plain Markdown files. Local storage. Sync with Git. Your data never leaves your machine.</p>
+      <div class="cta-buttons fade-in">
+        <a href="https://github.com/clift-labs/phaibel" class="btn github-btn" target="_blank" rel="noopener">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          Star on GitHub
+        </a>
+        <a href="https://www.npmjs.com/package/phaibel" class="btn btn-secondary" target="_blank" rel="noopener">View on npm</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-logo">Phaibel</div>
+    <div class="footer-links">
+      <a href="https://github.com/clift-labs/phaibel" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/package/phaibel" target="_blank" rel="noopener">npm</a>
+      <a href="https://github.com/clift-labs/phaibel/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+    </div>
+    <p class="footer-copy">&copy; 2026 Clift Labs</p>
+  </footer>
+
+  <script>
+    // Mobile nav toggle
+    document.querySelector('.hamburger').addEventListener('click', function() {
+      document.querySelector('.nav-links').classList.toggle('open');
+    });
+
+    // Close mobile nav on link click
+    document.querySelectorAll('.nav-links a').forEach(function(a) {
+      a.addEventListener('click', function() {
+        document.querySelector('.nav-links').classList.remove('open');
+      });
+    });
+
+    // Fade-in on scroll
+    var observer = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('visible');
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+    document.querySelectorAll('.fade-in').forEach(function(el) {
+      observer.observe(el);
+    });
+
+    // Animate process flow nodes
+    var flowObserver = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          var nodes = entry.target.querySelectorAll('.flow-node, .flow-arrow');
+          nodes.forEach(function(node, i) {
+            setTimeout(function() { node.classList.add('show'); }, i * 120);
+          });
+          flowObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.3 });
+
+    var flowDiagram = document.getElementById('flowDiagram');
+    if (flowDiagram) flowObserver.observe(flowDiagram);
+
+    // Active nav highlighting
+    var sections = document.querySelectorAll('section[id]');
+    var navLinks = document.querySelectorAll('.nav-links a[href^="#"]');
+
+    window.addEventListener('scroll', function() {
+      var scrollPos = window.scrollY + 100;
+      sections.forEach(function(section) {
+        if (scrollPos >= section.offsetTop && scrollPos < section.offsetTop + section.offsetHeight) {
+          var id = section.getAttribute('id');
+          navLinks.forEach(function(link) {
+            link.classList.remove('active');
+            if (link.getAttribute('href') === '#' + id) {
+              link.classList.add('active');
+            }
+          });
+        }
+      });
+    });
+  </script>
+</body>
+</html>
