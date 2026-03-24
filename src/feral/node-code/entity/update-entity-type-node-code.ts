@@ -49,7 +49,10 @@ Rules:
 - Enum fields must also include:
     values   : string[]
     default  : string  (must be in values)
-- Preserve existing fields unless the changes explicitly remove or rename them.`;
+- Preserve existing fields unless the changes explicitly remove or rename them.
+- calendarDateField: If the type has a date or datetime field that represents WHEN this thing happens or is due, set calendarDateField to that field's key so it appears on the user's timeline. Preserve the existing value unless the changes affect it.
+- The object must also include:
+    calendarDateField : string | null   (which date/datetime field places this entity on the timeline)`;
 
 export class UpdateEntityTypeNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [
@@ -116,6 +119,7 @@ export class UpdateEntityTypeNodeCode extends AbstractNodeCode {
             fields?: FieldDef[];
             completionField?: string | null;
             completionValue?: string | null;
+            calendarDateField?: string | null;
         };
         try {
             const cleaned = schemaJson.replace(/```[a-z]*\n?/g, '').replace(/```/g, '').trim();
@@ -143,6 +147,12 @@ export class UpdateEntityTypeNodeCode extends AbstractNodeCode {
         } else if (schema.completionField === null) {
             delete updated.completionField;
             delete updated.completionValue;
+        }
+
+        if (schema.calendarDateField) {
+            updated.calendarDateField = schema.calendarDateField;
+        } else if (schema.calendarDateField === null) {
+            delete updated.calendarDateField;
         }
 
         await updateEntityType(typeName, updated);

@@ -46,6 +46,16 @@ export class EntityCatalogSource implements CatalogSource {
             configuration: {},
         });
 
+        // Update existing entity type — add fields to a content type that already exists
+        nodes.push({
+            key: 'update_content_type',
+            nodeCodeKey: 'update_entity_type',
+            name: 'Update Content Type',
+            group: 'entity',
+            description: 'Adds a field to an existing content type. Use when the user wants to track an additional piece of information on an entity type that already exists. Requires type_name and the field to add.',
+            configuration: {},
+        });
+
         // Link entities — adds a labeled relationship between two entities
         nodes.push({
             key: 'link_entities',

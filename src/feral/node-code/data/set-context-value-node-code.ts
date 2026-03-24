@@ -58,11 +58,17 @@ export class SetContextValueNodeCode extends AbstractNodeCode {
             }
             case 'datetime': {
                 const dtStr = String(rawValue).trim();
-                const parsed = new Date(dtStr);
-                if (!isNaN(parsed.getTime())) {
-                    value = parsed.toISOString();
+                // If already ISO 8601 with timezone offset (e.g. 2026-03-25T14:00:00-06:00), keep as-is
+                if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?([+-]\d{2}:\d{2}|Z)$/.test(dtStr)) {
+                    value = dtStr;
                 } else {
-                    value = dtStr; // pass through
+                    // Parse and convert to ISO — fallback to UTC
+                    const parsed = new Date(dtStr);
+                    if (!isNaN(parsed.getTime())) {
+                        value = parsed.toISOString();
+                    } else {
+                        value = dtStr; // pass through, let validator catch it
+                    }
                 }
                 break;
             }

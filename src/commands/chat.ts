@@ -247,10 +247,22 @@ async function _feralChatHeadlessInner(
     const vaultContext = scrubSecrets(await getVaultContext().catch(() => '')) as string;
 
     // Build global variables block for the LLM
-    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    // Detect user timezone from system (e.g. "America/Denver", "UTC")
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // Compute UTC offset string (e.g. "-06:00")
+    const tzOffset = (() => {
+        const off = now.getTimezoneOffset(); // minutes, positive = west of UTC
+        const sign = off <= 0 ? '+' : '-';
+        const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0');
+        const m = String(Math.abs(off) % 60).padStart(2, '0');
+        return `${sign}${h}:${m}`;
+    })();
     const globalsBlock = [
         `- user_name: ${userName}`,
         `- current_date: ${today}`,
+        `- user_timezone: ${userTimezone} (UTC${tzOffset})`,
     ].join('\n');
 
     const allNodes = runtime.catalog.getAllCatalogNodes();
@@ -409,7 +421,7 @@ For example: create_task, list_tasks, find_note, set_task_status, complete_task,
 IMPORTANT CAPABILITIES:
 - To filter entities by tag, use the "tags" config on list_* or search_* nodes (comma-separated tag names).
 - To mark an entity as done/complete, use the complete_* node (e.g. complete_task).
-- To create a NEW content type the user mentions (e.g. "recipe", "habit", "bookmark"), use "create_content_type".
+- To create a NEW content type for something tangible the user wants to track (e.g. "recipe", "flight", "medication"), use "create_content_type". Keep the description SHORT and simple — the LLM will design minimal fields. If a content type already exists but needs an extra field, use "update_content_type" instead of recreating it.
 - To link two entities together (e.g. a task relates to a goal), use "link_entities".
 - To add tags to an existing entity, use the add_tag_* nodes (e.g. add_tag_task).
 - To set entity-specific fields (startDate, endDate, priority, location, email, etc.) when creating entities, ALSO select "set_context_value" — you'll need it to put field values into context before the create node.
@@ -609,11 +621,11 @@ PROCESS FORMAT RULES:
 13. To link entities, use link_entities with source_entity_type, source_entity_title, target_entity_type, target_entity_title, and label
 14. To complete/finish an entity, use the complete_* catalog node (e.g. complete_task)
 15. ONLY use configuration keys that appear in the NODE CONFIGURATION DETAILS above — do not invent keys. The create_* nodes ONLY accept: entity_type, entity_title, entity_body, tags, extra_fields. Do NOT put field names like startDate, priority, status, location directly in configuration.
-16. To set entity-specific fields (e.g. startDate, endDate, priority, status, location, email), use a set_context_value node BEFORE the create_* node to put the value into context, then list those field names in the create node's "extra_fields" config (comma-separated). The set_context_value config keys are: "context_path" (the field name), "value" (the value), and optionally "value_type". Example for a date field: set_context_value with config {"context_path":"startDate","value":"2026-03-25"} → create_event with config {"entity_title":"Dentist","entity_body":"...","extra_fields":"startDate,endDate"}. IMPORTANT: Match the EXACT field type from ENTITY TYPES above — date fields use YYYY-MM-DD, datetime fields MUST use YYYY-MM-DDTHH:mm (e.g. "2026-03-22T14:00"), string fields must be plain strings (not arrays or objects), enum fields must use one of the listed values.
+16. To set entity-specific fields (e.g. startDate, endDate, priority, status, location, email), use a set_context_value node BEFORE the create_* node to put the value into context, then list those field names in the create node's "extra_fields" config (comma-separated). The set_context_value config keys are: "context_path" (the field name), "value" (the value), and "value_type" (REQUIRED for date/datetime). DATE FORMAT RULES: date fields → YYYY-MM-DD (e.g. "2026-03-25"), datetime fields → ISO 8601 with timezone offset (e.g. "2026-03-25T14:00:00-06:00"). Always set value_type to "date" or "datetime" to match the field type from ENTITY TYPES above. String fields must be plain strings, enum fields must use one of the listed values.
 17. When referencing existing entities (find_*, link_*, update_*, complete_*, set_*), use EXACT titles from the EXISTING ENTITIES list — do NOT guess or paraphrase entity titles
 18. CRITICAL: Use the correct entity type catalog node. An event (appointment, meeting, scheduled activity) MUST use create_event, NOT create_task. A task (action item, todo) MUST use create_task, NOT create_event. Never substitute one entity type for another.
 19. When setting enum fields via set_context_value, use ONLY the valid values from the ENTITY TYPES schema above. For example, task status must be one of [open, in-progress, done, blocked] — do NOT use "todo", "complete", or other values. If unsure, omit the field and let the default apply.
-20. Events ALWAYS require BOTH startDate AND endDate (both are date type: YYYY-MM-DD only, NO time component). If the user only mentions one date, set endDate to the same date as startDate. Always use two separate set_context_value nodes (one for startDate, one for endDate) before create_event, and include both in extra_fields: "startDate,endDate". If the user mentions a specific time (e.g. "at 2pm"), put it in the entity_body text instead — NOT in startDate/endDate.
+20. Events ALWAYS require BOTH startDate AND endDate (both are datetime type). Use ISO 8601 with timezone offset: "YYYY-MM-DDTHH:mm:ssZ" (e.g. "2026-03-25T14:00:00-06:00"). If the user doesn't mention a time, default to 09:00 start and 10:00 end in their timezone. If the user only mentions one date, set endDate to 1 hour after startDate. Always use set_context_value with value_type "datetime" for both fields, and include both in extra_fields: "startDate,endDate".
 21. Prefer ACTION over QUESTIONS. Use sensible defaults for missing fields (today's date, "medium" priority, etc.) rather than asking. Only use prompt_input/prompt_select when the user explicitly asks for help choosing OR a required field truly cannot be inferred. Never chain multiple prompt nodes — one question max per process. If you must ask, wire the prompt node's "ok" edge to the create node so the answer flows into context.
 
 EXAMPLE PROCESSES:

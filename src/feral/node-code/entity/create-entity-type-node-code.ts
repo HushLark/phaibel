@@ -24,8 +24,10 @@ import { getModelForCapability } from '../../../llm/router.js';
 
 const ALREADY_EXISTS = 'already_exists';
 
-const SYSTEM_PROMPT = `You are a data modelling assistant for a personal knowledge-management CLI called Phaibel.
+const SYSTEM_PROMPT = `You are a data modelling assistant for Phaibel, a personal organizer.
 Given a type name and description, produce a JSON object defining the fields for that entity type.
+
+PHILOSOPHY: Content types help a human stay organized. Keep them SIMPLE. Only include fields the user would actually fill in when quickly capturing information. The user can always add more fields later.
 
 Rules:
 - Return ONLY a valid JSON object — no markdown, no commentary, no code fences.
@@ -43,8 +45,14 @@ Rules:
 - Enum fields must also include:
     values   : string[]  (allowed values)
     default  : string    (the default value, must be in values)
-- Keep it practical: 2–6 fields is usually right. Do not over-engineer.
-- Only add a completionField/completionValue if the entity genuinely has a done/archived/complete state.`;
+- STRICT LIMIT: 3–5 fields maximum. Think "what would I jot on a sticky note?" — only the essential identifying details.
+  Example: a "flight" needs date, airline, flightNumber, seat — NOT cabin class, aircraft type, wifi, entertainment, boarding time.
+  Example: a "recipe" needs prepTime, servings — NOT cuisine, difficulty, calories, equipment.
+- Only add a completionField/completionValue if the entity genuinely has a done/archived/complete state.
+- Prefer "date" for date-only fields and "datetime" for fields that need a time component.
+- calendarDateField: If the type has a date or datetime field that represents WHEN this thing happens or is due, set calendarDateField to that field's key so it appears on the user's timeline. Examples: a flight's "departureDate", an appointment's "date", a deadline's "dueDate". Set to null if the type has no meaningful temporal anchor.
+- The object must also include:
+    calendarDateField : string | null   (which date/datetime field places this entity on the timeline)`;
 
 export class CreateEntityTypeNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [
@@ -112,6 +120,7 @@ export class CreateEntityTypeNodeCode extends AbstractNodeCode {
             fields?: FieldDef[];
             completionField?: string | null;
             completionValue?: string | null;
+            calendarDateField?: string | null;
         };
         try {
             // Strip any accidental code fences
@@ -140,6 +149,10 @@ export class CreateEntityTypeNodeCode extends AbstractNodeCode {
         if (schema.completionField) {
             config.completionField = schema.completionField;
             config.completionValue = schema.completionValue ?? undefined;
+        }
+
+        if (schema.calendarDateField) {
+            config.calendarDateField = schema.calendarDateField;
         }
 
         // ── Register ─────────────────────────────────────────────────────────
