@@ -13,7 +13,7 @@ export class SetContextValueNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [
         { key: 'value', name: 'Value', description: 'The value to set in the context.', type: 'string' },
         { key: 'context_path', name: 'Context Path', description: 'The key in the context to set.', type: 'string' },
-        { key: 'value_type', name: 'Value Type', description: 'Type cast for the value.', type: 'string', default: 'string', options: ['string', 'number', 'int', 'float', 'boolean', 'json'] },
+        { key: 'value_type', name: 'Value Type', description: 'Type cast for the value.', type: 'string', default: 'string', options: ['string', 'number', 'int', 'float', 'boolean', 'json', 'date', 'datetime'] },
     ];
     static readonly resultDescriptions: ResultDescription[] = [
         { status: ResultStatus.OK, description: 'Value was set successfully.' },
@@ -39,6 +39,33 @@ export class SetContextValueNodeCode extends AbstractNodeCode {
                 try { value = JSON.parse(String(rawValue)); }
                 catch { value = rawValue; }
                 break;
+            case 'date': {
+                // Accept YYYY-MM-DD. Also handle natural-ish values like timestamps.
+                const dateStr = String(rawValue).trim();
+                const dateMatch = dateStr.match(/^(\d{4}-\d{2}-\d{2})/);
+                if (dateMatch) {
+                    value = dateMatch[1];
+                } else {
+                    // Try parsing as a Date and formatting
+                    const parsed = new Date(dateStr);
+                    if (!isNaN(parsed.getTime())) {
+                        value = parsed.toISOString().split('T')[0];
+                    } else {
+                        value = dateStr; // pass through, let validator catch it
+                    }
+                }
+                break;
+            }
+            case 'datetime': {
+                const dtStr = String(rawValue).trim();
+                const parsed = new Date(dtStr);
+                if (!isNaN(parsed.getTime())) {
+                    value = parsed.toISOString();
+                } else {
+                    value = dtStr; // pass through
+                }
+                break;
+            }
             default: throw new Error(`Unknown value_type "${valueType}".`);
         }
 

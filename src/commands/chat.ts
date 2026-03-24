@@ -716,10 +716,16 @@ Step reasoning: ${allReasonings.join(' → ')}
 Results from all steps:
 ${JSON.stringify(allResults, null, 2)}
 
-Is the user's ENTIRE request fulfilled? Consider:
-- Did we create ALL entities the user mentioned?
-- Did we perform ALL actions the user asked for?
-- Are there remaining items that still need to be done?
+Is the user's request fulfilled? Consider:
+- Did we create the entity/entities the user explicitly asked for?
+- If the user asked for multiple DISTINCT actions (e.g., "create a task AND a note"), were all done?
+
+IMPORTANT rules for deciding:
+- If an entity was successfully created, the request is COMPLETE — do NOT retry because of minor details like metadata formatting.
+- Do NOT request "more work" for implementation details (e.g., how a blackout window is stored, or whether a field was set in exactly the right way).
+- Do NOT request "more work" to link entities — linking is nice-to-have, not required.
+- Only say "more_work" if a user-requested entity or action is clearly MISSING from the results.
+- When in doubt, say COMPLETE. Creating duplicates is worse than a slightly imperfect result.
 
 Return a JSON object with EXACTLY this structure:
 If COMPLETE: { "status": "complete" }
@@ -728,7 +734,7 @@ If MORE WORK NEEDED: { "status": "more_work", "remaining": "Description of what 
 Return ONLY the JSON object, no markdown fences.`,
                 }],
                 {
-                    systemPrompt: 'You are a task completion checker for Phaibel, a Personal Digital Agent. Be thorough — if the user asked for multiple things (e.g., create a goal AND avoid pizza), make sure ALL parts have been addressed. Also check: should any entities be linked together? Was anything implied but not explicitly created?',
+                    systemPrompt: 'You are a task completion checker for Phaibel, a Personal Digital Agent. Only say "more_work" when the user explicitly asked for multiple distinct things and one is clearly missing from the results. Do NOT nitpick implementation details or request re-creation of entities that already exist. Creating duplicates is a serious problem — err on the side of saying "complete".',
                     temperature: 0.2,
                 },
             );

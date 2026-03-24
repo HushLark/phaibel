@@ -95,8 +95,9 @@ async function ensureEventType(): Promise<void> {
 // SUBCOMMANDS
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const calCommand = new Command('cal')
-    .description('Google Calendar ICS feed sync (multi-calendar)');
+export const calCommand = new Command('calendar')
+    .alias('cal')
+    .description('Manage calendar feeds (Google Calendar ICS sync)');
 
 // ── add ───────────────────────────────────────────────────────────────────────
 

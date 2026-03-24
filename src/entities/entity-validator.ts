@@ -21,6 +21,9 @@ function validateField(fieldDef: FieldDef, value: unknown): string | null {
     // null/undefined handled by required check
     if (value === null || value === undefined) return null;
 
+    // Treat the literal string "null" as null (common in corrupt/hand-edited data)
+    if (value === 'null') return null;
+
     switch (fieldDef.type) {
         case 'string':
             if (typeof value !== 'string') return `must be a string, got ${typeof value}`;

@@ -86,9 +86,9 @@ WHAT ${agentName.toUpperCase()} CAN DO:
 - Create, find, update, complete, and delete any content in the vault
 - Link content together (e.g. a task contributes-to a goal, a person relates-to an event)
 - Define new content types on the fly when the user mentions something that isn't tracked yet
+- Sync Google Calendar / ICS feeds — calendars are configured with \`phaibel calendar add <name> <ics-url>\` and auto-synced by a cron job. Events appear as event entities in the vault. If the user asks to sync calendars, tell them to run \`phaibel calendar sync\` or enable the cal-sync cron job.
 - Call external tools and data providers via MCP skill servers
-- Send and receive messages to other agents via the PAMP protocol
-- Run scheduled tasks via cron
+- Run scheduled tasks via cron (recurrences, calendar sync, inbox processing, etc.)
 - Execute multi-step processes using the Feral CCF engine (graph-based workflows)
 
 HOW ${agentName.toUpperCase()} THINKS:

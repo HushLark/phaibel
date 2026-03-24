@@ -1190,7 +1190,11 @@ async function markTaskDone(checkEl) {
       for (let i = 0; i < 3; i++) {
         const d = new Date(now);
         d.setDate(d.getDate() + i);
-        dates.push(d.toISOString().split('T')[0]);
+        // Use local date, not UTC, so timeline matches the user's timezone
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        dates.push(yyyy + '-' + mm + '-' + dd);
       }
       const todayStr = dates[0];
 
@@ -1405,14 +1409,17 @@ async function markTaskDone(checkEl) {
       } else if (!j.enabled) {
         detail = 'disabled';
       } else if (j.lastRunAt) {
-        detail = timeAgo(j.lastRunAt);
+        detail = 'ran ' + timeAgo(j.lastRunAt);
         if (j.lastError) {
           detail += ' · <span class="sched-error">' + esc(j.lastError.slice(0, 40)) + '</span>';
         } else if (j.lastResult) {
           detail += ' · ' + esc(j.lastResult.slice(0, 40));
         }
+        if (j.nextRunAt) {
+          detail += ' · next ' + timeUntil(j.nextRunAt);
+        }
       } else if (j.nextRunAt) {
-        detail = 'next ' + timeAgo(j.nextRunAt).replace(' ago', '');
+        detail = 'next ' + timeUntil(j.nextRunAt);
       } else {
         detail = 'every ' + formatInterval(j.intervalMinutes);
       }
@@ -1450,6 +1457,21 @@ async function markTaskDone(checkEl) {
       if (hrs < 24) return hrs + 'h ago';
       const days = Math.floor(hrs / 24);
       return days + 'd ago';
+    } catch { return 'unknown'; }
+  }
+
+  function timeUntil(isoString) {
+    try {
+      const diff = new Date(isoString).getTime() - Date.now();
+      if (diff <= 0) return 'now';
+      const secs = Math.floor(diff / 1000);
+      if (secs < 60) return secs + 's';
+      const mins = Math.floor(secs / 60);
+      if (mins < 60) return mins + 'm';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + 'h ' + (mins % 60) + 'm';
+      const days = Math.floor(hrs / 24);
+      return days + 'd ' + (hrs % 24) + 'h';
     } catch { return 'unknown'; }
   }
 

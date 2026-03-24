@@ -13,6 +13,7 @@ import { serviceCommand, queueCommand, indexCommand } from './commands/service.j
 import { feralCommand } from './commands/feral.js';
 import { setupCommand } from './commands/setup.js';
 import { cronCommand } from './commands/cron.js';
+import { calCommand } from './commands/cal.js';
 import { skillCommand } from './commands/skill.js';
 import { entityTypeCommand } from './commands/entity-type.js';
 import { entityCommand } from './commands/entity.js';
@@ -44,6 +45,7 @@ program.addCommand(setupCommand);
 program.addCommand(entityTypeCommand);
 program.addCommand(entityCommand);
 program.addCommand(cronCommand);
+program.addCommand(calCommand);
 program.addCommand(skillCommand);
 
 // Tool command - run any registered tool
@@ -120,7 +122,48 @@ program
     }
   });
 
-// Default: show help (no more interactive shell)
+// Custom help — grouped and useful
+program.configureHelp({
+  formatHelp: () => {
+    const v = pkg.version;
+    return `
+${chalk.cyan('🤖 Phaibel')} ${chalk.dim(`v${v}`)} ${chalk.dim('— AI personal assistant')}
+
+${chalk.cyan('Getting Started')}
+  ${chalk.bold('phaibel init')}                Create a new vault, configure API key, start service
+  ${chalk.bold('phaibel service start')}       Start the background service + web client
+  ${chalk.dim('  Then open')} ${chalk.cyan.bold('http://localhost:3737')} ${chalk.dim('to chat with your agent')}
+
+${chalk.cyan('Configuration')}
+  ${chalk.bold('phaibel config')}              Manage API keys and LLM provider settings
+  ${chalk.bold('phaibel setup')}               Update your name, gender, and preferences
+  ${chalk.bold('phaibel calendar add')} ${chalk.dim('<name> <ics-url>')}  Add a Google Calendar ICS feed
+  ${chalk.bold('phaibel calendar sync')}       Sync calendar events into the vault
+  ${chalk.bold('phaibel skill')}               Manage MCP skill servers
+
+${chalk.cyan('Service & Monitoring')}
+  ${chalk.bold('phaibel service')} ${chalk.dim('start|stop|restart|status')}  Manage the daemon
+  ${chalk.bold('phaibel queue')} ${chalk.dim('status|pause|resume|clear')}    Inspect the task queue
+  ${chalk.bold('phaibel cron')} ${chalk.dim('list|enable|disable|run')}       Manage scheduled jobs
+  ${chalk.bold('phaibel index')} ${chalk.dim('stats|rebuild|graph')}          Entity relationship graph
+
+${chalk.cyan('Data')}
+  ${chalk.bold('phaibel entity')} ${chalk.dim('<type> [action] [title]')}   CRUD for any entity type
+  ${chalk.bold('phaibel type')} ${chalk.dim('list|add|edit|remove')}         Manage entity type schemas
+  ${chalk.bold('phaibel sync')}                Git-based vault sync
+
+${chalk.cyan('Advanced')}
+  ${chalk.bold('phaibel feral')}               Inspect the flow-based processing engine
+  ${chalk.bold('phaibel tool')} ${chalk.dim('<name> [json]')}     Run a registered tool directly
+  ${chalk.bold('phaibel tools')}               List all available tools
+  ${chalk.bold('phaibel time')}                Show current local time
+
+${chalk.dim('Run')} ${chalk.bold('phaibel <command> --help')} ${chalk.dim('for details on any command.')}
+`;
+  },
+});
+
+// Default: show help
 program
   .action(() => {
     program.help();
