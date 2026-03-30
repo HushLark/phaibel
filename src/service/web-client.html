@@ -495,6 +495,31 @@
     letter-spacing: 0.5px;
   }
 
+  .chat-day-separator {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 16px 0 12px;
+    color: var(--dim);
+    font-size: 11px;
+    letter-spacing: 0.5px;
+  }
+  .chat-day-separator::before,
+  .chat-day-separator::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .chat-time {
+    font-size: 9px;
+    color: var(--dim);
+    margin-top: 2px;
+    opacity: 0.7;
+  }
+  .chat-msg.user .chat-time { text-align: right; }
+
   .chat-msg.question .chat-bubble {
     background: rgba(0, 212, 255, 0.08);
     border: 1px solid rgba(0, 212, 255, 0.25);
@@ -1551,7 +1576,21 @@ async function markTaskDone(checkEl) {
     chatInput.disabled = true;
   });
 
+  var _lastChatDay = '';
+
   function addMessage(role, text, chatId) {
+    const now = new Date();
+    const dayKey = now.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+    // Insert day separator when the date changes
+    if (dayKey !== _lastChatDay) {
+      _lastChatDay = dayKey;
+      const sep = document.createElement('div');
+      sep.className = 'chat-day-separator';
+      sep.textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+      chatMessages.appendChild(sep);
+    }
+
     const div = document.createElement('div');
     div.className = 'chat-msg ' + role;
     const bubble = document.createElement('div');
@@ -1562,6 +1601,15 @@ async function markTaskDone(checkEl) {
       bubble.textContent = text || '';
     }
     div.appendChild(bubble);
+
+    // Timestamp for every message
+    if (role !== 'thinking') {
+      const timeEl = document.createElement('div');
+      timeEl.className = 'chat-time';
+      timeEl.textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      div.appendChild(timeEl);
+    }
+
     if (chatId && role === 'bot') {
       const idLabel = document.createElement('div');
       idLabel.className = 'chat-id-label';

@@ -58,8 +58,9 @@ configCommand
                     `  ${chalk.bold(cap.padEnd(12))} ${chalk.gray(capDescriptions[cap].padEnd(18))} ${mapping.provider}/${mapping.model}${overrideTag}`
                 );
             } else {
+                const hint = cap === 'embed' ? chalk.gray(' (requires OpenAI — Anthropic has no embedding model)') : '';
                 console.log(
-                    `  ${chalk.bold(cap.padEnd(12))} ${chalk.gray(capDescriptions[cap].padEnd(18))} ${chalk.red('no provider configured')}`
+                    `  ${chalk.bold(cap.padEnd(12))} ${chalk.gray(capDescriptions[cap].padEnd(18))} ${chalk.red('no provider configured')}${hint}`
                 );
             }
         }
