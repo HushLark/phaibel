@@ -32,6 +32,14 @@ export class ProcessEngine {
         private nodeCodeFactory: NodeCodeFactory,
     ) { }
 
+    /**
+     * Clear the node code cache. Call before re-running a process with the same
+     * node keys but different catalog_node_key mappings (e.g. chat iterations).
+     */
+    clearCache(): void {
+        this.cachedNodeCodes.clear();
+    }
+
     async process(processDefn: Process, context: Context, startNodeKey = 'start'): Promise<void> {
         const nodeMap = new Map(processDefn.nodes.map(n => [n.key, n]));
         const edgeCollection = new EdgeCollection();

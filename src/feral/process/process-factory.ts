@@ -34,6 +34,13 @@ export class ProcessFactory {
         throw new Error(`Cannot find process with key "${key}".`);
     }
 
+    /**
+     * Invalidate cached process by key so the next build() re-scans sources.
+     */
+    invalidate(key: string): void {
+        this.cache.delete(key);
+    }
+
     getAllProcesses(): Process[] {
         return this.sources.flatMap(s => s.getProcesses());
     }

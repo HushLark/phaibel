@@ -101,15 +101,39 @@ export async function loadEntityTypes(): Promise<EntityTypeConfig[]> {
         // Merge new built-in properties into saved configs for built-in types
         // so that new features (e.g. calendarDateField) propagate to existing vaults
         const defaultsByName = new Map(DEFAULT_ENTITY_TYPES.map(d => [d.name, d]));
+        let dirty = false;
         for (const saved of parsed.entityTypes) {
             const builtin = defaultsByName.get(saved.name);
             if (!builtin) continue;
             if (saved.calendarDateField === undefined && builtin.calendarDateField) {
                 saved.calendarDateField = builtin.calendarDateField;
+                dirty = true;
             }
             if (saved.spawner === undefined && builtin.spawner) {
                 saved.spawner = builtin.spawner;
+                dirty = true;
             }
+            // Sync field types from defaults (e.g. date → datetime migration)
+            const builtinFields = new Map(builtin.fields.map(f => [f.key, f]));
+            for (const savedField of saved.fields) {
+                const builtinField = builtinFields.get(savedField.key);
+                if (builtinField && savedField.type !== builtinField.type) {
+                    savedField.type = builtinField.type;
+                    dirty = true;
+                }
+                if (builtinField && savedField.label !== builtinField.label) {
+                    savedField.label = builtinField.label;
+                    dirty = true;
+                }
+                if (builtinField && savedField.required !== builtinField.required) {
+                    savedField.required = builtinField.required;
+                    dirty = true;
+                }
+            }
+        }
+        // Persist merged changes so they stick across restarts
+        if (dirty) {
+            await saveEntityTypes(parsed.entityTypes);
         }
         _cache = parsed.entityTypes;
         return _cache;

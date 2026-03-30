@@ -699,6 +699,8 @@ Return ONLY the JSON object, no markdown fences.`,
         }
 
         const process = hydrateProcessFromString(processJsonStr);
+        runtime.processFactory.invalidate(process.key);
+        runtime.engine.clearCache();
         inMemorySource.add(process);
 
         let contextResult: Record<string, unknown>;
