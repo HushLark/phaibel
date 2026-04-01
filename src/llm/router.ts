@@ -4,6 +4,7 @@ import type { LLMProvider } from './types.js';
 import type { LLMCapability } from '../schemas/index.js';
 import { getAgentName, getPersonalityId } from '../state/manager.js';
 import { getPersonality } from '../personalities.js';
+import { buildMomentContext, formatMomentBlock } from '../context/moment.js';
 
 /**
  * Gets the appropriate LLM provider for a given capability.
@@ -109,6 +110,9 @@ GUIDELINES:
 - Acknowledge what you did (created, updated, linked) so the user knows what changed
 - When presenting lists, keep them scannable (not walls of text)
 - If something went wrong, say so honestly and suggest what to try instead
+
+RIGHT NOW:
+${formatMomentBlock(buildMomentContext())}
 
 ${context ? `CONTEXT:\n${context}\n` : ''}Respond helpfully to the user's request while staying in character as ${agentName}.`;
 }

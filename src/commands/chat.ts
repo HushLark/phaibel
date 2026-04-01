@@ -31,6 +31,7 @@ import { getEntityIndex } from '../entities/entity-index.js';
 import { buildContextTree, expandContextTree } from '../context/context-tree.js';
 import { serializeContextTree } from '../context/context-tree-serializer.js';
 import { classifyScope } from '../context/scope-classifier.js';
+import { buildMomentContext, momentToGlobals } from '../context/moment.js';
 import type { LLMProvider } from '../llm/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,34 +264,13 @@ async function _feralChatHeadlessInner(
     // Scrub any secrets that may have been accidentally pasted into .vault.md files
     const vaultContext = scrubSecrets(await getVaultContext().catch(() => '')) as string;
 
-    // Build global variables block for the LLM
-    const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    // Detect user timezone from system (e.g. "America/Denver", "UTC")
-    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    // Compute UTC offset string (e.g. "-06:00")
-    const tzOffset = (() => {
-        const off = now.getTimezoneOffset(); // minutes, positive = west of UTC
-        const sign = off <= 0 ? '+' : '-';
-        const h = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0');
-        const m = String(Math.abs(off) % 60).padStart(2, '0');
-        return `${sign}${h}:${m}`;
-    })();
-    const globalsBlock = [
-        `- user_name: ${userName}`,
-        `- current_date: ${today}`,
-        `- user_timezone: ${userTimezone} (UTC${tzOffset})`,
-    ].join('\n');
-
-    // ── Build context tree ───────────────────────────────────────────
+    // ── Build context tree with moment context ─────────────────────
     const entityIndex = getEntityIndex();
     if (!entityIndex.isBuilt) await entityIndex.build();
 
-    const globalsMap: Record<string, string> = {
-        user_name: userName,
-        current_date: today,
-        user_timezone: `${userTimezone} (UTC${tzOffset})`,
-    };
+    const moment = buildMomentContext();
+    const globalsMap = momentToGlobals(moment, userName);
+
     const scope = classifyScope(userInput, entityTypes, entityIndex.getStats());
     const contextTree = await buildContextTree(scope, globalsMap);
     let contextTreeStr = serializeContextTree(contextTree);
