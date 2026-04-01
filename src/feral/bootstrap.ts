@@ -46,6 +46,8 @@ import { ReadFileNodeCode } from './node-code/data/read-file-node-code.js';
 import { LlmChatNodeCode } from './node-code/data/llm-chat-node-code.js';
 import { CleanLlmJsonNodeCode } from './node-code/data/clean-llm-json-node-code.js';
 import { WeatherNodeCode } from './node-code/data/weather-node-code.js';
+import { QueryTokenUsageNodeCode } from './node-code/data/query-token-usage-node-code.js';
+import { ChartTokenUsageNodeCode } from './node-code/data/chart-token-usage-node-code.js';
 
 // Slack node codes
 import { SlackBlockBuilderNodeCode } from './node-code/slack/slack-block-builder-node-code.js';
@@ -98,6 +100,7 @@ import { OutputCatalogSource } from './catalog/output-catalog-source.js';
 import { IntrospectCatalogSource } from './catalog/introspect-catalog-source.js';
 import { PampCatalogSource } from './catalog/pamp-catalog-source.js';
 import { McpCatalogSource } from './catalog/mcp-catalog-source.js';
+import { UsageCatalogSource } from './catalog/usage-catalog-source.js';
 
 // System & output node codes
 import { CliCommandNodeCode } from './node-code/system/cli-command-node-code.js';
@@ -115,6 +118,7 @@ import { JsonProcessSource } from './process/json-process-source.js';
 
 // Entity type schema
 import { loadEntityTypes } from '../entities/entity-type-config.js';
+import { getTrackedModels } from '../llm/token-usage.js';
 
 /**
  * All built-in NodeCode instances.
@@ -144,6 +148,8 @@ function getBuiltInNodeCodes(): NodeCode[] {
         new LlmChatNodeCode(),
         new CleanLlmJsonNodeCode(),
         new WeatherNodeCode(),
+        new QueryTokenUsageNodeCode(),
+        new ChartTokenUsageNodeCode(),
         // Slack
         new SlackBlockBuilderNodeCode(),
         new SlackPostWebhookNodeCode(),
@@ -224,10 +230,11 @@ export async function bootstrapFeral(
 
     // 2. Load catalog config, entity types, and MCP tools (parallel — independent)
     const { mcpManager } = await import('../skills/mcp-manager.js');
-    const [catalogConfig, entityTypes, mcpTools] = await Promise.all([
+    const [catalogConfig, entityTypes, mcpTools, trackedModels] = await Promise.all([
         loadFeralCatalogConfig(),
         loadEntityTypes(),
         mcpManager.discoverAllTools(),
+        getTrackedModels(),
     ]);
 
     // 3. Build catalog from all sources
@@ -242,6 +249,7 @@ export async function bootstrapFeral(
         new IntrospectCatalogSource(),
         new PampCatalogSource(),
         new McpCatalogSource(mcpTools),
+        new UsageCatalogSource(trackedModels),
     ]);
 
     // 4. Load process definitions from {vault}/.phaibel/processes/

@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { getApiKey } from '../../config.js';
 import type { LLMProvider, Message, ChatOptions, EmbedOptions } from '../types.js';
+import { recordUsage } from '../token-usage.js';
 
 export class OpenAIProvider implements LLMProvider {
     name = 'openai';
@@ -55,6 +56,11 @@ export class OpenAIProvider implements LLMProvider {
             messages: openaiMessages,
         });
 
+        // Track token usage
+        if (response.usage) {
+            recordUsage(this.modelId, response.usage.prompt_tokens, response.usage.completion_tokens).catch(() => {});
+        }
+
         return response.choices[0]?.message?.content || '';
     }
 
@@ -66,6 +72,11 @@ export class OpenAIProvider implements LLMProvider {
             input: texts,
             ...(options.dimensions ? { dimensions: options.dimensions } : {}),
         });
+
+        // Track embedding token usage
+        if (response.usage) {
+            recordUsage(this.modelId, response.usage.prompt_tokens, 0).catch(() => {});
+        }
 
         // Sort by index to maintain input order
         return response.data

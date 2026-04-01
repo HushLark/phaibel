@@ -25,9 +25,12 @@ import { ChatLogger, generateChatId } from '../utils/chat-logger.js';
 import { parseJsonResponse } from '../utils/json-parser.js';
 import { writeExecutionLog } from '../utils/execution-logger.js';
 import { loadEntityTypes } from '../entities/entity-type-config.js';
-import { listEntities } from '../entities/entity.js';
 import { getUserName } from '../state/manager.js';
 import { getVaultContext } from '../context/reader.js';
+import { getEntityIndex } from '../entities/entity-index.js';
+import { buildContextTree, expandContextTree } from '../context/context-tree.js';
+import { serializeContextTree } from '../context/context-tree-serializer.js';
+import { classifyScope } from '../context/scope-classifier.js';
 import type { LLMProvider } from '../llm/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -279,6 +282,21 @@ async function _feralChatHeadlessInner(
         `- user_timezone: ${userTimezone} (UTC${tzOffset})`,
     ].join('\n');
 
+    // ── Build context tree ───────────────────────────────────────────
+    const entityIndex = getEntityIndex();
+    if (!entityIndex.isBuilt) await entityIndex.build();
+
+    const globalsMap: Record<string, string> = {
+        user_name: userName,
+        current_date: today,
+        user_timezone: `${userTimezone} (UTC${tzOffset})`,
+    };
+    const scope = classifyScope(userInput, entityTypes, entityIndex.getStats());
+    const contextTree = await buildContextTree(scope, globalsMap);
+    let contextTreeStr = serializeContextTree(contextTree);
+
+    debug('chat', `Context tree: scope=${scope.type}, tokens≈${Math.ceil(contextTreeStr.length / 4)}`);
+
     const allNodes = runtime.catalog.getAllCatalogNodes();
 
     // Build catalog summary for LLM
@@ -414,22 +432,11 @@ Return ONLY the JSON object, no markdown fences.`,
             role: 'user' as const,
             content: `The user said: "${userInput}"
 ${historyBlock}
-GLOBAL VARIABLES:
-${globalsBlock}
+${contextTreeStr}
 
-${vaultContext ? `VAULT CONTEXT (from .vault.md files — project goals, notes, and preferences):\n${vaultContext}\n` : ''}ENTITY TYPES:
-The agent manages these entity types. When the user mentions something that maps to an entity, prefer creating it:
-${entityTypes.map(t => {
-    const fieldDesc = t.fields.length > 0
-        ? ` Fields: ${t.fields.map(f => {
-            if (f.type === 'enum' && f.values) return `${f.key}:enum(${f.values.join('|')})`;
-            return `${f.key}:${f.type}`;
-        }).join(', ')}.`
-        : '';
-    return `- ${t.name} (plural: ${t.plural})${t.description ? ` — ${t.description}` : ''}.${fieldDesc}`;
-}).join('\n')}
-
-Each entity type has create_*, list_*, find_*, update_*, delete_*, complete_* catalog nodes, plus set_${'{type}'}_{field} nodes for each field.
+ENTITY TYPE CONVENTIONS:
+The agent manages the entity types listed above. When the user mentions something that maps to an entity, prefer creating it.
+Each entity type has create_*, list_*, find_*, update_*, delete_*, complete_* catalog nodes, plus set_{type}_{field} nodes for each field.
 For example: create_task, list_tasks, find_note, set_task_status, complete_task, etc.
 
 IMPORTANT CAPABILITIES:
@@ -542,47 +549,32 @@ Return ONLY the JSON object, no markdown fences.`,
     // In headless mode we don't prompt for follow-ups — proceed with what we have
     const gatheredInfoStr = '';
 
-    // ── Gather existing entity titles for nodes that reference them ──
+    // ── Expand context tree with entity types referenced by selected nodes ──
     // When find_*, link_*, update_*, complete_*, set_* nodes are selected,
-    // the LLM needs to know exact titles to avoid hallucinating them.
+    // the LLM needs leaf data for those types to avoid hallucinating titles.
     const refNodePattern = /^(find_|link_|update_|complete_|set_|add_tag_|search_)/;
-    const referencedTypes = new Set<string>();
+    const additionalTypes: string[] = [];
     for (const key of nodeSelection.nodes) {
         if (refNodePattern.test(key)) {
-            // Extract entity type from node key (e.g. "find_task" → "task", "link_entities" → all)
             const parts = key.split('_');
             if (key === 'link_entities') {
-                // link_entities can reference any type — add all
-                for (const et of entityTypes) referencedTypes.add(et.name);
+                for (const et of entityTypes) {
+                    if (!contextTree.branches.some(b => b.entityType === et.name && b.leaves.length > 0)) {
+                        additionalTypes.push(et.name);
+                    }
+                }
             } else if (parts.length >= 2) {
                 const typeName = parts.slice(1).join('_');
-                // Validate it's a known entity type (or plural form)
                 const match = entityTypes.find(et => et.name === typeName || et.plural === typeName);
-                if (match) referencedTypes.add(match.name);
+                if (match && !contextTree.branches.some(b => b.entityType === match.name && b.leaves.length > 0)) {
+                    additionalTypes.push(match.name);
+                }
             }
         }
     }
-
-    let existingEntitiesBlock = '';
-    if (referencedTypes.size > 0) {
-        const blocks: string[] = [];
-        for (const typeName of referencedTypes) {
-            try {
-                const entities = await listEntities(typeName as Parameters<typeof listEntities>[0]);
-                if (entities.length > 0) {
-                    const titles = entities
-                        .slice(0, 50)
-                        .map(e => `  - "${e.meta.title || e.meta.id}"`)
-                        .join('\n');
-                    blocks.push(`${typeName}:\n${titles}`);
-                }
-            } catch {
-                // Entity type dir may not exist
-            }
-        }
-        if (blocks.length > 0) {
-            existingEntitiesBlock = `\nEXISTING ENTITIES IN VAULT (use these exact titles when referencing existing entities):\n${blocks.join('\n')}\n`;
-        }
+    if (additionalTypes.length > 0) {
+        await expandContextTree(contextTree, additionalTypes);
+        contextTreeStr = serializeContextTree(contextTree);
     }
 
     // ── ORCHESTRATION LOOP ────────────────────────────────────────────
@@ -609,11 +601,10 @@ Return ONLY the JSON object, no markdown fences.`,
             [{
                 role: 'user' as const,
                 content: `Build a Feral process to handle: "${remainingWork}"
-${historyBlock}${gatheredInfoStr}${previousResultsStr}${existingEntitiesBlock}
-GLOBAL VARIABLES:
-${globalsBlock}
+${historyBlock}${gatheredInfoStr}${previousResultsStr}
+${contextTreeStr}
 
-${vaultContext ? `VAULT CONTEXT (from .vault.md files — project goals, notes, and preferences):\n${vaultContext}\n` : ''}SELECTED CATALOG NODES (you must only use nodes from this list):
+SELECTED CATALOG NODES (you must only use nodes from this list):
 ${selectedNodeDetails}
 
 NODE CONFIGURATION DETAILS:
@@ -636,7 +627,7 @@ PROCESS FORMAT RULES:
 14. To complete/finish an entity, use the complete_* catalog node (e.g. complete_task)
 15. ONLY use configuration keys that appear in the NODE CONFIGURATION DETAILS above — do not invent keys. The create_* nodes ONLY accept: entity_type, entity_title, entity_body, tags, extra_fields. Do NOT put field names like startDate, priority, status, location directly in configuration.
 16. To set entity-specific fields (e.g. startDate, endDate, priority, status, location, email): For single-entity processes, put field values in the process "context" object and list field names in extra_fields. Example: "context": { "startDate": "2026-03-25T14:00:00-06:00", "endDate": "2026-03-25T15:00:00-06:00", "location": "Office" } with extra_fields: "startDate,endDate,location". For multi-entity processes where different entities need different values for the same field (e.g. task status="open" vs goal status="active"), use set_context_value nodes between the create nodes to change the value. DATE FORMAT RULES: date fields → YYYY-MM-DD, datetime fields → ISO 8601 with timezone offset. The set_context_value config keys are: "context_path" (the field name), "value" (the value), and "value_type" (REQUIRED for date/datetime).
-17. When referencing existing entities (find_*, link_*, update_*, complete_*, set_*), use EXACT titles from the EXISTING ENTITIES list — do NOT guess or paraphrase entity titles
+17. When referencing existing entities (find_*, link_*, update_*, complete_*, set_*), use EXACT titles from the entity leaves in the CONTEXT TREE — do NOT guess or paraphrase entity titles
 18. CRITICAL: Use the correct entity type catalog node. An event (appointment, meeting, scheduled activity) MUST use create_event, NOT create_task. A task (action item, todo) MUST use create_task, NOT create_event. Never substitute one entity type for another.
 19. When setting enum fields (in context object or via set_context_value), use ONLY the valid values from the ENTITY TYPES schema above. For example, task status must be one of [open, in-progress, done, blocked] — do NOT use "todo", "complete", or other values. If unsure, omit the field and let the default apply.
 20. Events ALWAYS require BOTH startDate AND endDate (both are datetime type). Use ISO 8601 with timezone offset: "YYYY-MM-DDTHH:mm:ssZ" (e.g. "2026-03-25T14:00:00-06:00"). If the user doesn't mention a time, default to 09:00 start and 10:00 end in their timezone. If the user only mentions one date, set endDate to 1 hour after startDate. Put both in the process context object and include both in extra_fields: "startDate,endDate".

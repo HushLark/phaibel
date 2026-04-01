@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getApiKey } from '../../config.js';
 import type { LLMProvider, Message, ChatOptions } from '../types.js';
+import { recordUsage } from '../token-usage.js';
 
 export class ClaudeProvider implements LLMProvider {
     name = 'anthropic';
@@ -45,6 +46,11 @@ export class ClaudeProvider implements LLMProvider {
             system: systemPrompt,
             messages: chatMessages,
         });
+
+        // Track token usage
+        if (response.usage) {
+            recordUsage(this.modelId, response.usage.input_tokens, response.usage.output_tokens).catch(() => {});
+        }
 
         // Extract text from response
         const textBlock = response.content.find(block => block.type === 'text');

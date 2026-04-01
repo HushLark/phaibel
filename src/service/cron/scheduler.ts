@@ -15,6 +15,7 @@ import { getEntityIndex } from '../../entities/entity-index.js';
 import { getEmbeddingIndex } from '../../entities/embedding-index.js';
 import { analyzeFeedback } from './feedback-analysis.js';
 import { runInnovation } from './innovate.js';
+import { synthesizeWorldModel } from './world-model-synthesis.js';
 import { getCronConfigPath, getVaultConfigDir } from '../../paths.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ const DEFAULT_CONFIG: CronConfig = {
         'embedding-sync':      { enabled: true, intervalMinutes: 1440 },
         'feedback-analysis':   { enabled: false, intervalMinutes: 1440 },
         'innovate':            { enabled: false, intervalMinutes: 1440 },
+        'world-model':         { enabled: true,  intervalMinutes: 10 },
     },
 };
 
@@ -130,6 +132,12 @@ const JOB_DEFS: CronJobDef[] = [
         name: 'innovate',
         async run() {
             return runInnovation();
+        },
+    },
+    {
+        name: 'world-model',
+        async run() {
+            return synthesizeWorldModel();
         },
     },
 ];

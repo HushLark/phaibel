@@ -289,6 +289,160 @@
     flex-shrink: 0;
   }
 
+  /* ── Content Types panel ────────────────────────────── */
+
+  .ctype-item {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .ctype-item:last-child { border-bottom: none; }
+  .ctype-item:hover { background: rgba(255,255,255,0.06); }
+
+  .ctype-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ctype-name {
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .ctype-count {
+    font-size: 10px;
+    color: var(--dim);
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .ctype-desc {
+    font-size: 10px;
+    color: var(--dim);
+    line-height: 1.3;
+    margin-top: 2px;
+  }
+
+  .ctype-fields {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-top: 4px;
+  }
+
+  .ctype-field {
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    color: var(--dim);
+  }
+
+  /* ── Insights panel ─────────────────────────────────── */
+
+  .insight-item {
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+
+  .insight-item:last-child { border-bottom: none; }
+
+  .insight-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+
+  .insight-category {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .insight-category.reminder { background: rgba(239,68,68,0.2); color: #f87171; }
+  .insight-category.risk { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .insight-category.opportunity { background: rgba(34,197,94,0.2); color: #4ade80; }
+  .insight-category.progress { background: rgba(59,130,246,0.2); color: #60a5fa; }
+  .insight-category.connection { background: rgba(168,85,247,0.2); color: #c084fc; }
+  .insight-category.suggestion { background: rgba(245,158,11,0.2); color: #fbbf24; }
+
+  .insight-priority {
+    font-size: 9px;
+    color: var(--dim);
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  .insight-priority.high { color: #f87171; }
+
+  .insight-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 2px;
+    line-height: 1.3;
+  }
+
+  .insight-body {
+    font-size: 11px;
+    color: var(--dim);
+    line-height: 1.4;
+    margin-bottom: 6px;
+  }
+
+  .insight-grade {
+    display: flex;
+    gap: 4px;
+  }
+
+  .insight-grade-btn {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: var(--dim);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+
+  .insight-grade-btn:hover {
+    background: rgba(255,255,255,0.12);
+    color: var(--text);
+  }
+
+  .insight-grade-btn.graded {
+    cursor: default;
+    opacity: 0.7;
+  }
+
+  .insight-grade-btn.graded.useful {
+    background: rgba(34,197,94,0.2);
+    border-color: rgba(34,197,94,0.3);
+    color: #4ade80;
+  }
+
+  .insight-grade-btn.graded.not-useful {
+    background: rgba(239,68,68,0.15);
+    border-color: rgba(239,68,68,0.2);
+    color: #fca5a5;
+  }
+
+  .insights-meta {
+    font-size: 10px;
+    color: var(--dim);
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255,255,255,0.04);
+  }
+
   /* ── Scheduler panel ────────────────────────────────── */
 
   .sched-item {
@@ -1035,6 +1189,14 @@
       <div id="timeline-body">
         <div class="empty-state">Loading…</div>
       </div>
+      <div class="panel-section-title" style="margin-top: 16px;">Content Types</div>
+      <div id="content-types-body">
+        <div class="empty-state">Loading…</div>
+      </div>
+      <div class="panel-section-title" style="margin-top: 16px;">Insights</div>
+      <div id="insights-body">
+        <div class="empty-state">No insights yet</div>
+      </div>
       <div class="panel-section-title" style="margin-top: 16px;">Scheduler</div>
       <div id="scheduler-body">
         <div class="empty-state">Loading scheduler…</div>
@@ -1299,6 +1461,163 @@ async function markTaskDone(checkEl) {
       if (data.jobs) renderScheduler(data);
       else await fetchScheduler();
     } catch { await fetchScheduler(); }
+  };
+
+  // ── Insights (World Model Synthesis) ─────────────────────
+  var insightsBody = document.getElementById('insights-body');
+
+  async function fetchInsights() {
+    try {
+      const res = await fetch('/api/insights');
+      const data = await res.json();
+      renderInsights(data);
+    } catch {
+      insightsBody.innerHTML = '<div class="empty-state">Failed to load insights.</div>';
+    }
+  }
+
+  function renderInsights(data) {
+    if (!data.insights || data.insights.length === 0) {
+      insightsBody.innerHTML = '<div class="empty-state">No insights yet. The World Model runs every 10 minutes.</div>';
+      return;
+    }
+
+    // Sort: high priority first, then ungraded first
+    var sorted = data.insights.slice().sort(function(a, b) {
+      var pOrd = { high: 0, medium: 1, low: 2 };
+      var pDiff = (pOrd[a.priority] || 1) - (pOrd[b.priority] || 1);
+      if (pDiff !== 0) return pDiff;
+      // Ungraded before graded
+      if (!a.grade && b.grade) return -1;
+      if (a.grade && !b.grade) return 1;
+      return 0;
+    });
+
+    var html = '';
+    for (var i = 0; i < sorted.length; i++) {
+      var ins = sorted[i];
+      var gradeHtml = '';
+      if (ins.grade) {
+        var cls = ins.grade === 'useful' ? 'graded useful' : 'graded not-useful';
+        var label = ins.grade === 'useful' ? 'Useful' : 'Not useful';
+        gradeHtml = '<span class="insight-grade-btn ' + cls + '">' + esc(label) + '</span>';
+      } else {
+        gradeHtml = '<button class="insight-grade-btn" onclick="gradeInsight(\'' + esc(ins.id) + '\', \'useful\')">Useful</button>'
+          + '<button class="insight-grade-btn" onclick="gradeInsight(\'' + esc(ins.id) + '\', \'not_useful\')">Not useful</button>';
+      }
+
+      html += '<div class="insight-item">'
+        + '<div class="insight-header">'
+        + '<span class="insight-category ' + esc(ins.category) + '">' + esc(ins.category) + '</span>'
+        + '<span class="insight-priority ' + esc(ins.priority) + '">' + esc(ins.priority) + '</span>'
+        + '</div>'
+        + '<div class="insight-title">' + esc(ins.title) + '</div>'
+        + '<div class="insight-body">' + esc(ins.body) + '</div>'
+        + '<div class="insight-grade">' + gradeHtml + '</div>'
+        + '</div>';
+    }
+
+    if (data.synthesizedAt) {
+      var ago = timeAgo(new Date(data.synthesizedAt));
+      html += '<div class="insights-meta">Synthesized ' + esc(ago) + '</div>';
+    }
+
+    insightsBody.innerHTML = html;
+  }
+
+  window.gradeInsight = async function(insightId, grade) {
+    try {
+      await fetch('/api/insights/' + encodeURIComponent(insightId) + '/grade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ grade: grade }),
+      });
+      await fetchInsights();
+    } catch { /* ignore */ }
+  };
+
+  function timeAgo(date) {
+    var seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'just now';
+    var minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + 'm ago';
+    var hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + 'h ago';
+    var days = Math.floor(hours / 24);
+    return days + 'd ago';
+  }
+
+  // ── Content Types ────────────────────────────────────────
+  var contentTypesBody = document.getElementById('content-types-body');
+
+  async function fetchContentTypes() {
+    try {
+      const [typesRes, calRes] = await Promise.all([
+        fetch('/api/types'),
+        fetch('/api/calendar'),
+      ]);
+      const types = await typesRes.json();
+      const calItems = await calRes.json();
+
+      // Count entities per type from calendar data (which includes all dated entities)
+      // Also fetch entity counts per type via listing
+      const counts = {};
+      for (const item of calItems) {
+        var t = item.entityType || '';
+        counts[t] = (counts[t] || 0) + 1;
+      }
+
+      renderContentTypes(types, counts);
+    } catch {
+      contentTypesBody.innerHTML = '<div class="empty-state">Failed to load.</div>';
+    }
+  }
+
+  function renderContentTypes(types, counts) {
+    if (!types || types.length === 0) {
+      contentTypesBody.innerHTML = '<div class="empty-state">No content types.</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < types.length; i++) {
+      var t = types[i];
+      var count = counts[t.name] || '';
+      var countLabel = count ? count + '' : '';
+      var desc = t.description || '';
+      var fields = (t.fields || []).slice(0, 6);
+
+      html += '<div class="ctype-item" onclick="chatContentType(\'' + esc(t.plural) + '\')">'
+        + '<div class="ctype-header">'
+        + '<span class="ctype-name">' + esc(t.plural) + '</span>'
+        + (countLabel ? '<span class="ctype-count">' + esc(countLabel) + '</span>' : '')
+        + '</div>';
+
+      if (desc) {
+        html += '<div class="ctype-desc">' + esc(desc) + '</div>';
+      }
+
+      if (fields.length > 0) {
+        html += '<div class="ctype-fields">';
+        for (var j = 0; j < fields.length; j++) {
+          html += '<span class="ctype-field">' + esc(fields[j].key) + '</span>';
+        }
+        if (t.fields.length > 6) {
+          html += '<span class="ctype-field">+' + (t.fields.length - 6) + '</span>';
+        }
+        html += '</div>';
+      }
+
+      html += '</div>';
+    }
+
+    contentTypesBody.innerHTML = html;
+  }
+
+  window.chatContentType = function(plural) {
+    var msg = 'show me the content for ' + plural;
+    chatInput.value = msg;
+    chatForm.dispatchEvent(new Event('submit'));
   };
 
   async function fetchStatus() {
@@ -2036,7 +2355,9 @@ async function markTaskDone(checkEl) {
   checkOnboarding().then(function(needsOnboarding) {
     if (!needsOnboarding) {
       fetchCalendarNames().then(function() { fetchTimeline(); });
+      fetchContentTypes();
       fetchScheduler();
+      fetchInsights();
       connectWs();
     } else {
       // Still connect WS and fetch basic status even during onboarding
@@ -2045,9 +2366,10 @@ async function markTaskDone(checkEl) {
     fetchStatus();
   });
 
-  // Poll status and scheduler every 30s
+  // Poll status, scheduler, and insights periodically
   setInterval(fetchStatus, 30000);
   setInterval(fetchScheduler, 30000);
+  setInterval(fetchInsights, 120000); // every 2 minutes
 })();
 </script>
 </body>

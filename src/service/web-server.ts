@@ -105,6 +105,7 @@ export class WebServer {
             url.pathname.startsWith('/api/entities') ||
             url.pathname.startsWith('/api/search') ||
             url.pathname.startsWith('/api/processes') ||
+            url.pathname.startsWith('/api/insights') ||
             url.pathname === '/api/calendar') {
             const handled = await handleApiRoute(req, res, url);
             if (handled) return;

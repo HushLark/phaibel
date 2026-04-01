@@ -43,6 +43,7 @@ import { loadEntityTypes, getEntityType, addEntityType, updateEntityType, remove
 import { getEntityIndex } from '../entities/entity-index.js';
 import { validateEntity, formatValidationErrors } from '../entities/entity-validator.js';
 import { bootstrapFeral, type FeralRuntime } from '../feral/bootstrap.js';
+import { loadWorldModel, gradeInsight } from './cron/world-model-synthesis.js';
 import { debug } from '../utils/debug.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -543,6 +544,51 @@ export async function handleApiRoute(
             json(res, 200, { ok: true, id: entity.meta.id, title: entity.meta.title });
             return true;
         }
+    }
+
+    // ── World Model Insights ───────────────────────────────────────────
+
+    // GET /api/insights — latest proactive insights from World Model Synthesis
+    if (method === 'GET' && pathname === '/api/insights') {
+        const model = await loadWorldModel();
+        if (!model) {
+            json(res, 200, { insights: [], synthesizedAt: null });
+            return true;
+        }
+        json(res, 200, {
+            insights: model.insights,
+            synthesizedAt: model.synthesizedAt,
+            entityCounts: model.entityCounts,
+        });
+        return true;
+    }
+
+    // POST /api/insights/:id/grade — grade an insight as useful or not_useful
+    const gradeMatch = pathname.match(/^\/api\/insights\/([^/]+)\/grade$/);
+    if (method === 'POST' && gradeMatch) {
+        const insightId = decodeURIComponent(gradeMatch[1]);
+        let body: Record<string, unknown>;
+        try {
+            body = await parseJsonBody(req);
+        } catch {
+            error(res, 400, 'Invalid JSON body');
+            return true;
+        }
+
+        const grade = body.grade as string;
+        if (grade !== 'useful' && grade !== 'not_useful') {
+            error(res, 400, 'grade must be "useful" or "not_useful"');
+            return true;
+        }
+
+        const ok = await gradeInsight(insightId, grade);
+        if (!ok) {
+            error(res, 404, 'Insight not found');
+            return true;
+        }
+
+        json(res, 200, { ok: true, insightId, grade });
+        return true;
     }
 
     // No route matched

@@ -17,13 +17,24 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="preload" as="image" href="images/Phaibel-Wrist-Image--20260324.png">
 
-  <!-- Google tag (gtag.js) -->
-  <script async src="https://www.googletagmanager.com/gtag/js?id=G-WKJHE2GM8J"></script>
+  <!-- Google Analytics — loaded only after cookie consent -->
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
-    gtag('js', new Date());
-    gtag('config', 'G-WKJHE2GM8J');
+    function loadGA() {
+      if (document.getElementById('ga-script')) return;
+      var s = document.createElement('script');
+      s.id = 'ga-script';
+      s.async = true;
+      s.src = 'https://www.googletagmanager.com/gtag/js?id=G-WKJHE2GM8J';
+      document.head.appendChild(s);
+      gtag('js', new Date());
+      gtag('config', 'G-WKJHE2GM8J');
+    }
+    // Auto-load if user already consented (and GPC is not set)
+    if (localStorage.getItem('cookie-consent') === 'accepted' && !navigator.globalPrivacyControl) {
+      loadGA();
+    }
   </script>
 
   <style>
@@ -243,6 +254,64 @@
     }
     .flow-row { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; margin-bottom: 8px; }
 
+    /* ── Process Comparison ──────────────────── */
+    .compare-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 56px;
+    }
+    @media (max-width: 768px) { .compare-grid { grid-template-columns: 1fr; } }
+    .compare-card {
+      padding: 32px; border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .compare-card.old { background: rgba(255,255,255,0.02); }
+    .compare-card.new {
+      background: rgba(99,102,241,0.06);
+      border-color: rgba(99,102,241,0.2);
+    }
+    .compare-header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+    .compare-icon { font-size: 1.5rem; }
+    .compare-title { font-weight: 700; font-size: 1.125rem; }
+    .compare-card.old .compare-title { color: var(--text-dim); }
+    .compare-card.new .compare-title { color: var(--accent); }
+    .compare-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .compare-list li {
+      font-size: 0.95rem; padding-left: 24px; position: relative;
+    }
+    .compare-card.old .compare-list li { color: var(--text-dim); }
+    .compare-card.old .compare-list li::before {
+      content: '✕'; position: absolute; left: 0; color: rgba(255,255,255,0.2); font-weight: 700;
+    }
+    .compare-card.new .compare-list li::before {
+      content: '✓'; position: absolute; left: 0; color: var(--accent-green); font-weight: 700;
+    }
+
+    .process-examples h3 {
+      text-align: center; font-size: 1.125rem; color: var(--text-dim);
+      margin-bottom: 28px; font-weight: 500;
+    }
+    .example-row {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+    }
+    @media (max-width: 768px) { .example-row { grid-template-columns: 1fr; } }
+    .example-card {
+      padding: 24px; border-radius: var(--radius);
+      background: var(--bg-card); border: 1px solid rgba(255,255,255,0.06);
+    }
+    .example-prompt {
+      font-style: italic; color: var(--text); font-size: 0.95rem; margin-bottom: 16px;
+      padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .example-flow {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 12px;
+    }
+    .mini-node {
+      display: inline-block; padding: 4px 10px; border-radius: 6px;
+      background: rgba(99,102,241,0.12); color: var(--accent);
+      font-size: 0.75rem; font-weight: 600; white-space: nowrap;
+    }
+    .mini-arrow { color: var(--text-dim); font-size: 0.8rem; }
+    .example-nodes { color: var(--text-dim); font-size: 0.8rem; font-weight: 600; }
+
     /* ── Personalities ───────────────────────── */
     #personalities { background: var(--bg-surface); }
     .personality-grid {
@@ -352,6 +421,29 @@
     .footer-links a { color: var(--text-dim); text-decoration: none; font-size: 0.875rem; }
     .footer-links a:hover { color: var(--text); }
     .footer-copy { color: var(--text-dim); font-size: 0.8rem; }
+
+    /* ── Cookie Banner ───────────────────────── */
+    .cookie-banner {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+      background: var(--bg-card);
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding: 20px 24px;
+      display: flex; align-items: center; justify-content: center;
+      gap: 24px; flex-wrap: wrap;
+      box-shadow: 0 -4px 24px rgba(0,0,0,0.4);
+    }
+    .cookie-banner.hidden { display: none; }
+    .cookie-text { color: var(--text-dim); font-size: 0.875rem; max-width: 600px; }
+    .cookie-text a { color: var(--accent); text-decoration: underline; }
+    .cookie-btns { display: flex; gap: 12px; flex-shrink: 0; }
+    .cookie-btn {
+      padding: 8px 20px; border-radius: 999px; font-size: 0.85rem;
+      font-weight: 600; cursor: pointer; border: none; transition: all 0.2s;
+    }
+    .cookie-accept { background: var(--accent); color: #fff; }
+    .cookie-accept:hover { background: #5558e6; }
+    .cookie-decline { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid rgba(255,255,255,0.1); }
+    .cookie-decline:hover { background: rgba(255,255,255,0.1); }
   </style>
 </head>
 <body>
@@ -376,7 +468,7 @@
     <div class="container">
       <div class="hero-badge">Intelligent Personal Assistant</div>
       <h1 class="hero-title">Your Life, <span>Handled.</span></h1>
-      <p class="hero-sub">Phaibel is an AI agent that writes unique software for every request — managing your calendars, todos, emails, messages, and digital life, all orchestrated automatically.</p>
+      <p class="hero-sub">Phaibel doesn't just respond — it builds a custom software process for every request. Calendar, tasks, messages, goals — all orchestrated through unique, transparent process graphs you can see and inspect.</p>
       <div class="hero-ctas">
         <a href="#quickstart" class="btn btn-primary">Get Started</a>
         <a href="https://github.com/clift-labs/phaibel" class="btn btn-secondary" target="_blank" rel="noopener">
@@ -416,35 +508,35 @@
   <!-- How It Works -->
   <section id="how">
     <div class="container">
-      <h2 class="fade-in">A Unique Process for Every Request</h2>
-      <p class="section-sub fade-in">Most assistants follow rigid scripts. Phaibel writes a custom software process for every single request using the Feral CCF engine.</p>
+      <h2 class="fade-in">Every Request Builds Its Own Software</h2>
+      <p class="section-sub fade-in">Other assistants run the same script every time. Phaibel composes a unique program from reusable building blocks — tailored to exactly what you asked for.</p>
       <div class="how-content">
         <div class="how-text fade-in">
           <div class="how-step">
             <div class="how-step-num">1</div>
             <div class="how-step-body">
               <h4>You speak naturally</h4>
-              <p>"Set up a date night with my wife on the patio"</p>
+              <p>"Plan a dinner date with Sarah this Friday on the patio"</p>
             </div>
           </div>
           <div class="how-step">
             <div class="how-step-num">2</div>
             <div class="how-step-body">
-              <h4>Phaibel assembles a process</h4>
-              <p>Selects the right nodes from its catalog — weather, calendar, messaging, scheduling — and wires them into a directed graph.</p>
+              <h4>Phaibel designs a process graph</h4>
+              <p>From a catalog of building blocks — weather, calendar, search, messaging, scheduling — it selects and wires together only the nodes your request needs.</p>
             </div>
           </div>
           <div class="how-step">
             <div class="how-step-num">3</div>
             <div class="how-step-body">
-              <h4>The process executes</h4>
-              <p>Each node runs, passing results forward. You see exactly what happened — no black box.</p>
+              <h4>The process executes transparently</h4>
+              <p>Each node runs and passes results to the next. You see the full process graph — no black box, no mystery.</p>
             </div>
           </div>
         </div>
         <div class="process-flow fade-in" id="flowDiagram">
           <div class="flow-row">
-            <div class="flow-node purple">🗣️ Spoken Request</div>
+            <div class="flow-node purple">🗣️ "Plan a dinner date Friday"</div>
           </div>
           <div class="flow-row">
             <span class="flow-arrow">↓</span>
@@ -460,9 +552,9 @@
             <span class="flow-arrow">↓</span>
           </div>
           <div class="flow-row">
-            <div class="flow-node green">📅 Schedule Date</div>
+            <div class="flow-node green">📅 Create Event</div>
             <span class="flow-arrow">→</span>
-            <div class="flow-node purple">💬 Send Message</div>
+            <div class="flow-node purple">💬 Text Sarah</div>
           </div>
           <div class="flow-row">
             <span class="flow-arrow">↓</span>
@@ -470,7 +562,87 @@
           <div class="flow-row">
             <div class="flow-node blue">✅ Done</div>
           </div>
-          <p class="flow-label">Every request gets its own unique process graph</p>
+          <p class="flow-label">"Plan a dinner date" — 5 nodes, 1 unique process</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Process Comparison -->
+  <section id="process-power" style="background: var(--bg-surface);">
+    <div class="container">
+      <h2 class="fade-in">Not a Chatbot. A Process Engine.</h2>
+      <p class="section-sub fade-in">Traditional assistants give you a text response. Phaibel gives you a working program — assembled in real time, visible, and repeatable.</p>
+      <div class="compare-grid">
+        <div class="compare-card old fade-in">
+          <div class="compare-header">
+            <span class="compare-icon">💬</span>
+            <span class="compare-title">Traditional Assistants</span>
+          </div>
+          <ul class="compare-list">
+            <li>One-size-fits-all responses</li>
+            <li>Can't chain actions together</li>
+            <li>No visibility into what happened</li>
+            <li>Same flow for every request</li>
+            <li>Forgets context between steps</li>
+          </ul>
+        </div>
+        <div class="compare-card new fade-in">
+          <div class="compare-header">
+            <span class="compare-icon">⚡</span>
+            <span class="compare-title">Phaibel</span>
+          </div>
+          <ul class="compare-list">
+            <li>Custom process for every request</li>
+            <li>Chains actions into multi-step flows</li>
+            <li>Full process graph you can inspect</li>
+            <li>Adapts nodes to your exact situation</li>
+            <li>Context flows between every node</li>
+          </ul>
+        </div>
+      </div>
+      <div class="process-examples fade-in">
+        <h3>Same assistant, different processes</h3>
+        <div class="example-row">
+          <div class="example-card">
+            <p class="example-prompt">"remind me to call the dentist"</p>
+            <div class="example-flow">
+              <span class="mini-node">Classify</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node">Create&nbsp;Task</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node">Set&nbsp;Due&nbsp;Date</span>
+            </div>
+            <p class="example-nodes">3 nodes</p>
+          </div>
+          <div class="example-card">
+            <p class="example-prompt">"set up a meeting with Alex's team about the Q2 roadmap"</p>
+            <div class="example-flow">
+              <span class="mini-node">Find&nbsp;People</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node">Check&nbsp;Calendar</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node">Create&nbsp;Event</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node">Link&nbsp;Attendees</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node">Notify</span>
+            </div>
+            <p class="example-nodes">5 nodes</p>
+          </div>
+          <div class="example-card">
+            <p class="example-prompt">"start tracking my marathon training"</p>
+            <div class="example-flow">
+              <span class="mini-node">Create&nbsp;Type</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node">Define&nbsp;Fields</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node">Create&nbsp;Goal</span>
+              <span class="mini-arrow">→</span>
+              <span class="mini-node">Setup&nbsp;Recurrence</span>
+            </div>
+            <p class="example-nodes">4 nodes</p>
+          </div>
         </div>
       </div>
     </div>
@@ -533,6 +705,11 @@
           <div><span class="prompt">$</span> <span class="cmd">npm install -g phaibel</span></div>
           <div><span class="prompt">$</span> <span class="cmd">mkdir my-vault && cd my-vault</span></div>
           <div><span class="prompt">$</span> <span class="cmd">phaibel init</span></div>
+          <div>&nbsp;</div>
+          <div><span class="comment"># Add your LLM API key (OpenAI, Anthropic, or both)</span></div>
+          <div><span class="prompt">$</span> <span class="cmd">phaibel config add-provider openai</span></div>
+          <div><span class="prompt">$</span> <span class="cmd">phaibel config add-provider anthropic</span></div>
+          <div>&nbsp;</div>
           <div><span class="comment"># Opens http://localhost:3737 — choose a personality and start chatting</span></div>
         </div>
       </div>
@@ -552,8 +729,8 @@
   <!-- CTA -->
   <section id="cta">
     <div class="container">
-      <h2 class="fade-in">Open Source. Your Data. Your Agent.</h2>
-      <p class="fade-in">MIT licensed. Plain Markdown files. Local storage. Sync with Git. Your data never leaves your machine.</p>
+      <h2 class="fade-in">Open Source. Your Data. Your Processes.</h2>
+      <p class="fade-in">MIT licensed. Plain Markdown files. Transparent process graphs. Local storage. Sync with Git. Your data — and your automation — never leave your machine.</p>
       <div class="cta-buttons fade-in">
         <a href="https://github.com/clift-labs/phaibel" class="btn github-btn" target="_blank" rel="noopener">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
@@ -564,6 +741,15 @@
     </div>
   </section>
 
+  <!-- Cookie Consent Banner -->
+  <div class="cookie-banner" id="cookieBanner">
+    <p class="cookie-text">We use cookies for analytics to understand how visitors use this site. No personal data is sold or shared. See our <a href="privacy.html">Privacy Policy</a>. You can opt out at any time.</p>
+    <div class="cookie-btns">
+      <button class="cookie-btn cookie-decline" id="cookieDecline">Decline</button>
+      <button class="cookie-btn cookie-accept" id="cookieAccept">Accept</button>
+    </div>
+  </div>
+
   <!-- Footer -->
   <footer>
     <div class="footer-logo">Phaibel</div>
@@ -571,6 +757,8 @@
       <a href="https://github.com/clift-labs/phaibel" target="_blank" rel="noopener">GitHub</a>
       <a href="https://www.npmjs.com/package/phaibel" target="_blank" rel="noopener">npm</a>
       <a href="https://github.com/clift-labs/phaibel/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="#" id="manageCookies">Do Not Sell My Personal Information</a>
     </div>
     <p class="footer-copy">&copy; 2026 Clift Labs</p>
   </footer>
@@ -616,6 +804,39 @@
 
     var flowDiagram = document.getElementById('flowDiagram');
     if (flowDiagram) flowObserver.observe(flowDiagram);
+
+    // Cookie consent
+    (function() {
+      var banner = document.getElementById('cookieBanner');
+      var consent = localStorage.getItem('cookie-consent');
+      var gpc = navigator.globalPrivacyControl;
+
+      // Hide banner if already decided, or if GPC is on (treat as decline)
+      if (consent || gpc) {
+        banner.classList.add('hidden');
+      }
+
+      document.getElementById('cookieAccept').addEventListener('click', function() {
+        localStorage.setItem('cookie-consent', 'accepted');
+        banner.classList.add('hidden');
+        if (!gpc) loadGA();
+      });
+
+      document.getElementById('cookieDecline').addEventListener('click', function() {
+        localStorage.setItem('cookie-consent', 'declined');
+        banner.classList.add('hidden');
+      });
+
+      // "Do Not Sell" link — revoke consent and show banner again
+      document.getElementById('manageCookies').addEventListener('click', function(e) {
+        e.preventDefault();
+        localStorage.removeItem('cookie-consent');
+        // Disable GA if it was running
+        window['ga-disable-G-WKJHE2GM8J'] = true;
+        banner.classList.remove('hidden');
+        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+      });
+    })();
 
     // Active nav highlighting
     var sections = document.querySelectorAll('section[id]');
