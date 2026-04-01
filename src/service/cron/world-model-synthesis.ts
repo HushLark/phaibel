@@ -138,8 +138,16 @@ export async function synthesizeWorldModel(): Promise<string> {
         return 'skipped (no entities)';
     }
 
-    // ── Load previous grades to guide the LLM ───────────────────────────
+    // ── Load previous model and check capacity ─────────────────────────
+    const MAX_INSIGHTS = 5;
     const previousModel = await loadWorldModel();
+    const existingInsights = previousModel?.insights.filter(i => !i.grade) ?? [];
+    const slotsAvailable = MAX_INSIGHTS - existingInsights.length;
+
+    if (slotsAvailable <= 0) {
+        return `skipped (${existingInsights.length} ungraded insights already at cap)`;
+    }
+
     let gradeFeedback = '';
     if (previousModel?.insights.some(i => i.grade)) {
         const graded = previousModel.insights.filter(i => i.grade);
@@ -162,7 +170,7 @@ Analyze the following complete picture of ${userName}'s world — all their task
 ${summaries.join('\n\n')}
 ${gradeFeedback}
 
-Generate 3-7 proactive insights. Each insight should be something ${userName} would genuinely find valuable — not obvious observations, but connections, risks, opportunities, and timely nudges.
+Generate exactly ${slotsAvailable} proactive insight${slotsAvailable === 1 ? '' : 's'}. Each insight should be something ${userName} would genuinely find valuable — not obvious observations, but connections, risks, opportunities, and timely nudges.
 
 CATEGORIES:
 - "reminder": Something time-sensitive that needs attention soon
@@ -223,13 +231,16 @@ Respond with ONLY valid JSON (no markdown fences), matching this schema:
         return 'error: failed to parse insights';
     }
 
-    // ── Save ─────────────────────────────────────────────────────────────
+    // ── Merge with existing insights ────────────────────────────────────
+    // Keep existing ungraded insights + append new ones (cap at MAX_INSIGHTS)
+    const mergedInsights = [...existingInsights, ...insights].slice(0, MAX_INSIGHTS);
+
     const model: WorldModel = {
         synthesizedAt: now.toISOString(),
         userName,
         agentName,
         entityCounts,
-        insights,
+        insights: mergedInsights,
     };
 
     await saveWorldModel(model);
