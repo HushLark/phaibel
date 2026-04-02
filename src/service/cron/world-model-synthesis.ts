@@ -245,6 +245,16 @@ Respond with ONLY valid JSON (no markdown fences), matching this schema:
 
     await saveWorldModel(model);
 
+    // ── Push new insights to connected chat clients ──────────────────
+    const { pushToChat } = await import('../web-server.js');
+    if (insights.length > 0) {
+        const lines = insights.map(i => {
+            const icon = i.priority === 'high' ? '**' : '';
+            return `- ${icon}${i.title}${icon}: ${i.body}`;
+        });
+        pushToChat(lines.join('\n'), 'insight');
+    }
+
     const highCount = insights.filter(i => i.priority === 'high').length;
     return `${insights.length} insights generated (${highCount} high priority)`;
 }

@@ -86,6 +86,21 @@ export class WebServer {
         }
     }
 
+    /**
+     * Push a proactive message into the chat window of all connected clients.
+     * Used by background processes (cron jobs, world model, etc.) to surface
+     * information without the user asking.
+     */
+    broadcastChat(message: string, category?: string): void {
+        if (!this.wss) return;
+        const msg = JSON.stringify({ type: 'chat.proactive', message, category: category || 'info' });
+        for (const client of this.wss.clients) {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(msg);
+            }
+        }
+    }
+
     // ── HTTP ─────────────────────────────────────────────────────────────
 
     private async handleHttp(
@@ -642,4 +657,26 @@ This vault is the agent's memory. Content is stored as Markdown files with YAML 
             req.on('error', reject);
         });
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SINGLETON — allows background processes to push to the chat
+// ─────────────────────────────────────────────────────────────────────────────
+
+let _instance: WebServer | null = null;
+
+export function setWebServerInstance(server: WebServer): void {
+    _instance = server;
+}
+
+export function getWebServer(): WebServer | null {
+    return _instance;
+}
+
+/**
+ * Push a proactive message to all connected chat clients.
+ * Safe to call even when no web server is running (no-ops silently).
+ */
+export function pushToChat(message: string, category?: string): void {
+    _instance?.broadcastChat(message, category);
 }

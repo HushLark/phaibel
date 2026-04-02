@@ -8,7 +8,7 @@
  */
 
 import { ServiceServer } from './server.js';
-import { WebServer } from './web-server.js';
+import { WebServer, setWebServerInstance } from './web-server.js';
 import { getQueueManager } from './queue/manager.js';
 import { getQueueProcessor } from './queue/processor.js';
 import { SOCKET_PATH } from './daemon.js';
@@ -214,6 +214,7 @@ async function main(): Promise<void> {
 
     const server = new ServiceServer();
     const webServer = new WebServer();
+    setWebServerInstance(webServer);
     const processor = getQueueProcessor();
     const cron = getCronScheduler();
 
