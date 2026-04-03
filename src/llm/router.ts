@@ -5,6 +5,7 @@ import type { LLMCapability } from '../schemas/index.js';
 import { getAgentName, getPersonalityId } from '../state/manager.js';
 import { getPersonality } from '../personalities.js';
 import { buildMomentContext, formatMomentBlock } from '../context/moment.js';
+import { getCachedProfile, formatProfileBlock, invalidateProfileCache } from '../personality/big-five.js';
 
 /**
  * Gets the appropriate LLM provider for a given capability.
@@ -43,6 +44,7 @@ export async function getEmbeddings(texts: string[], dimensions = 256): Promise<
 // ── Cached values for system prompt ─────────────────────────────────────────
 let _cachedAgentName = 'Agent';
 let _cachedPersonalityBlock = '';
+let _cachedBigFiveBlock = '';
 let _promptCacheLoaded = false;
 
 /**
@@ -56,6 +58,10 @@ export async function initSystemPromptCache(): Promise<void> {
         const personality = getPersonality(personalityId);
         _cachedPersonalityBlock = personality.systemPromptBlock.replace(/{agentName}/g, _cachedAgentName);
     } catch { /* keep default */ }
+    try {
+        const profile = await getCachedProfile();
+        _cachedBigFiveBlock = formatProfileBlock(profile);
+    } catch { /* keep default */ }
     _promptCacheLoaded = true;
 }
 
@@ -64,6 +70,7 @@ export async function initSystemPromptCache(): Promise<void> {
  */
 export async function refreshSystemPromptCache(): Promise<void> {
     _promptCacheLoaded = false;
+    invalidateProfileCache();
     await initSystemPromptCache();
 }
 
@@ -97,7 +104,7 @@ When the user makes a request, ${agentName} builds a process — a graph of oper
 
 ${personalityBlock}
 
-DATE & TIME HANDLING:
+${_cachedBigFiveBlock ? _cachedBigFiveBlock + '\n' : ''}DATE & TIME HANDLING:
 - Dates use YYYY-MM-DD format (e.g. 2026-03-25)
 - Datetimes use ISO 8601 with timezone offset (e.g. 2026-03-25T14:00:00-06:00)
 - Always use the user's local timezone when creating events or mentioning times

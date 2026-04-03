@@ -848,71 +848,7 @@
     50% { box-shadow: 0 0 0 6px rgba(255, 82, 82, 0); }
   }
 
-  /* ── Reaction buttons ───────────────────────────── */
-
-  .chat-reactions {
-    display: flex;
-    gap: 4px;
-    margin-top: 4px;
-  }
-
-  .reaction-btn {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: var(--dim);
-    font-size: 12px;
-    width: 28px;
-    height: 24px;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background 0.15s, border-color 0.15s, color 0.15s;
-  }
-
-  .reaction-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
-
-  .reaction-btn.selected {
-    border-color: var(--cyan);
-    color: var(--cyan);
-    background: rgba(0, 212, 255, 0.1);
-    cursor: default;
-  }
-
-  .reaction-btn:disabled { opacity: 0.4; cursor: default; }
-
-  .reaction-details-wrap {
-    display: flex;
-    gap: 4px;
-    margin-top: 4px;
-  }
-
-  .reaction-details-input {
-    flex: 1;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: inherit;
-    font-size: 11px;
-    padding: 4px 8px;
-    border-radius: 4px;
-    outline: none;
-  }
-
-  .reaction-details-input:focus { border-color: var(--cyan); }
-
-  .reaction-details-submit {
-    background: var(--cyan);
-    color: var(--bg);
-    border: none;
-    font-family: inherit;
-    font-size: 10px;
-    font-weight: 600;
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
-  }
+  /* (Reaction buttons removed — judgement is now automated server-side) */
 
   /* ── Onboarding overlay ───────────────────────────── */
 
@@ -1829,73 +1765,6 @@ async function markTaskDone(checkEl) {
       idLabel.textContent = chatId;
       div.appendChild(idLabel);
 
-      // Reaction buttons
-      const reactions = document.createElement('div');
-      reactions.className = 'chat-reactions';
-
-      const upBtn = document.createElement('button');
-      upBtn.className = 'reaction-btn';
-      upBtn.innerHTML = '+';
-      upBtn.title = 'Helpful';
-
-      const downBtn = document.createElement('button');
-      downBtn.className = 'reaction-btn';
-      downBtn.innerHTML = '&minus;';
-      downBtn.title = 'Not helpful';
-
-      function sendReaction(reaction, details) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'chat.reaction',
-            chatId: chatId,
-            reaction: reaction,
-            details: details || undefined,
-          }));
-        }
-      }
-
-      upBtn.addEventListener('click', function() {
-        upBtn.classList.add('selected');
-        upBtn.disabled = true;
-        downBtn.disabled = true;
-        sendReaction('positive');
-      });
-
-      downBtn.addEventListener('click', function() {
-        downBtn.classList.add('selected');
-        upBtn.disabled = true;
-        downBtn.disabled = true;
-
-        var detailsWrap = document.createElement('div');
-        detailsWrap.className = 'reaction-details-wrap';
-        var detailsInput = document.createElement('input');
-        detailsInput.className = 'reaction-details-input';
-        detailsInput.type = 'text';
-        detailsInput.placeholder = 'What went wrong? (optional, Enter to send)';
-        var detailsSubmit = document.createElement('button');
-        detailsSubmit.className = 'reaction-details-submit';
-        detailsSubmit.textContent = 'Send';
-
-        function submitDetails() {
-          sendReaction('negative', detailsInput.value.trim());
-          detailsWrap.remove();
-        }
-
-        detailsSubmit.addEventListener('click', submitDetails);
-        detailsInput.addEventListener('keydown', function(e) {
-          if (e.key === 'Enter') { e.preventDefault(); submitDetails(); }
-          if (e.key === 'Escape') { sendReaction('negative'); detailsWrap.remove(); }
-        });
-
-        detailsWrap.appendChild(detailsInput);
-        detailsWrap.appendChild(detailsSubmit);
-        div.appendChild(detailsWrap);
-        setTimeout(function() { detailsInput.focus(); }, 50);
-      });
-
-      reactions.appendChild(upBtn);
-      reactions.appendChild(downBtn);
-      div.appendChild(reactions);
     }
     chatMessages.appendChild(div);
     chatMessages.scrollTop = chatMessages.scrollHeight;

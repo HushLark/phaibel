@@ -20,7 +20,8 @@ export type ChatLogType =
     | 'completion_check'
     | 'response'
     | 'error'
-    | 'reaction';
+    | 'reaction'
+    | 'judge';
 
 /**
  * Generate a short chat ID like `chat-a3f2b1`.
@@ -104,6 +105,29 @@ export async function appendReaction(
         ts: new Date().toISOString(),
         type: 'reaction',
         data: { reaction, details: details || null },
+    });
+    await fs.appendFile(logFile, line + '\n');
+}
+
+/**
+ * Append a judge evaluation entry to an existing chat log file.
+ * Called fire-and-forget after each response synthesis.
+ */
+export async function appendJudgement(
+    chatId: string,
+    judgement: {
+        achieved: boolean;
+        confidence: number;
+        reasoning: string;
+    },
+): Promise<void> {
+    const logsDir = await getLogsDir();
+    await fs.mkdir(logsDir, { recursive: true });
+    const logFile = path.join(logsDir, `${chatId}.log`);
+    const line = JSON.stringify({
+        ts: new Date().toISOString(),
+        type: 'judge',
+        data: judgement,
     });
     await fs.appendFile(logFile, line + '\n');
 }

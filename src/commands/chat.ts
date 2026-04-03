@@ -21,7 +21,7 @@ import type { ProcessSource } from '../feral/process/process-factory.js';
 import type { Process } from '../feral/process/process.js';
 import { getModelForCapability, createSystemPrompt } from '../llm/router.js';
 import { debug } from '../utils/debug.js';
-import { ChatLogger, generateChatId } from '../utils/chat-logger.js';
+import { ChatLogger, generateChatId, appendJudgement } from '../utils/chat-logger.js';
 import { parseJsonResponse } from '../utils/json-parser.js';
 import { writeExecutionLog } from '../utils/execution-logger.js';
 import { loadEntityTypes } from '../entities/entity-type-config.js';
@@ -32,6 +32,7 @@ import { buildContextTree, expandContextTree } from '../context/context-tree.js'
 import { serializeContextTree } from '../context/context-tree-serializer.js';
 import { classifyScope } from '../context/scope-classifier.js';
 import { buildMomentContext, momentToGlobals } from '../context/moment.js';
+import { updateProfile, validateScores, invalidateProfileCache, type BigFiveSample } from '../personality/big-five.js';
 import type { LLMProvider } from '../llm/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -374,7 +375,7 @@ Return ONLY the JSON object, no markdown fences.`,
                 // Synthesize response
                 const finalResponse = await synthesizeResponse(
                     llm, userInput, matchResult.reasoning,
-                    [scrubbedResult], [], vaultContext, history,
+                    [scrubbedResult], [], vaultContext, history, chatId,
                 );
                 await logger.log('response', { response: finalResponse });
 
@@ -770,7 +771,7 @@ Return ONLY the JSON object, no markdown fences.`,
 
     const finalResponse = await synthesizeResponse(
         llm, userInput, nodeSelection.reasoning,
-        allResults, nodesUsed, vaultContext, history,
+        allResults, nodesUsed, vaultContext, history, chatId,
     );
     await logger.log('response', { response: finalResponse });
 
@@ -806,6 +807,7 @@ async function synthesizeResponse(
     nodesUsed: string[],
     vaultContext: string,
     history: ChatHistoryEntry[] = [],
+    chatId?: string,
 ): Promise<string> {
     const synthesisPrompt = `The user said: "${userInput}"
 ${formatHistoryBlock(history)}
@@ -825,9 +827,26 @@ RESPONSE GUIDELINES:
 - If entities were linked, mention the relationship
 - Keep it concise — a few sentences, not paragraphs
 - If there were errors, acknowledge honestly and suggest alternatives
-- If the results suggest follow-up actions, briefly mention them`;
+- If the results suggest follow-up actions, briefly mention them
 
-    const response = await llm.chat(
+PERSONALITY OBSERVATION (Big Five — include with every response):
+After composing your response, rate BOTH the user and yourself on these 5 traits (1-5 scale) based on THIS interaction only. Observe the user's communication style, requests, and behavior. Observe your own response style.
+- extraversion (1=reserved/brief, 5=outgoing/elaborate)
+- conscientiousness (1=casual/loose, 5=disciplined/precise)
+- agreeableness (1=challenging/direct, 5=cooperative/accommodating)
+- openness (1=routine/practical, 5=exploratory/creative)
+- emotionalStability (1=tense/reactive, 5=calm/composed)
+
+You MUST return valid JSON with this structure:
+{
+    "response": "Your natural response to the user (markdown ok)",
+    "personality_observation": {
+        "user": { "extraversion": 3, "conscientiousness": 3, "agreeableness": 3, "openness": 3, "emotionalStability": 3 },
+        "robot": { "extraversion": 3, "conscientiousness": 3, "agreeableness": 3, "openness": 3, "emotionalStability": 3 }
+    }
+}`;
+
+    const rawResponse = await llm.chat(
         [{ role: 'user' as const, content: synthesisPrompt }],
         {
             systemPrompt: createSystemPrompt(vaultContext || ''),
@@ -835,7 +854,87 @@ RESPONSE GUIDELINES:
         },
     );
 
-    return response.trim();
+    // Try to parse structured JSON response with personality scores
+    let responseText: string;
+    try {
+        const parsed = parseJsonResponse(rawResponse);
+        responseText = (parsed.response as string) || rawResponse.trim();
+
+        // Extract and store personality observation (fire-and-forget)
+        const obs = parsed.personality_observation as Record<string, unknown> | undefined;
+        if (obs) {
+            const userScores = validateScores(obs.user);
+            const robotScores = validateScores(obs.robot);
+            if (userScores && robotScores) {
+                const sample: BigFiveSample = {
+                    timestamp: new Date().toISOString(),
+                    chatId: chatId || 'unknown',
+                    user: userScores,
+                    robot: robotScores,
+                };
+                updateProfile(sample).then(() => invalidateProfileCache()).catch(() => {});
+            }
+        }
+    } catch {
+        // Fallback: LLM returned plain text — use as-is, skip scoring
+        responseText = rawResponse.trim();
+        debug('chat', 'Synthesis returned plain text — personality scoring skipped');
+    }
+
+    // Post-message judge — fire-and-forget alongside personality update
+    if (chatId) {
+        judgeResponse(userInput, responseText, chatId).catch(() => {});
+    }
+
+    return responseText;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST-MESSAGE JUDGE — evaluates if the response achieved the user's needs
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fire-and-forget judge that evaluates response quality.
+ * Uses a fast/cheap model (categorize capability) to avoid adding cost.
+ */
+async function judgeResponse(
+    userInput: string,
+    responseText: string,
+    chatId: string,
+): Promise<void> {
+    try {
+        const judge = await getModelForCapability('categorize');
+        const raw = await judge.chat(
+            [{
+                role: 'user' as const,
+                content: `You are a response quality judge. Evaluate whether the assistant's response achieved what the user needed.
+
+USER REQUEST:
+${userInput}
+
+ASSISTANT RESPONSE:
+${responseText}
+
+Rate the response. Return JSON only:
+{
+    "achieved": true/false,
+    "confidence": 0.0-1.0,
+    "reasoning": "one sentence why"
+}`,
+            }],
+            { temperature: 0 },
+        );
+
+        const parsed = parseJsonResponse(raw);
+        await appendJudgement(chatId, {
+            achieved: Boolean(parsed.achieved),
+            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+            reasoning: String(parsed.reasoning || ''),
+        });
+        debug('judge', `${chatId}: achieved=${parsed.achieved} confidence=${parsed.confidence}`);
+    } catch (err) {
+        debug('judge', `Failed: ${err}`);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

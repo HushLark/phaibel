@@ -9,7 +9,6 @@ import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
 import { listEntities, writeEntity, parseEntity, getEntityDir } from '../entities/entity.js';
 import { feralChatHeadless, type ChatHistoryEntry } from '../commands/chat.js';
-import { appendReaction } from '../utils/chat-logger.js';
 import { getQueueManager } from './queue/manager.js';
 import { getEntityIndex } from '../entities/entity-index.js';
 import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, saveProfile } from '../state/manager.js';
@@ -271,17 +270,6 @@ export class WebServer {
                 return;
             }
 
-            if (msg.type === 'chat.reaction') {
-                if (msg.chatId && (msg.reaction === 'positive' || msg.reaction === 'negative')) {
-                    try {
-                        await appendReaction(msg.chatId, msg.reaction, msg.details);
-                        debug('web', `Reaction logged: ${msg.reaction} for ${msg.chatId}`);
-                    } catch (err) {
-                        debug('web', `Failed to log reaction: ${err}`);
-                    }
-                }
-                return;
-            }
 
             if (msg.type === 'chat' && msg.message) {
                 const onQuestion = (question: string, options?: string[]): Promise<string> => {
