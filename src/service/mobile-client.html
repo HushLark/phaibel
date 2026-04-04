@@ -371,75 +371,89 @@
     synth.onvoiceschanged = function() { synth.getVoices(); };
   }
 
-  // ── Speech Recognition (STT) ─────────────────────────
+  // ── Audio Recording (MediaRecorder → server-side Whisper) ──
 
-  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  var recognition = null;
-  var finalTranscript = '';
+  var mediaRecorder = null;
+  var audioChunks = [];
+  var mediaStream = null;
 
-  if (SpeechRecognition) {
-    recognition = new SpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.continuous = false;
-    recognition.interimResults = true;
+  function startRecording() {
+    audioChunks = [];
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(function(stream) {
+      mediaStream = stream;
+      // Use a format supported by iOS Safari and Whisper
+      var mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+                   : MediaRecorder.isTypeSupported('audio/mp4') ? 'audio/mp4'
+                   : '';
+      mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType: mimeType }) : new MediaRecorder(stream);
 
-    recognition.onstart = function() {
+      mediaRecorder.ondataavailable = function(e) {
+        if (e.data.size > 0) audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = function() {
+        // Stop mic access
+        stream.getTracks().forEach(function(t) { t.stop(); });
+        mediaStream = null;
+
+        if (audioChunks.length === 0) {
+          setStatus('Tap to talk');
+          return;
+        }
+
+        var blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+        audioChunks = [];
+        sendAudio(blob);
+      };
+
+      mediaRecorder.start();
       micListening = true;
       talkBtn.classList.add('listening');
-      talkBtn.textContent = '...';
+      talkBtn.textContent = 'STOP';
       setStatus('Listening...');
-    };
+    }).catch(function(err) {
+      console.error('Mic access error:', err);
+      setStatus('Mic access denied');
+    });
+  }
 
-    recognition.onresult = function(event) {
-      var interim = '';
-      finalTranscript = '';
-      for (var i = event.resultIndex; i < event.results.length; i++) {
-        var t = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          finalTranscript += t;
-        } else {
-          interim += t;
-        }
-      }
-      setStatus(finalTranscript || interim || 'Listening...');
-    };
+  function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+    }
+    micListening = false;
+    talkBtn.classList.remove('listening');
+    talkBtn.textContent = 'TALK';
+    setStatus('Transcribing...');
+  }
 
-    recognition.onend = function() {
-      micListening = false;
-      talkBtn.classList.remove('listening');
-      talkBtn.textContent = 'TALK';
-
-      if (finalTranscript && finalTranscript.trim()) {
-        sendMessage(finalTranscript.trim());
-      } else {
-        setStatus('Tap to talk');
-      }
-      finalTranscript = '';
-    };
-
-    recognition.onerror = function(event) {
-      micListening = false;
-      talkBtn.classList.remove('listening');
-      talkBtn.textContent = 'TALK';
-      if (event.error !== 'aborted' && event.error !== 'no-speech') {
-        setStatus('Mic error: ' + event.error);
-      } else {
-        setStatus('Tap to talk');
-      }
-    };
-  } else {
-    // No speech recognition support
+  function sendAudio(blob) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setStatus('Not connected');
+      return;
+    }
     talkBtn.disabled = true;
-    setStatus('Speech not supported in this browser');
-    captionEl.innerHTML = '<div class="unsupported-msg">Speech recognition is not supported in this browser. Try Chrome on Android or Safari on iOS.</div>';
+    setStatus('Transcribing...');
+
+    var reader = new FileReader();
+    reader.onload = function() {
+      var base64 = reader.result.split(',')[1];
+      ws.send(JSON.stringify({ type: 'chat.audio', audio: base64 }));
+    };
+    reader.readAsDataURL(blob);
+  }
+
+  // Check for MediaRecorder support
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    talkBtn.disabled = true;
+    setStatus('Audio recording not supported');
+    captionEl.innerHTML = '<div class="unsupported-msg">Audio recording is not supported in this browser.</div>';
   }
 
   // ── Talk button ───────────────────────────────────────
 
   talkBtn.addEventListener('click', function() {
-    if (!recognition) return;
-
-    // If speaking, stop speech and start listening
+    // If speaking, stop speech first
     if (speaking && synth) {
       synth.cancel();
       speaking = false;
@@ -447,9 +461,9 @@
     }
 
     if (micListening) {
-      recognition.stop();
+      stopRecording();
     } else {
-      recognition.start();
+      startRecording();
     }
   });
 
@@ -511,6 +525,14 @@
         switch (msg.type) {
           case 'chat.start':
             currentChatId = msg.chatId || null;
+            break;
+
+          case 'chat.transcript':
+            // Server transcribed our audio — show what we said
+            if (msg.text) {
+              clearCaption();
+              showCaption('<em>"' + msg.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '"</em>', 'caption-user');
+            }
             break;
 
           case 'chat.thinking':

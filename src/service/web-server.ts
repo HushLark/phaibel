@@ -16,6 +16,7 @@ import { getCronScheduler, loadCronConfig, saveCronConfig } from './cron/schedul
 import { loadCalConfig, saveCalConfig } from '../commands/cal.js';
 import { handleApiRoute } from './api-router.js';
 import { debug } from '../utils/debug.js';
+import { transcribeAudio } from '../llm/transcribe.js';
 import { PERSONALITIES } from '../personalities.js';
 import { initEntityTypes, loadEntityTypes } from '../entities/entity-type-config.js';
 import { SYSTEM_DIR } from '../paths.js';
@@ -272,7 +273,7 @@ export class WebServer {
         const chatHistory: ChatHistoryEntry[] = [];
 
         ws.on('message', async (data) => {
-            let msg: { type: string; message?: string; answer?: string; chatId?: string; reaction?: string; details?: string };
+            let msg: { type: string; message?: string; answer?: string; chatId?: string; reaction?: string; details?: string; audio?: string };
             try {
                 msg = JSON.parse(data.toString());
             } catch {
@@ -288,6 +289,35 @@ export class WebServer {
                 return;
             }
 
+            // Transcribe audio and treat as a chat message
+            if (msg.type === 'chat.audio' && msg.audio) {
+                try {
+                    const audioBuffer = Buffer.from(msg.audio, 'base64');
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'chat.thinking', status: 'Transcribing...' }));
+                    }
+                    const transcript = await transcribeAudio(audioBuffer);
+                    if (!transcript || !transcript.trim()) {
+                        if (ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'chat.transcript', text: '' }));
+                        }
+                        return;
+                    }
+                    // Send transcript back so client can display it
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'chat.transcript', text: transcript }));
+                    }
+                    // Process as a normal chat message
+                    msg.type = 'chat';
+                    msg.message = transcript;
+                } catch (err) {
+                    debug('web', `Transcription failed: ${err}`);
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(JSON.stringify({ type: 'chat.error', error: 'Transcription failed. Check that an OpenAI API key is configured.' }));
+                    }
+                    return;
+                }
+            }
 
             if (msg.type === 'chat' && msg.message) {
                 const onQuestion = (question: string, options?: string[]): Promise<string> => {
