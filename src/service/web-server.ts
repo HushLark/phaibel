@@ -26,6 +26,7 @@ export class WebServer {
     private server: http.Server | null = null;
     private wss: WebSocketServer | null = null;
     private htmlContent: string = '';
+    private mobileHtmlContent: string = '';
 
     async start(port: number): Promise<void> {
         // Load HTML at startup
@@ -33,6 +34,12 @@ export class WebServer {
             path.join(__dirname, 'web-client.html'),
             'utf-8',
         );
+        try {
+            this.mobileHtmlContent = await fs.readFile(
+                path.join(__dirname, 'mobile-client.html'),
+                'utf-8',
+            );
+        } catch { /* mobile client optional */ }
 
         this.server = http.createServer(async (req, res) => {
             try {
@@ -111,6 +118,17 @@ export class WebServer {
         if (req.method === 'GET' && url.pathname === '/') {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(this.htmlContent);
+            return;
+        }
+
+        if (req.method === 'GET' && url.pathname === '/mobile.html') {
+            if (this.mobileHtmlContent) {
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(this.mobileHtmlContent);
+            } else {
+                res.writeHead(404);
+                res.end('Mobile client not available');
+            }
             return;
         }
 

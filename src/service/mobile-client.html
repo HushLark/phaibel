@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Phaibel Mobile</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🤖</text></svg>">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #1a1a2e;
+    --panel: #16213e;
+    --border: #0f3460;
+    --text: #e0e0e0;
+    --dim: #8888aa;
+    --cyan: #00d4ff;
+    --cyan-dim: #0099bb;
+    --green: #00e676;
+    --yellow: #ffd740;
+    --red: #ff5252;
+    --orange: #ff9100;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100dvh;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* ── Status bar ──────────────────────────── */
+
+  .status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 20px;
+    font-size: 13px;
+    color: var(--dim);
+    flex-shrink: 0;
+  }
+
+  .status-bar .agent-name {
+    font-weight: 600;
+    color: var(--cyan);
+    font-size: 15px;
+  }
+
+  .status-bar .ws-status {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+  }
+
+  /* ── Caption area ────────────────────────── */
+
+  .caption-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .caption-area .caption-text {
+    color: var(--text);
+  }
+
+  .caption-area .caption-text p { margin: 0 0 12px 0; }
+  .caption-area .caption-text p:last-child { margin-bottom: 0; }
+  .caption-area .caption-text ul, .caption-area .caption-text ol { margin: 0 0 12px 20px; }
+  .caption-area .caption-text li { margin-bottom: 4px; }
+  .caption-area .caption-text code {
+    background: rgba(255,255,255,0.08);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-size: 14px;
+  }
+  .caption-area .caption-text strong { color: var(--cyan); }
+
+  .caption-placeholder {
+    color: var(--dim);
+    text-align: center;
+    margin-top: 40%;
+    font-size: 15px;
+  }
+
+  .caption-user {
+    color: var(--dim);
+    font-size: 13px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .caption-error {
+    color: var(--red);
+  }
+
+  /* ── Question options ────────────────────── */
+
+  .question-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .question-option-btn {
+    background: rgba(0, 212, 255, 0.1);
+    border: 1px solid var(--cyan-dim);
+    color: var(--cyan);
+    font-family: inherit;
+    font-size: 15px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.15s;
+  }
+
+  .question-option-btn:active {
+    background: rgba(0, 212, 255, 0.25);
+  }
+
+  .question-option-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+
+  /* ── Controls ────────────────────────────── */
+
+  .controls {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 20px 24px;
+    gap: 12px;
+  }
+
+  .repeat-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--dim);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 8px 20px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .repeat-btn:active { background: rgba(255, 255, 255, 0.12); color: var(--text); }
+  .repeat-btn:disabled { opacity: 0.3; cursor: default; }
+
+  .talk-btn {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cyan), var(--cyan-dim));
+    border: none;
+    color: var(--bg);
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: transform 0.1s, box-shadow 0.2s;
+    box-shadow: 0 4px 24px rgba(0, 212, 255, 0.3);
+  }
+
+  .talk-btn:active {
+    transform: scale(0.95);
+  }
+
+  .talk-btn.listening {
+    animation: talk-pulse 1.5s ease-in-out infinite;
+    background: linear-gradient(135deg, var(--green), #00b060);
+    box-shadow: 0 4px 24px rgba(0, 230, 118, 0.4);
+  }
+
+  .talk-btn.speaking {
+    background: linear-gradient(135deg, var(--yellow), var(--orange));
+    box-shadow: 0 4px 24px rgba(255, 215, 64, 0.3);
+  }
+
+  .talk-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+    animation: none;
+  }
+
+  @keyframes talk-pulse {
+    0%, 100% { transform: scale(1); box-shadow: 0 4px 24px rgba(0, 230, 118, 0.4); }
+    50% { transform: scale(1.06); box-shadow: 0 4px 36px rgba(0, 230, 118, 0.6); }
+  }
+
+  .status-text {
+    font-size: 13px;
+    color: var(--dim);
+    min-height: 20px;
+    text-align: center;
+  }
+
+  /* ── Unsupported fallback ────────────────── */
+
+  .unsupported-msg {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--red);
+    font-size: 15px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="status-bar">
+    <span class="agent-name" id="agent-name">Phaibel</span>
+    <span class="ws-status" id="ws-status">Connecting...</span>
+  </div>
+
+  <div class="caption-area" id="caption">
+    <div class="caption-placeholder" id="placeholder">Tap the button and talk to me</div>
+  </div>
+
+  <div class="controls">
+    <button class="repeat-btn" id="repeat-btn" disabled>Repeat</button>
+    <button class="talk-btn" id="talk-btn">TALK</button>
+    <div class="status-text" id="status-text">Tap to talk</div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@15/marked.min.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  // ── Elements ──────────────────────────────────────────
+  var agentNameEl = document.getElementById('agent-name');
+  var wsStatusEl  = document.getElementById('ws-status');
+  var captionEl   = document.getElementById('caption');
+  var placeholderEl = document.getElementById('placeholder');
+  var repeatBtn   = document.getElementById('repeat-btn');
+  var talkBtn     = document.getElementById('talk-btn');
+  var statusText  = document.getElementById('status-text');
+
+  // ── State ─────────────────────────────────────────────
+  var ws = null;
+  var micListening = false;
+  var speaking = false;
+  var lastSpokenText = '';
+  var lastResponseHtml = '';
+  var currentChatId = null;
+
+  // ── Helpers ───────────────────────────────────────────
+
+  function setStatus(text) {
+    statusText.textContent = text;
+  }
+
+  function renderMarkdown(text) {
+    try {
+      if (typeof marked !== 'undefined' && marked.parse) {
+        return marked.parse(text, { breaks: true, gfm: true });
+      }
+    } catch (err) {
+      console.warn('marked.parse failed:', err);
+    }
+    return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g, '<br>');
+  }
+
+  function stripMarkdown(text) {
+    return text
+      .replace(/```[\s\S]*?```/g, '')
+      .replace(/#{1,6}\s/g, '')
+      .replace(/\*\*(.*?)\*\*/g, '$1')
+      .replace(/\*(.*?)\*/g, '$1')
+      .replace(/`([^`]+)`/g, '$1')
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      .replace(/^[-*+]\s/gm, '')
+      .replace(/^\d+\.\s/gm, '')
+      .replace(/\n{2,}/g, '. ')
+      .replace(/\n/g, ' ')
+      .trim();
+  }
+
+  function showCaption(html, cssClass) {
+    placeholderEl.style.display = 'none';
+    var div = document.createElement('div');
+    div.className = cssClass || 'caption-text';
+    div.innerHTML = html;
+    captionEl.appendChild(div);
+    captionEl.scrollTop = captionEl.scrollHeight;
+  }
+
+  function clearCaption() {
+    captionEl.innerHTML = '';
+    placeholderEl.style.display = '';
+    captionEl.appendChild(placeholderEl);
+  }
+
+  // ── Speech Synthesis (TTS) ────────────────────────────
+
+  var synth = window.speechSynthesis;
+
+  function speakText(text) {
+    if (!synth) return;
+    synth.cancel();
+    var utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    // Try to pick a good voice
+    var voices = synth.getVoices();
+    var preferred = voices.find(function(v) {
+      return /samantha|google uk english female|karen|moira|daniel/i.test(v.name);
+    });
+    if (preferred) utterance.voice = preferred;
+
+    utterance.onstart = function() {
+      speaking = true;
+      talkBtn.classList.add('speaking');
+      talkBtn.textContent = '...';
+      setStatus('Speaking...');
+    };
+
+    utterance.onend = function() {
+      speaking = false;
+      talkBtn.classList.remove('speaking');
+      talkBtn.textContent = 'TALK';
+      setStatus('Tap to talk');
+    };
+
+    utterance.onerror = function() {
+      speaking = false;
+      talkBtn.classList.remove('speaking');
+      talkBtn.textContent = 'TALK';
+      setStatus('Tap to talk');
+    };
+
+    synth.speak(utterance);
+    lastSpokenText = text;
+  }
+
+  // Voices may load async
+  if (synth) {
+    synth.onvoiceschanged = function() { synth.getVoices(); };
+  }
+
+  // ── Speech Recognition (STT) ─────────────────────────
+
+  var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var recognition = null;
+  var finalTranscript = '';
+
+  if (SpeechRecognition) {
+    recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.continuous = false;
+    recognition.interimResults = true;
+
+    recognition.onstart = function() {
+      micListening = true;
+      talkBtn.classList.add('listening');
+      talkBtn.textContent = '...';
+      setStatus('Listening...');
+    };
+
+    recognition.onresult = function(event) {
+      var interim = '';
+      finalTranscript = '';
+      for (var i = event.resultIndex; i < event.results.length; i++) {
+        var t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += t;
+        } else {
+          interim += t;
+        }
+      }
+      setStatus(finalTranscript || interim || 'Listening...');
+    };
+
+    recognition.onend = function() {
+      micListening = false;
+      talkBtn.classList.remove('listening');
+      talkBtn.textContent = 'TALK';
+
+      if (finalTranscript && finalTranscript.trim()) {
+        sendMessage(finalTranscript.trim());
+      } else {
+        setStatus('Tap to talk');
+      }
+      finalTranscript = '';
+    };
+
+    recognition.onerror = function(event) {
+      micListening = false;
+      talkBtn.classList.remove('listening');
+      talkBtn.textContent = 'TALK';
+      if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        setStatus('Mic error: ' + event.error);
+      } else {
+        setStatus('Tap to talk');
+      }
+    };
+  } else {
+    // No speech recognition support
+    talkBtn.disabled = true;
+    setStatus('Speech not supported in this browser');
+    captionEl.innerHTML = '<div class="unsupported-msg">Speech recognition is not supported in this browser. Try Chrome on Android or Safari on iOS.</div>';
+  }
+
+  // ── Talk button ───────────────────────────────────────
+
+  talkBtn.addEventListener('click', function() {
+    if (!recognition) return;
+
+    // If speaking, stop speech and start listening
+    if (speaking && synth) {
+      synth.cancel();
+      speaking = false;
+      talkBtn.classList.remove('speaking');
+    }
+
+    if (micListening) {
+      recognition.stop();
+    } else {
+      recognition.start();
+    }
+  });
+
+  // ── Repeat button ─────────────────────────────────────
+
+  repeatBtn.addEventListener('click', function() {
+    if (lastSpokenText) {
+      speakText(lastSpokenText);
+    }
+  });
+
+  // ── Send message via WebSocket ────────────────────────
+
+  function sendMessage(text) {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      setStatus('Not connected');
+      return;
+    }
+
+    // Show user's message in caption
+    clearCaption();
+    showCaption('<em>"' + text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '"</em>', 'caption-user');
+
+    ws.send(JSON.stringify({ type: 'chat', message: text }));
+    talkBtn.disabled = true;
+    setStatus('Thinking...');
+  }
+
+  function sendAnswer(answer) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'chat.answer', answer: answer }));
+    }
+    setStatus('Thinking...');
+    talkBtn.disabled = true;
+  }
+
+  // ── WebSocket ─────────────────────────────────────────
+
+  function connectWs() {
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(proto + '//' + location.host);
+
+    ws.onopen = function() {
+      wsStatusEl.innerHTML = '<span class="dot"></span> Connected';
+    };
+
+    ws.onclose = function() {
+      wsStatusEl.innerHTML = '<span class="dot" style="background:var(--red)"></span> Disconnected';
+      setTimeout(connectWs, 3000);
+    };
+
+    ws.onerror = function() {};
+
+    ws.onmessage = function(evt) {
+      var msg;
+      try { msg = JSON.parse(evt.data); } catch(e) { return; }
+
+      try {
+        switch (msg.type) {
+          case 'chat.start':
+            currentChatId = msg.chatId || null;
+            break;
+
+          case 'chat.thinking':
+            setStatus(msg.status || 'Thinking...');
+            break;
+
+          case 'chat.response':
+            if (msg.chatId) currentChatId = msg.chatId;
+            handleResponse(msg.message);
+            currentChatId = null;
+            break;
+
+          case 'chat.error':
+            talkBtn.disabled = false;
+            setStatus('Tap to talk');
+            showCaption(msg.error || 'Something went wrong', 'caption-error');
+            speakText('Sorry, something went wrong.');
+            currentChatId = null;
+            break;
+
+          case 'chat.question':
+            handleQuestion(msg.question, msg.options);
+            break;
+
+          case 'chat.proactive':
+            handleProactive(msg.message, msg.category);
+            break;
+
+          case 'refresh':
+            // Mobile client doesn't have panels to refresh
+            break;
+        }
+      } catch (err) {
+        console.error('WS handler error:', err);
+        talkBtn.disabled = false;
+        setStatus('Tap to talk');
+      }
+    };
+  }
+
+  // ── Response handlers ─────────────────────────────────
+
+  function handleResponse(text) {
+    talkBtn.disabled = false;
+    repeatBtn.disabled = false;
+
+    // Show caption
+    var html = renderMarkdown(text);
+    lastResponseHtml = html;
+    showCaption(html, 'caption-text');
+
+    // Speak it
+    var clean = stripMarkdown(text);
+    speakText(clean);
+  }
+
+  function handleQuestion(question, options) {
+    talkBtn.disabled = false;
+    setStatus('Answer the question');
+
+    // Speak the question
+    speakText(stripMarkdown(question));
+
+    // Show question text
+    showCaption('<strong>' + question.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</strong>', 'caption-text');
+
+    // Show option buttons if provided
+    if (options && options.length > 0) {
+      var optionsDiv = document.createElement('div');
+      optionsDiv.className = 'question-options';
+
+      options.forEach(function(opt) {
+        var btn = document.createElement('button');
+        btn.className = 'question-option-btn';
+        btn.textContent = opt;
+        btn.addEventListener('click', function() {
+          optionsDiv.querySelectorAll('button').forEach(function(b) { b.disabled = true; });
+          sendAnswer(opt);
+        });
+        optionsDiv.appendChild(btn);
+      });
+
+      captionEl.appendChild(optionsDiv);
+      captionEl.scrollTop = captionEl.scrollHeight;
+    }
+  }
+
+  function handleProactive(text, category) {
+    var label = { insight: 'Insight', reminder: 'Reminder', alert: 'Alert', info: 'Phaibel' };
+    var prefix = label[category] || category || '';
+    var html = (prefix ? '<strong style="color:var(--yellow);font-size:12px;text-transform:uppercase;letter-spacing:0.5px">' + prefix + '</strong><br>' : '') + renderMarkdown(text);
+    showCaption(html, 'caption-text');
+
+    // Speak it
+    var spokenPrefix = prefix ? prefix + ': ' : '';
+    speakText(spokenPrefix + stripMarkdown(text));
+    repeatBtn.disabled = false;
+  }
+
+  // ── Init ──────────────────────────────────────────────
+  connectWs();
+})();
+</script>
+</body>
+</html>
