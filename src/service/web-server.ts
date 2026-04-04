@@ -90,9 +90,9 @@ export class WebServer {
      * Used by background processes (cron jobs, world model, etc.) to surface
      * information without the user asking.
      */
-    broadcastChat(message: string, category?: string): void {
+    broadcastChat(message: string, category?: string, data?: unknown): void {
         if (!this.wss) return;
-        const msg = JSON.stringify({ type: 'chat.proactive', message, category: category || 'info' });
+        const msg = JSON.stringify({ type: 'chat.proactive', message, category: category || 'info', data });
         for (const client of this.wss.clients) {
             if (client.readyState === WebSocket.OPEN) {
                 client.send(msg);
@@ -665,6 +665,6 @@ export function getWebServer(): WebServer | null {
  * Push a proactive message to all connected chat clients.
  * Safe to call even when no web server is running (no-ops silently).
  */
-export function pushToChat(message: string, category?: string): void {
-    _instance?.broadcastChat(message, category);
+export function pushToChat(message: string, category?: string, data?: unknown): void {
+    _instance?.broadcastChat(message, category, data);
 }

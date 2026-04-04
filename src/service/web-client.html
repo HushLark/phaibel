@@ -848,7 +848,109 @@
     50% { box-shadow: 0 0 0 6px rgba(255, 82, 82, 0); }
   }
 
-  /* (Reaction buttons removed — judgement is now automated server-side) */
+  /* ── Insight widget ───────────────────────────── */
+
+  .insight-widget {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .insight-card {
+    background: rgba(255, 215, 64, 0.06);
+    border: 1px solid rgba(255, 215, 64, 0.15);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+
+  .insight-card.priority-high {
+    border-color: rgba(255, 82, 82, 0.3);
+    background: rgba(255, 82, 82, 0.06);
+  }
+
+  .insight-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+
+  .insight-priority {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .insight-priority.high {
+    background: rgba(255, 82, 82, 0.2);
+    color: #ff5252;
+  }
+
+  .insight-priority.medium {
+    background: rgba(255, 215, 64, 0.2);
+    color: var(--yellow);
+  }
+
+  .insight-priority.low {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--dim);
+  }
+
+  .insight-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .insight-body {
+    font-size: 12px;
+    color: var(--dim);
+    line-height: 1.4;
+  }
+
+  .insight-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+
+  .insight-grade-btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--dim);
+    font-family: inherit;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+
+  .insight-grade-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text);
+  }
+
+  .insight-grade-btn.selected {
+    cursor: default;
+    pointer-events: none;
+  }
+
+  .insight-grade-btn.selected.useful {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    background: rgba(0, 212, 255, 0.1);
+  }
+
+  .insight-grade-btn.selected.not-useful {
+    border-color: var(--dim);
+    color: var(--dim);
+    background: rgba(255, 255, 255, 0.04);
+  }
 
   /* ── Onboarding overlay ───────────────────────────── */
 
@@ -1683,7 +1785,7 @@ async function markTaskDone(checkEl) {
             showProcessDiagram(msg.process);
             break;
           case 'chat.proactive':
-            addProactiveMessage(msg.message, msg.category);
+            addProactiveMessage(msg.message, msg.category, msg.data);
             break;
           case 'chat.response':
             clearThinking();
@@ -1777,7 +1879,7 @@ async function markTaskDone(checkEl) {
     info: 'Phaibel',
   };
 
-  function addProactiveMessage(text, category) {
+  function addProactiveMessage(text, category, data) {
     const now = new Date();
     const dayKey = now.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
 
@@ -1800,9 +1902,75 @@ async function markTaskDone(checkEl) {
     label.textContent = _proactiveCategoryLabels[category] || category || 'Phaibel';
     bubble.appendChild(label);
 
-    var body = document.createElement('div');
-    body.innerHTML = renderMarkdown(text || '');
-    bubble.appendChild(body);
+    // Render insight widget if structured data is provided
+    if (category === 'insight' && Array.isArray(data) && data.length > 0) {
+      var widget = document.createElement('div');
+      widget.className = 'insight-widget';
+      data.forEach(function(insight) {
+        var card = document.createElement('div');
+        card.className = 'insight-card' + (insight.priority === 'high' ? ' priority-high' : '');
+
+        var header = document.createElement('div');
+        header.className = 'insight-header';
+
+        var badge = document.createElement('span');
+        badge.className = 'insight-priority ' + (insight.priority || 'medium');
+        badge.textContent = insight.priority || 'medium';
+        header.appendChild(badge);
+
+        var title = document.createElement('span');
+        title.className = 'insight-title';
+        title.textContent = insight.title || '';
+        header.appendChild(title);
+
+        card.appendChild(header);
+
+        var body = document.createElement('div');
+        body.className = 'insight-body';
+        body.textContent = insight.body || '';
+        card.appendChild(body);
+
+        var actions = document.createElement('div');
+        actions.className = 'insight-actions';
+
+        var usefulBtn = document.createElement('button');
+        usefulBtn.className = 'insight-grade-btn';
+        usefulBtn.textContent = 'Useful';
+
+        var notUsefulBtn = document.createElement('button');
+        notUsefulBtn.className = 'insight-grade-btn';
+        notUsefulBtn.textContent = 'Not useful';
+
+        function gradeInsight(grade, selectedBtn, otherBtn) {
+          selectedBtn.classList.add('selected', grade === 'useful' ? 'useful' : 'not-useful');
+          otherBtn.style.display = 'none';
+          fetch('/api/insights/' + encodeURIComponent(insight.id) + '/grade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ grade: grade }),
+          }).catch(function() {});
+        }
+
+        usefulBtn.addEventListener('click', function() {
+          gradeInsight('useful', usefulBtn, notUsefulBtn);
+        });
+
+        notUsefulBtn.addEventListener('click', function() {
+          gradeInsight('not_useful', notUsefulBtn, usefulBtn);
+        });
+
+        actions.appendChild(usefulBtn);
+        actions.appendChild(notUsefulBtn);
+        card.appendChild(actions);
+
+        widget.appendChild(card);
+      });
+      bubble.appendChild(widget);
+    } else {
+      var body = document.createElement('div');
+      body.innerHTML = renderMarkdown(text || '');
+      bubble.appendChild(body);
+    }
 
     div.appendChild(bubble);
 
