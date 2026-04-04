@@ -17,6 +17,8 @@ import { loadCalConfig, saveCalConfig } from '../commands/cal.js';
 import { handleApiRoute } from './api-router.js';
 import { debug } from '../utils/debug.js';
 import { transcribeAudio } from '../llm/transcribe.js';
+import { handleMcpRequest } from './mcp-server.js';
+import { handleAgentCard, handleA2ARequest } from './a2a-server.js';
 import { PERSONALITIES } from '../personalities.js';
 import { initEntityTypes, loadEntityTypes } from '../entities/entity-type-config.js';
 import { SYSTEM_DIR } from '../paths.js';
@@ -130,6 +132,24 @@ export class WebServer {
                 res.writeHead(404);
                 res.end('Mobile client not available');
             }
+            return;
+        }
+
+        // ── A2A Agent Card ─────────────────────────────────────────────
+        if (req.method === 'GET' && url.pathname === '/.well-known/agent.json') {
+            handleAgentCard(req, res);
+            return;
+        }
+
+        // ── A2A Protocol ──────────────────────────────────────────────
+        if (url.pathname === '/a2a' && req.method === 'POST') {
+            await handleA2ARequest(req, res);
+            return;
+        }
+
+        // ── MCP Protocol (Streamable HTTP) ────────────────────────────
+        if (url.pathname === '/mcp') {
+            await handleMcpRequest(req, res);
             return;
         }
 
