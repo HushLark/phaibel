@@ -54,6 +54,10 @@ export async function getSkillsConfigPath(): Promise<string> {
     return path.join(await getVaultConfigDir(), 'skills.json');
 }
 
+export async function getAgentsConfigPath(): Promise<string> {
+    return path.join(await getVaultConfigDir(), 'agents.json');
+}
+
 export async function getCalConfigPath(): Promise<string> {
     return path.join(await getVaultConfigDir(), 'cal-config.json');
 }

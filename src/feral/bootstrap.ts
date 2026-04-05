@@ -84,8 +84,9 @@ import { CreateRecurringTaskNodeCode } from './node-code/entity/create-recurring
 import { SearchEntitiesNodeCode } from './node-code/entity/search-entities-node-code.js';
 import { LinkEntitiesNodeCode } from './node-code/entity/link-entities-node-code.js';
 
-// PAMP node codes
+// MCP & A2A node codes
 import { McpCallToolNodeCode } from './node-code/mcp/mcp-call-tool-node-code.js';
+import { A2ASendTaskNodeCode } from './node-code/a2a/a2a-send-task-node-code.js';
 import { PampSendNodeCode } from './node-code/pamp/pamp-send-node-code.js';
 import { PampCheckInboxNodeCode } from './node-code/pamp/pamp-check-inbox-node-code.js';
 import { PampShareEntityNodeCode } from './node-code/pamp/pamp-share-entity-node-code.js';
@@ -100,6 +101,7 @@ import { OutputCatalogSource } from './catalog/output-catalog-source.js';
 import { IntrospectCatalogSource } from './catalog/introspect-catalog-source.js';
 import { PampCatalogSource } from './catalog/pamp-catalog-source.js';
 import { McpCatalogSource } from './catalog/mcp-catalog-source.js';
+import { A2ACatalogSource } from './catalog/a2a-catalog-source.js';
 import { UsageCatalogSource } from './catalog/usage-catalog-source.js';
 
 // System & output node codes
@@ -196,6 +198,8 @@ function getBuiltInNodeCodes(): NodeCode[] {
         new PampAwaitReplyNodeCode(),
         // MCP
         new McpCallToolNodeCode(),
+        // A2A
+        new A2ASendTaskNodeCode(),
     ];
 }
 
@@ -228,12 +232,14 @@ export async function bootstrapFeral(
         { getNodeCodes: () => getBuiltInNodeCodes() },
     ]);
 
-    // 2. Load catalog config, entity types, and MCP tools (parallel — independent)
+    // 2. Load catalog config, entity types, MCP tools, and A2A agents (parallel — independent)
     const { mcpManager } = await import('../skills/mcp-manager.js');
-    const [catalogConfig, entityTypes, mcpTools, trackedModels] = await Promise.all([
+    const { a2aClient } = await import('../agents/a2a-client.js');
+    const [catalogConfig, entityTypes, mcpTools, a2aAgents, trackedModels] = await Promise.all([
         loadFeralCatalogConfig(),
         loadEntityTypes(),
         mcpManager.discoverAllTools(),
+        a2aClient.discoverAllAgents(),
         getTrackedModels(),
     ]);
 
@@ -249,6 +255,7 @@ export async function bootstrapFeral(
         new IntrospectCatalogSource(),
         new PampCatalogSource(),
         new McpCatalogSource(mcpTools),
+        new A2ACatalogSource(a2aAgents),
         new UsageCatalogSource(trackedModels),
     ]);
 

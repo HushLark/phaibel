@@ -15,6 +15,7 @@ import { setupCommand } from './commands/setup.js';
 import { cronCommand } from './commands/cron.js';
 import { calCommand } from './commands/cal.js';
 import { skillCommand } from './commands/skill.js';
+import { agentCommand } from './commands/agent.js';
 import { entityTypeCommand } from './commands/entity-type.js';
 import { entityCommand } from './commands/entity.js';
 import { timeCommand } from './commands/time.js';
@@ -47,6 +48,7 @@ program.addCommand(entityCommand);
 program.addCommand(cronCommand);
 program.addCommand(calCommand);
 program.addCommand(skillCommand);
+program.addCommand(agentCommand);
 
 // Tool command - run any registered tool
 program
