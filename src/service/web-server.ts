@@ -15,6 +15,8 @@ import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, savePro
 import { getCronScheduler, loadCronConfig, saveCronConfig } from './cron/scheduler.js';
 import { loadCalConfig, saveCalConfig } from '../commands/cal.js';
 import { handleApiRoute } from './api-router.js';
+import { handleCxRoute } from '../cxms/cx-router.js';
+import { handlePiRoute } from '../pi/pi-router.js';
 import { debug } from '../utils/debug.js';
 import { transcribeAudio } from '../llm/transcribe.js';
 import { handleMcpRequest } from './mcp-server.js';
@@ -153,13 +155,27 @@ export class WebServer {
             return;
         }
 
-        // ── REST API (entities, types, search, processes) ────────────
+        // ── CxMS API (/cx/*) ──────────────────────────────────────────
+        if (url.pathname.startsWith('/cx/')) {
+            const handled = await handleCxRoute(req, res, url);
+            if (handled) return;
+        }
+
+        // ── Phaibel Introspection API (/pi/*) ────────────────────────
+        if (url.pathname.startsWith('/pi/')) {
+            const handled = await handlePiRoute(req, res, url);
+            if (handled) return;
+        }
+
+        // ── Legacy REST API (deprecated — use /cx/* and /pi/*) ───────
         if (url.pathname.startsWith('/api/types') ||
             url.pathname.startsWith('/api/entities') ||
             url.pathname.startsWith('/api/search') ||
             url.pathname.startsWith('/api/processes') ||
             url.pathname.startsWith('/api/insights') ||
             url.pathname === '/api/calendar') {
+            res.setHeader('Deprecation', 'true');
+            res.setHeader('Link', '</cx/>; rel="successor-version"');
             const handled = await handleApiRoute(req, res, url);
             if (handled) return;
         }
