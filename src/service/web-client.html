@@ -952,6 +952,110 @@
     background: rgba(255, 255, 255, 0.04);
   }
 
+  /* ── Pin Board ──────────────────────────────────────── */
+
+  .left-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .left-top {
+    flex: 0 1 auto;
+    overflow-y: auto;
+    padding: 12px 16px;
+    max-height: 50%;
+  }
+
+  .left-top::-webkit-scrollbar { width: 4px; }
+  .left-top::-webkit-scrollbar-track { background: transparent; }
+  .left-top::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .left-bottom {
+    flex: 1 1 0;
+    overflow-y: auto;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    min-height: 0;
+  }
+
+  .left-bottom::-webkit-scrollbar { width: 4px; }
+  .left-bottom::-webkit-scrollbar-track { background: transparent; }
+  .left-bottom::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .pin-board-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+
+  .pinned-item {
+    background: rgba(0, 212, 255, 0.06);
+    border: 1px solid rgba(0, 212, 255, 0.12);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+    position: relative;
+  }
+
+  .pinned-item .pinned-time {
+    font-size: 9px;
+    color: var(--dim);
+    margin-bottom: 4px;
+  }
+
+  .pinned-item .pinned-content {
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .pinned-item .pinned-content::-webkit-scrollbar { width: 3px; }
+  .pinned-item .pinned-content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .unpin-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    background: rgba(255, 82, 82, 0.15);
+    border: 1px solid rgba(255, 82, 82, 0.25);
+    color: var(--red);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .pinned-item:hover .unpin-btn { opacity: 1; }
+
+  .unpin-btn:hover {
+    background: rgba(255, 82, 82, 0.3);
+  }
+
+  .pin-btn {
+    background: none;
+    border: none;
+    color: var(--dim);
+    font-size: 13px;
+    cursor: pointer;
+    padding: 2px 4px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+    vertical-align: middle;
+  }
+
+  .chat-msg:hover .pin-btn { opacity: 0.7; }
+  .pin-btn:hover { opacity: 1 !important; color: var(--cyan); }
+
+  .pin-btn.pinned {
+    opacity: 0.7;
+    color: var(--cyan);
+  }
+
   /* ── Onboarding overlay ───────────────────────────── */
 
   .onboarding-overlay {
@@ -1189,19 +1293,20 @@
     </div>
   </div>
 
-  <!-- Left: Timeline + Scheduler -->
-  <div class="panel">
-    <div class="panel-body" id="left-body">
+  <!-- Left: Timeline + Pin Board -->
+  <div class="panel left-panel">
+    <div class="left-top">
+      <div class="panel-section-title">Timeline</div>
       <div id="timeline-body">
         <div class="empty-state">Loading…</div>
       </div>
-      <div class="panel-section-title" style="margin-top: 16px;">Insights</div>
-      <div id="insights-body">
-        <div class="empty-state">No insights yet</div>
+    </div>
+    <div class="left-bottom">
+      <div class="pin-board-header">
+        <div class="panel-section-title" style="border-bottom: none; padding-bottom: 0; margin-bottom: 0;">Pin Board</div>
       </div>
-      <div class="panel-section-title" style="margin-top: 16px;">Scheduler</div>
-      <div id="scheduler-body">
-        <div class="empty-state">Loading scheduler…</div>
+      <div id="pin-board">
+        <div class="empty-state">Pin items from chat to keep them visible while you work.</div>
       </div>
     </div>
   </div>
@@ -1260,7 +1365,7 @@ async function markTaskDone(checkEl) {
 }
 (function() {
   const timelineBody = document.getElementById('timeline-body');
-  const schedulerBody = document.getElementById('scheduler-body');
+  const pinBoard = document.getElementById('pin-board');
   const chatMessages = document.getElementById('chat-messages');
   const chatForm = document.getElementById('chat-form');
   const chatInput = document.getElementById('chat-input');
@@ -1278,6 +1383,67 @@ async function markTaskDone(checkEl) {
   let thinkingEl = null;
   let currentChatId = null;
   let calendarNames = {}; // id → name
+  let _pinCounter = 0; // unique pin IDs for the session
+
+  // ── Pin Board (localStorage-persisted) ──────────────────────
+  const PIN_STORAGE_KEY = 'phaibel_pinboard';
+
+  function loadPins() {
+    try {
+      return JSON.parse(localStorage.getItem(PIN_STORAGE_KEY) || '[]');
+    } catch { return []; }
+  }
+
+  function savePins(pins) {
+    localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pins));
+  }
+
+  function renderPinBoard() {
+    const pins = loadPins();
+    if (pins.length === 0) {
+      pinBoard.innerHTML = '<div class="empty-state">Pin items from chat to keep them visible while you work.</div>';
+      return;
+    }
+    pinBoard.innerHTML = pins.map(function(pin) {
+      return '<div class="pinned-item" data-pin-id="' + esc(pin.id) + '">'
+        + '<button class="unpin-btn" onclick="unpinItem(\'' + esc(pin.id) + '\')">unpin</button>'
+        + '<div class="pinned-time">' + esc(pin.time) + '</div>'
+        + '<div class="pinned-content">' + pin.html + '</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  window.pinMessage = function(btnEl) {
+    const msg = btnEl.closest('.chat-msg');
+    if (!msg) return;
+    const bubble = msg.querySelector('.chat-bubble');
+    if (!bubble) return;
+
+    const pinId = 'pin-' + Date.now() + '-' + (++_pinCounter);
+    const timeEl = msg.querySelector('.chat-time');
+    const timeText = timeEl ? timeEl.textContent : new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+    const pins = loadPins();
+    pins.push({
+      id: pinId,
+      html: bubble.innerHTML,
+      time: timeText,
+      pinnedAt: new Date().toISOString(),
+    });
+    savePins(pins);
+    renderPinBoard();
+
+    // Mark button as pinned
+    btnEl.classList.add('pinned');
+    btnEl.textContent = '\u{1F4CC}';
+    btnEl.title = 'Pinned';
+  };
+
+  window.unpinItem = function(pinId) {
+    const pins = loadPins().filter(function(p) { return p.id !== pinId; });
+    savePins(pins);
+    renderPinBoard();
+  };
 
   // ── Speech-to-Text ──────────────────────────────────────────
 
@@ -1441,10 +1607,8 @@ async function markTaskDone(checkEl) {
     try {
       const res = await fetch('/api/scheduler');
       const data = await res.json();
-      renderScheduler(data);
-    } catch {
-      schedulerBody.innerHTML = '<div class="empty-state">Failed to load scheduler.</div>';
-    }
+      // Scheduler data available but not rendered in main UI
+    } catch { /* ignore */ }
   }
 
   window.schedToggle = async function(jobName) {
@@ -1861,12 +2025,21 @@ async function markTaskDone(checkEl) {
       div.appendChild(timeEl);
     }
 
+    // Pin button for bot/proactive messages
+    if (role === 'bot' || role === 'proactive') {
+      const pinBtn = document.createElement('button');
+      pinBtn.className = 'pin-btn';
+      pinBtn.textContent = '\u{1F4CC}';
+      pinBtn.title = 'Pin to board';
+      pinBtn.setAttribute('onclick', 'pinMessage(this)');
+      div.insertBefore(pinBtn, bubble.nextSibling);
+    }
+
     if (chatId && role === 'bot') {
       const idLabel = document.createElement('div');
       idLabel.className = 'chat-id-label';
       idLabel.textContent = chatId;
       div.appendChild(idLabel);
-
     }
     chatMessages.appendChild(div);
     chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -1973,6 +2146,14 @@ async function markTaskDone(checkEl) {
     }
 
     div.appendChild(bubble);
+
+    // Pin button for proactive messages
+    const pinBtn = document.createElement('button');
+    pinBtn.className = 'pin-btn';
+    pinBtn.textContent = '\u{1F4CC}';
+    pinBtn.title = 'Pin to board';
+    pinBtn.setAttribute('onclick', 'pinMessage(this)');
+    div.appendChild(pinBtn);
 
     const timeEl = document.createElement('div');
     timeEl.className = 'chat-time';
@@ -2327,6 +2508,9 @@ async function markTaskDone(checkEl) {
   }
 
   // ── Init ───────────────────────────────────────────────────
+
+  // Render persisted pins on load
+  renderPinBoard();
 
   checkOnboarding().then(function(needsOnboarding) {
     if (!needsOnboarding) {
