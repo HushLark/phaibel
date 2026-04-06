@@ -5,6 +5,7 @@ import { StateSchema, type State } from '../schemas/index.js';
 import { getResponse } from '../responses.js';
 import { getPersonality } from '../personalities.js';
 import { debug } from '../utils/debug.js';
+import { autoMigrateV4ToV5 } from '../cxms/auto-migrate.js';
 import chalk from 'chalk';
 
 const FOUNDATION_FILE = '.phaibel.md';
@@ -36,14 +37,20 @@ export async function findFoundationRoot(): Promise<string | null> {
 
     const envVault = process.env.PHAIBEL_VAULT;
     if (envVault) {
-        // Try v5 marker first, then v4 fallback
-        for (const marker of [FOUNDATION_FILE, VAULT_FILE]) {
+        // Try v5 marker first
+        try {
+            await fs.access(path.join(envVault, FOUNDATION_FILE));
+            cachedFoundationRoot = envVault;
+            return envVault;
+        } catch {
+            // Try v4 fallback — auto-migrate if found
             try {
-                await fs.access(path.join(envVault, marker));
+                await fs.access(path.join(envVault, VAULT_FILE));
+                await autoMigrateV4ToV5(envVault);
                 cachedFoundationRoot = envVault;
                 return envVault;
             } catch {
-                // Try next marker
+                // Not a foundation
             }
         }
     }
@@ -57,14 +64,20 @@ export async function findFoundationRoot(): Promise<string | null> {
             currentDir = path.dirname(currentDir);
             continue;
         }
-        // Try v5 marker first, then v4 fallback
-        for (const marker of [FOUNDATION_FILE, VAULT_FILE]) {
+        // Try v5 marker first
+        try {
+            await fs.access(path.join(currentDir, FOUNDATION_FILE));
+            cachedFoundationRoot = currentDir;
+            return currentDir;
+        } catch {
+            // Try v4 fallback — auto-migrate if found
             try {
-                await fs.access(path.join(currentDir, marker));
+                await fs.access(path.join(currentDir, VAULT_FILE));
+                await autoMigrateV4ToV5(currentDir);
                 cachedFoundationRoot = currentDir;
                 return currentDir;
             } catch {
-                // Try next marker
+                // Not a foundation
             }
         }
         currentDir = path.dirname(currentDir);

@@ -23,3 +23,22 @@ export {
     FOUNDATION_MARKER,
     LEGACY_VAULT_MARKER,
 } from './types.js';
+
+export {
+    loadContextTypesFromStore,
+    writeContextType,
+    writeMappingIndex,
+    writeAllContextTypes,
+    removeContextTypeDir,
+} from './context-type-store.js';
+
+export {
+    listCollections,
+    loadCollection,
+    getCollectionItem,
+    countCollectionItems,
+    saveCollection,
+    setCollectionItem,
+    removeCollectionItem,
+    deleteCollection,
+} from './collections.js';

@@ -143,10 +143,10 @@ export interface PresentationDate {
 export interface Collection {
     /** System name (filename without .md) */
     name: string;
-    /** Display title from frontmatter */
-    title: string;
-    /** Key/value entries */
-    entries: Record<string, string>;
+    /** Description from frontmatter */
+    description?: string;
+    /** Key/value items */
+    items: Record<string, string>;
 }
 
 // ── Foundation Hierarchy ─────────────────────────────────────────────────────
