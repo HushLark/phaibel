@@ -11,6 +11,7 @@ import { getVaultRoot } from '../state/manager.js';
 import { getEntityType, loadEntityTypes } from './entity-type-config.js';
 import { getEntityIndex } from './entity-index.js';
 import { getEmbeddingIndex } from './embedding-index.js';
+import { assertWithinFoundation } from '../cxms/boundary-guard.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED TYPES
@@ -255,6 +256,7 @@ export async function writeEntity(
     meta: Record<string, unknown>,
     content: string,
 ): Promise<void> {
+    await assertWithinFoundation(filepath);
     // Always update the timestamp on write
     meta.updated = new Date().toISOString();
     // Remove internal fields
@@ -276,6 +278,7 @@ export async function writeEntity(
  * If a file with the same name exists in trash, appends a timestamp.
  */
 export async function trashEntity(filepath: string): Promise<string> {
+    await assertWithinFoundation(filepath);
     const vaultRoot = await getVaultRoot();
     const trashRoot = path.join(vaultRoot, '.trash');
 

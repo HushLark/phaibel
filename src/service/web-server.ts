@@ -17,6 +17,7 @@ import { loadCalConfig, saveCalConfig } from '../commands/cal.js';
 import { handleApiRoute } from './api-router.js';
 import { handleCxRoute } from '../cxms/cx-router.js';
 import { handlePiRoute } from '../pi/pi-router.js';
+import { logAccess } from '../cxms/access-log.js';
 import { debug } from '../utils/debug.js';
 import { transcribeAudio } from '../llm/transcribe.js';
 import { handleMcpRequest } from './mcp-server.js';
@@ -47,6 +48,7 @@ export class WebServer {
         } catch { /* mobile client optional */ }
 
         this.server = http.createServer(async (req, res) => {
+            const startTime = Date.now();
             try {
                 await this.handleHttp(req, res);
             } catch (err) {
@@ -54,6 +56,8 @@ export class WebServer {
                 res.writeHead(500, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Internal server error' }));
             }
+            // Non-blocking access log — fire and forget
+            logAccess(req, res, startTime).catch(() => {});
         });
 
         this.wss = new WebSocketServer({ server: this.server });

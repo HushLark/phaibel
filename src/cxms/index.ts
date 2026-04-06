@@ -42,3 +42,9 @@ export {
     removeCollectionItem,
     deleteCollection,
 } from './collections.js';
+
+export { assertWithinFoundation, assertWithinRoot, BoundaryViolationError } from './boundary-guard.js';
+export { logAccess, resetAccessLogPath } from './access-log.js';
+export { handleCxRoute } from './cx-router.js';
+export type { ProblemDetail } from './problem-details.js';
+export { problemResponse, badRequest, notFound, serverError, jsonResponse } from './problem-details.js';
