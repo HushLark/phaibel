@@ -3,21 +3,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
 //
 // Two root directories:
-//   ~/.phaibel/              Secrets + daemon runtime (pid, sock)
-//   {vault}/.phaibel/        All other config, logs, processes, caches
+//   ~/.phaibel/                 Secrets + daemon runtime (pid, sock)
+//   {foundation}/.phaibel/      Legacy config (v4 compat)
+//   {foundation}/               Foundation root — context types, profiles, etc.
 //
-// The vault/.phaibel directory is the "working" config directory. Everything
-// except LLM API keys and daemon transient files lives there.
+// v5 stores config at the Foundation root level. The .phaibel/ subdirectory
+// is kept for backward compatibility with v4 configs (skills, agents, etc.).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import path from 'path';
 import os from 'os';
-import { findVaultRoot } from './state/manager.js';
+import { findFoundationRoot, findVaultRoot } from './state/manager.js';
 
 /** System-level directory — only secrets and daemon runtime. */
 export const SYSTEM_DIR = path.join(os.homedir(), '.phaibel');
 
-/** Secrets always live in ~/.phaibel/ — never in the vault. */
+/** Secrets always live in ~/.phaibel/ — never in the foundation. */
 export const SECRETS_PATH = path.join(SYSTEM_DIR, 'secrets.json');
 
 // Daemon transient files
@@ -25,18 +26,73 @@ export const PID_FILE = path.join(SYSTEM_DIR, 'phaibel.pid');
 export const SOCKET_PATH = path.join(SYSTEM_DIR, 'phaibel.sock');
 
 /**
- * Resolve the vault-scoped .phaibel directory: {vault}/.phaibel/.
- * Falls back to ~/.phaibel/ if no vault is found (e.g. daemon started outside vault).
+ * Resolve the Foundation root directory.
+ * Falls back to ~/.phaibel/ if no foundation is found (e.g. daemon started outside foundation).
+ */
+export async function getFoundationDir(): Promise<string> {
+    const root = await findFoundationRoot();
+    return root || SYSTEM_DIR;
+}
+
+/**
+ * Resolve the legacy .phaibel config directory: {foundation}/.phaibel/.
+ * Falls back to ~/.phaibel/ if no foundation is found.
  */
 export async function getVaultConfigDir(): Promise<string> {
-    const vaultRoot = await findVaultRoot();
-    if (vaultRoot) {
-        return path.join(vaultRoot, '.phaibel');
+    const root = await findFoundationRoot();
+    if (root) {
+        return path.join(root, '.phaibel');
     }
     return SYSTEM_DIR;
 }
 
-// ── Vault-scoped config paths ────────────────────────────────────────────────
+// ── Foundation-level paths (v5) ──────────────────────────────────────────────
+
+export async function getContextTypesDir(): Promise<string> {
+    return path.join(await getFoundationDir(), 'context-types');
+}
+
+export async function getProfilesDir(): Promise<string> {
+    return path.join(await getFoundationDir(), 'profiles');
+}
+
+export async function getCollectionsDir(): Promise<string> {
+    return path.join(await getFoundationDir(), 'collections');
+}
+
+export async function getFoundationLogsDir(): Promise<string> {
+    return path.join(await getFoundationDir(), 'logs');
+}
+
+export async function getAccessLogPath(): Promise<string> {
+    return path.join(await getFoundationDir(), 'logs', 'access.txt');
+}
+
+export async function getFeralRootDir(): Promise<string> {
+    return path.join(await getFoundationDir(), 'feral');
+}
+
+export async function getFeralProcessesDir(): Promise<string> {
+    return path.join(await getFoundationDir(), 'feral', 'processes');
+}
+
+export async function getFeralLogsDir(): Promise<string> {
+    return path.join(await getFoundationDir(), 'feral', 'logs');
+}
+
+export async function getFeralCatalogDir(): Promise<string> {
+    return path.join(await getFoundationDir(), 'feral', 'catalog');
+}
+
+export async function getContextTypeMappingPath(): Promise<string> {
+    return path.join(await getFoundationDir(), 'context-types', 'mapping.json');
+}
+
+export async function getOpenApiSpecPath(): Promise<string> {
+    return path.join(await getFoundationDir(), 'phaibel-cxms.oa3');
+}
+
+// ── Legacy vault-scoped config paths ─────────────────────────────────────────
 
 export async function getConfigPath(): Promise<string> {
     return path.join(await getVaultConfigDir(), 'config.json');

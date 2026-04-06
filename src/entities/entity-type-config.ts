@@ -16,7 +16,7 @@ import { getVaultRoot } from '../state/manager.js';
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'enum' | 'array' | 'object';
+export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'duration' | 'enum' | 'array' | 'object';
 
 export interface FieldDef {
     key: string;
@@ -292,3 +292,17 @@ export async function removeEntityType(name: string): Promise<void> {
 }
 
 export { BUILT_IN_TYPE_NAMES };
+
+// ── v5 Aliases ───────────────────────────────────────────────────────────────
+
+/** @deprecated Use ContextTypeConfig */
+export type ContextTypeConfig = EntityTypeConfig;
+
+/** @deprecated Use loadContextTypes() */
+export const loadContextTypes = loadEntityTypes;
+
+/** @deprecated Use getContextType() */
+export const getContextType = getEntityType;
+
+/** @deprecated Use listContextTypeNames() */
+export const listContextTypeNames = listEntityTypeNames;

@@ -7,38 +7,44 @@ import { getPersonality } from '../personalities.js';
 import { debug } from '../utils/debug.js';
 import chalk from 'chalk';
 
-const VAULT_FILE = '.vault.md';
+const FOUNDATION_FILE = '.phaibel.md';
+const VAULT_FILE = '.vault.md'; // v4 legacy fallback
 const STATE_FILE = '.state.json';
 
-let cachedVaultRoot: string | null = null;
+let cachedFoundationRoot: string | null = null;
 
 /**
- * Reset the vault root cache.  Used by integration tests that create
- * temporary vaults so that `findVaultRoot` re-scans the directory tree.
+ * Reset the foundation root cache.  Used by integration tests that create
+ * temporary foundations so that `findFoundationRoot` re-scans the directory tree.
  */
-export function resetVaultCache(): void {
-    cachedVaultRoot = null;
+export function resetFoundationCache(): void {
+    cachedFoundationRoot = null;
 }
 
+/** @deprecated Use resetFoundationCache() */
+export const resetVaultCache = resetFoundationCache;
+
 /**
- * Finds the vault root by looking for .vault.md in cwd or parent directories.
- * Also checks the PHAIBEL_VAULT env var.
- * Returns null if no vault is found.
+ * Finds the Foundation root by looking for .phaibel.md (v5) or .vault.md (v4 fallback)
+ * in cwd or parent directories. Also checks the PHAIBEL_VAULT env var.
+ * Returns null if no foundation is found.
  */
-export async function findVaultRoot(): Promise<string | null> {
-    if (cachedVaultRoot) {
-        return cachedVaultRoot;
+export async function findFoundationRoot(): Promise<string | null> {
+    if (cachedFoundationRoot) {
+        return cachedFoundationRoot;
     }
 
     const envVault = process.env.PHAIBEL_VAULT;
     if (envVault) {
-        const markerPath = path.join(envVault, VAULT_FILE);
-        try {
-            await fs.access(markerPath);
-            cachedVaultRoot = envVault;
-            return envVault;
-        } catch {
-            // Marker not found
+        // Try v5 marker first, then v4 fallback
+        for (const marker of [FOUNDATION_FILE, VAULT_FILE]) {
+            try {
+                await fs.access(path.join(envVault, marker));
+                cachedFoundationRoot = envVault;
+                return envVault;
+            } catch {
+                // Try next marker
+            }
         }
     }
 
@@ -46,18 +52,20 @@ export async function findVaultRoot(): Promise<string | null> {
     let currentDir = process.cwd();
 
     while (currentDir !== path.dirname(currentDir)) {
-        // Never treat the system directory as a vault
+        // Never treat the system directory as a foundation
         if (currentDir === systemDir) {
             currentDir = path.dirname(currentDir);
             continue;
         }
-        const markerPath = path.join(currentDir, VAULT_FILE);
-        try {
-            await fs.access(markerPath);
-            cachedVaultRoot = currentDir;
-            return currentDir;
-        } catch {
-            // Not found, try parent
+        // Try v5 marker first, then v4 fallback
+        for (const marker of [FOUNDATION_FILE, VAULT_FILE]) {
+            try {
+                await fs.access(path.join(currentDir, marker));
+                cachedFoundationRoot = currentDir;
+                return currentDir;
+            } catch {
+                // Try next marker
+            }
         }
         currentDir = path.dirname(currentDir);
     }
@@ -65,29 +73,38 @@ export async function findVaultRoot(): Promise<string | null> {
     return null;
 }
 
+/** @deprecated Use findFoundationRoot() */
+export const findVaultRoot = findFoundationRoot;
+
 /**
- * Gets the vault root, throwing an error if not in a vault.
+ * Gets the Foundation root, throwing an error if not in a foundation.
  */
-export async function getVaultRoot(): Promise<string> {
-    const root = await findVaultRoot();
+export async function getFoundationRoot(): Promise<string> {
+    const root = await findFoundationRoot();
 
     if (!root) {
         const agentName = await getAgentName();
-        console.error(chalk.red(`\n🤖 ${agentName} cannot find a vault here.`));
-        console.error(chalk.gray('No .vault.md found in this directory or any parent.'));
-        console.error(chalk.gray('\nTo create a vault, run: phaibel init'));
-        throw new Error('No vault found in current directory tree');
+        console.error(chalk.red(`\n🤖 ${agentName} cannot find a foundation here.`));
+        console.error(chalk.gray('No .phaibel.md found in this directory or any parent.'));
+        console.error(chalk.gray('\nTo create a foundation, run: phaibel init'));
+        throw new Error('No foundation found in current directory tree');
     }
 
     return root;
 }
 
+/** @deprecated Use getFoundationRoot() */
+export const getVaultRoot = getFoundationRoot;
+
 /**
- * Checks if the current directory is a valid vault.
+ * Checks if the current directory is inside a valid foundation.
  */
-export async function isInVault(): Promise<boolean> {
-    return (await findVaultRoot()) !== null;
+export async function isInFoundation(): Promise<boolean> {
+    return (await findFoundationRoot()) !== null;
 }
+
+/** @deprecated Use isInFoundation() */
+export const isInVault = isInFoundation;
 
 function getStatePath(vaultRoot: string): string {
     return path.join(vaultRoot, STATE_FILE);

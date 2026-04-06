@@ -150,33 +150,47 @@ export type Entity = NoteEntity | TaskEntity | EventEntity | ResearchEntity | Go
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Generate a unique entity id: "{typeName}-{6 random base-36 chars}"
- * e.g. "task-abc123", "event-a1b2c3"
+ * Generate a unique node id: 8 lowercase alphanumeric characters.
+ * e.g. "a1b2c3d4", "x9y8z7w6"
  */
-export function generateEntityId(typeName: string): string {
+export function generateNodeId(): string {
     const chars = '0123456789abcdefghijklmnopqrstuvwxyz';
-    let suffix = '';
-    for (let i = 0; i < 6; i++) suffix += chars[Math.floor(Math.random() * 36)];
-    return `${typeName}-${suffix}`;
+    let id = '';
+    // First char must be alpha per system naming rules
+    const alpha = 'abcdefghijklmnopqrstuvwxyz';
+    id += alpha[Math.floor(Math.random() * 26)];
+    for (let i = 1; i < 8; i++) id += chars[Math.floor(Math.random() * 36)];
+    return id;
+}
+
+/** @deprecated Use generateNodeId() */
+export function generateEntityId(_typeName: string): string {
+    return generateNodeId();
 }
 
 /**
- * Slugify a title into a URL/filename-safe snake_case string.
+ * Slugify a title into a URL/filename-safe hyphenated string.
+ * Follows system naming rules: lowercase, alphanumeric, hyphens for spaces.
  */
 export function slugify(title: string): string {
     return title
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '_')
-        .replace(/^_|_$/g, '');
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
 }
 
 /**
- * Build a filename for an entity: `{slug}_{id}.md`
- * e.g. "Fix the Plumbing" + "task-abc123" → "fix_the_plumbing_task-abc123.md"
+ * Build a filename for a context node: `{slug}_{id}.md`
+ * e.g. "Fix the Plumbing" + "a1b2c3d4" → "fix-the-plumbing_a1b2c3d4.md"
  */
-export function entityFilename(title: string, id: string): string {
+export function nodeFilename(title: string, id: string): string {
     const slug = slugify(title);
     return `${slug}_${id}.md`;
+}
+
+/** @deprecated Use nodeFilename() */
+export function entityFilename(title: string, id: string): string {
+    return nodeFilename(title, id);
 }
 
 /**
@@ -188,7 +202,7 @@ export function createEntityMeta(
     opts: { tags?: string[] } = {},
 ): EntityMeta {
     return {
-        id: generateEntityId(entityType),
+        id: generateNodeId(),
         title,
         entityType,
         created: new Date().toISOString(),

@@ -12,6 +12,7 @@ export interface ValidationError {
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?(\.\d+)?([+-]\d{2}:\d{2}|Z)?$/;
+const DURATION_RE = /^P(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?(?:\d+S)?)?$/;
 
 /**
  * Validate a single field value against its FieldDef.
@@ -48,6 +49,12 @@ function validateField(fieldDef: FieldDef, value: unknown): string | null {
             if (typeof value !== 'string') return `must be a datetime string, got ${typeof value}`;
             if (!DATETIME_RE.test(value)) return `must be ISO datetime format (YYYY-MM-DDTHH:MM...), got "${value}"`;
             if (isNaN(new Date(value).getTime())) return `invalid datetime: "${value}"`;
+            break;
+
+        case 'duration':
+            if (typeof value !== 'string') return `must be a duration string, got ${typeof value}`;
+            if (!DURATION_RE.test(value) || value === 'P' || value === 'PT')
+                return `must be ISO 8601 duration (e.g. PT2H30M, P1D), got "${value}"`;
             break;
 
         case 'enum':
