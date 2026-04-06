@@ -67,22 +67,22 @@ import { ModelToOutputNodeCode } from './node-code/genai/model-to-output-node-co
 import { HydrateModelNodeCode } from './node-code/genai/hydrate-model-node-code.js';
 
 // Entity node codes
-import { ListEntitiesNodeCode } from './node-code/entity/list-entities-node-code.js';
-import { FindEntityNodeCode } from './node-code/entity/find-entity-node-code.js';
-import { CreateEntityNodeCode } from './node-code/entity/create-entity-node-code.js';
-import { CreateEntityTypeNodeCode } from './node-code/entity/create-entity-type-node-code.js';
-import { ListEntityTypesNodeCode } from './node-code/entity/list-entity-types-node-code.js';
-import { UpdateEntityTypeNodeCode } from './node-code/entity/update-entity-type-node-code.js';
-import { DeleteEntityTypeNodeCode } from './node-code/entity/delete-entity-type-node-code.js';
-import { SetEntityFieldNodeCode } from './node-code/entity/set-entity-field-node-code.js';
-import { UpdateEntityNodeCode } from './node-code/entity/update-entity-node-code.js';
-import { DeleteEntityNodeCode } from './node-code/entity/delete-entity-node-code.js';
-import { CompleteEntityNodeCode } from './node-code/entity/complete-entity-node-code.js';
-import { SortEntitiesNodeCode } from './node-code/entity/sort-entities-node-code.js';
-import { LoadVaultContextNodeCode } from './node-code/entity/load-vault-context-node-code.js';
-import { CreateRecurringTaskNodeCode } from './node-code/entity/create-recurring-task-node-code.js';
-import { SearchEntitiesNodeCode } from './node-code/entity/search-entities-node-code.js';
-import { LinkEntitiesNodeCode } from './node-code/entity/link-entities-node-code.js';
+import { ListEntitiesNodeCode } from './node-code/context/list-entities-node-code.js';
+import { FindEntityNodeCode } from './node-code/context/find-entity-node-code.js';
+import { CreateEntityNodeCode } from './node-code/context/create-entity-node-code.js';
+import { CreateEntityTypeNodeCode } from './node-code/context/create-entity-type-node-code.js';
+import { ListEntityTypesNodeCode } from './node-code/context/list-entity-types-node-code.js';
+import { UpdateEntityTypeNodeCode } from './node-code/context/update-entity-type-node-code.js';
+import { DeleteEntityTypeNodeCode } from './node-code/context/delete-entity-type-node-code.js';
+import { SetEntityFieldNodeCode } from './node-code/context/set-entity-field-node-code.js';
+import { UpdateEntityNodeCode } from './node-code/context/update-entity-node-code.js';
+import { DeleteEntityNodeCode } from './node-code/context/delete-entity-node-code.js';
+import { CompleteEntityNodeCode } from './node-code/context/complete-entity-node-code.js';
+import { SortEntitiesNodeCode } from './node-code/context/sort-entities-node-code.js';
+import { LoadVaultContextNodeCode } from './node-code/context/load-vault-context-node-code.js';
+import { CreateRecurringTaskNodeCode } from './node-code/context/create-recurring-task-node-code.js';
+import { SearchEntitiesNodeCode } from './node-code/context/search-entities-node-code.js';
+import { LinkEntitiesNodeCode } from './node-code/context/link-entities-node-code.js';
 
 // MCP & A2A node codes
 import { McpCallToolNodeCode } from './node-code/mcp/mcp-call-tool-node-code.js';

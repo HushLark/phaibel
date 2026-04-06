@@ -33,6 +33,8 @@ import { serializeContextTree } from '../context/context-tree-serializer.js';
 import { classifyScope } from '../context/scope-classifier.js';
 import { buildMomentContext, momentToGlobals } from '../context/moment.js';
 import { updateProfile, validateScores, invalidateProfileCache, type BigFiveSample } from '../personality/big-five.js';
+import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../entities/entity.js';
+import { getEntityType } from '../entities/entity-type-config.js';
 import type { LLMProvider } from '../llm/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -837,13 +839,17 @@ After composing your response, rate BOTH the user and yourself on these 5 traits
 - openness (1=routine/practical, 5=exploratory/creative)
 - emotionalStability (1=tense/reactive, 5=calm/composed)
 
+ASSUMED CONTEXT NODES:
+If the user casually mentions people, places, projects, or other notable entities that don't already exist in context, include them in "assumed_nodes" so they can be saved automatically. Only include entities that are clearly worth remembering — not throwaway mentions. Each assumed node needs: contextType (must match an available type like "person", "note", etc.), title, and any fields you can infer.
+
 You MUST return valid JSON with this structure:
 {
     "response": "Your natural response to the user (markdown ok)",
     "personality_observation": {
         "user": { "extraversion": 3, "conscientiousness": 3, "agreeableness": 3, "openness": 3, "emotionalStability": 3 },
         "robot": { "extraversion": 3, "conscientiousness": 3, "agreeableness": 3, "openness": 3, "emotionalStability": 3 }
-    }
+    },
+    "assumed_nodes": []
 }`;
 
     const rawResponse = await llm.chat(
@@ -875,6 +881,11 @@ You MUST return valid JSON with this structure:
                 updateProfile(sample).then(() => invalidateProfileCache()).catch(() => {});
             }
         }
+        // Extract and create assumed context nodes (fire-and-forget)
+        const assumedNodes = parsed.assumed_nodes as Array<{ contextType: string; title: string; [key: string]: unknown }> | undefined;
+        if (assumedNodes && assumedNodes.length > 0) {
+            createAssumedNodes(assumedNodes).catch(err => debug('chat', `Assumed node creation failed: ${err}`));
+        }
     } catch {
         // Fallback: LLM returned plain text — use as-is, skip scoring
         responseText = rawResponse.trim();
@@ -887,6 +898,55 @@ You MUST return valid JSON with this structure:
     }
 
     return responseText;
+}
+
+/**
+ * Create assumed context nodes that the LLM inferred from conversation.
+ * These are lightweight nodes with source: "assumed".
+ */
+async function createAssumedNodes(
+    nodes: Array<{ contextType: string; title: string; [key: string]: unknown }>,
+): Promise<void> {
+    for (const node of nodes) {
+        if (!node.contextType || !node.title) continue;
+
+        const typeConfig = await getEntityType(node.contextType);
+        if (!typeConfig) {
+            debug('chat', `Assumed node skipped — unknown type: ${node.contextType}`);
+            continue;
+        }
+
+        const id = generateNodeId();
+        const now = new Date().toISOString();
+        const meta: Record<string, unknown> = {
+            id,
+            title: node.title,
+            entityType: node.contextType,
+            contextType: node.contextType,
+            created: now,
+            tags: (node.tags as string[]) || typeConfig.defaultTags || [],
+            source: 'assumed',
+        };
+
+        // Copy type-specific fields from the assumed node
+        for (const field of typeConfig.fields) {
+            if (node[field.key] !== undefined) {
+                meta[field.key] = node[field.key];
+            } else if (field.default !== undefined) {
+                meta[field.key] = field.default;
+            }
+        }
+
+        try {
+            const dir = await ensureEntityDir(node.contextType);
+            const filename = nodeFilename(node.title, id);
+            const filepath = `${dir}/${filename}`;
+            await writeEntity(filepath, meta, '');
+            debug('chat', `Created assumed node: ${node.contextType}/${node.title} (${id})`);
+        } catch (err) {
+            debug('chat', `Failed to create assumed node "${node.title}": ${err}`);
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

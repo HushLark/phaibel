@@ -14,7 +14,7 @@ import crypto from 'crypto';
 import { feralChatHeadless } from '../commands/chat.js';
 import { listEntities } from '../entities/entity.js';
 import { getEntityIndex } from '../entities/entity-index.js';
-import { loadEntityTypes } from '../entities/entity-type-config.js';
+import { loadContextTypes } from '../entities/entity-type-config.js';
 import { debug } from '../utils/debug.js';
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -57,7 +57,7 @@ function pruneOldTasks(): void {
 
 const AGENT_CARD = {
     name: 'Phaibel',
-    description: 'Personal Digital Agent — manages tasks, events, notes, goals, and more in a structured vault with AI-powered workflows.',
+    description: 'Personal Digital Agent — manages context nodes (tasks, events, notes, goals, people) in a Foundation with AI-powered workflows.',
     url: '', // filled dynamically
     version: '1.0.0',
     capabilities: {
@@ -74,21 +74,21 @@ const AGENT_CARD = {
         {
             id: 'chat',
             name: 'Chat',
-            description: 'Send a message through the full Phaibel AI pipeline — understands natural language, creates/updates entities, runs workflows.',
+            description: 'Send a message through the full Phaibel AI pipeline — understands natural language, creates/updates context nodes, runs workflows.',
             tags: ['chat', 'ai', 'agent'],
             examples: [
-                'Create a todo to buy groceries',
+                'Create a task to buy groceries',
                 'What events do I have this week?',
                 'Link the meeting with the project goal',
             ],
         },
         {
             id: 'query',
-            name: 'Query Vault',
-            description: 'Search and list entities in the vault. Supports filtering by type, status, and full-text search.',
-            tags: ['search', 'entities', 'data'],
+            name: 'Query Foundation',
+            description: 'Search and list context nodes in the Foundation. Supports filtering by type, status, and full-text search.',
+            tags: ['search', 'context', 'data'],
             examples: [
-                'List all active todos',
+                'List all active tasks',
                 'Search for anything about the project',
             ],
         },
@@ -139,7 +139,7 @@ async function handleQuerySkill(data: Record<string, unknown>): Promise<A2AArtif
     }
 
     if (action === 'types') {
-        const types = await loadEntityTypes();
+        const types = await loadContextTypes();
         const summary = types.map(t => ({
             name: t.name,
             plural: t.plural,

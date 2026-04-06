@@ -1,21 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // MCP Server — Expose Phaibel as an MCP tool server
 //
-// Agents can connect and use Phaibel's vault operations as MCP tools:
+// Agents can connect and use Phaibel's CxMS operations as MCP tools:
 //   - chat: send a message through the full chat pipeline
-//   - list_entities: list entities by type
-//   - get_entity: get a single entity
-//   - create_entity: create an entity
-//   - update_entity: update entity fields
+//   - list_nodes: list context nodes by type
+//   - get_node: get a single context node
+//   - create_node: create a context node
 //   - search: full-text search
-//   - list_types: list entity type schemas
+//   - list_types: list context type schemas
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import type http from 'http';
-import { listEntities, writeEntity, generateEntityId, ensureEntityDir, entityFilename } from '../entities/entity.js';
+import { listEntities, writeEntity, generateNodeId, ensureEntityDir, nodeFilename } from '../entities/entity.js';
 import { loadEntityTypes } from '../entities/entity-type-config.js';
 import { getEntityIndex } from '../entities/entity-index.js';
 import { feralChatHeadless } from '../commands/chat.js';
@@ -54,10 +53,10 @@ function getOrCreateServer(): McpServer {
     );
 
     _server.tool(
-        'list_entities',
-        'List entities of a given type from the vault. Returns titles, IDs, and key fields.',
+        'list_nodes',
+        'List context nodes of a given type from the Foundation. Returns titles, IDs, and key fields.',
         {
-            type: z.string().describe('Entity type (e.g. "todo", "event", "note", "goal", "person")'),
+            type: z.string().describe('Context type (e.g. "task", "event", "note", "goal", "person")'),
             status: z.string().optional().describe('Filter by status (e.g. "active", "done")'),
             tag: z.string().optional().describe('Filter by tag'),
         },
@@ -81,18 +80,18 @@ function getOrCreateServer(): McpServer {
     );
 
     _server.tool(
-        'get_entity',
-        'Get a single entity by type and ID. Returns full metadata and content.',
+        'get_node',
+        'Get a single context node by type and ID. Returns full metadata and content.',
         {
-            type: z.string().describe('Entity type'),
-            id: z.string().describe('Entity ID'),
+            type: z.string().describe('Context type'),
+            id: z.string().describe('Node ID'),
         },
         async ({ type, id }) => {
             try {
                 const entities = await listEntities(type);
                 const entity = entities.find(e => String(e.meta.id) === id || e.meta.title === id);
                 if (!entity) {
-                    return { content: [{ type: 'text' as const, text: `Entity not found: ${type}/${id}` }], isError: true };
+                    return { content: [{ type: 'text' as const, text: `Context node not found: ${type}/${id}` }], isError: true };
                 }
                 return { content: [{ type: 'text' as const, text: JSON.stringify(entity, null, 2) }] };
             } catch (err) {
@@ -102,19 +101,19 @@ function getOrCreateServer(): McpServer {
     );
 
     _server.tool(
-        'create_entity',
-        'Create a new entity in the vault.',
+        'create_node',
+        'Create a new context node in the Foundation.',
         {
-            type: z.string().describe('Entity type (e.g. "todo", "event", "note")'),
-            title: z.string().describe('Entity title'),
+            type: z.string().describe('Context type (e.g. "task", "event", "note")'),
+            title: z.string().describe('Node title'),
             content: z.string().optional().describe('Markdown body content'),
             fields: z.record(z.unknown()).optional().describe('Additional YAML frontmatter fields'),
         },
         async ({ type, title, content, fields }) => {
             try {
-                const id = generateEntityId(type);
+                const id = generateNodeId();
                 const dir = await ensureEntityDir(type);
-                const filename = entityFilename(title, id);
+                const filename = nodeFilename(title, id);
                 const filepath = `${dir}/${filename}`;
                 const meta: Record<string, unknown> = { id, title, ...fields };
                 await writeEntity(filepath, meta, content || '');
@@ -127,10 +126,10 @@ function getOrCreateServer(): McpServer {
 
     _server.tool(
         'search',
-        'Full-text search across all entities in the vault.',
+        'Full-text search across all context nodes in the Foundation.',
         {
             query: z.string().describe('Search query'),
-            type: z.string().optional().describe('Filter to a specific entity type'),
+            type: z.string().optional().describe('Filter to a specific context type'),
         },
         async ({ query, type }) => {
             try {
@@ -151,7 +150,7 @@ function getOrCreateServer(): McpServer {
 
     _server.tool(
         'list_types',
-        'List all entity types and their schemas.',
+        'List all context types and their schemas.',
         {},
         async () => {
             try {

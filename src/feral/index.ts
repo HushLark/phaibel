@@ -125,12 +125,12 @@ export { ModelToOutputNodeCode } from './node-code/genai/model-to-output-node-co
 export { HydrateModelNodeCode } from './node-code/genai/hydrate-model-node-code.js';
 
 // Entity NodeCodes
-export { ListEntitiesNodeCode } from './node-code/entity/list-entities-node-code.js';
-export { FindEntityNodeCode } from './node-code/entity/find-entity-node-code.js';
-export { CreateEntityNodeCode } from './node-code/entity/create-entity-node-code.js';
-export { UpdateEntityNodeCode } from './node-code/entity/update-entity-node-code.js';
-export { DeleteEntityNodeCode } from './node-code/entity/delete-entity-node-code.js';
-export { SortEntitiesNodeCode } from './node-code/entity/sort-entities-node-code.js';
+export { ListEntitiesNodeCode } from './node-code/context/list-entities-node-code.js';
+export { FindEntityNodeCode } from './node-code/context/find-entity-node-code.js';
+export { CreateEntityNodeCode } from './node-code/context/create-entity-node-code.js';
+export { UpdateEntityNodeCode } from './node-code/context/update-entity-node-code.js';
+export { DeleteEntityNodeCode } from './node-code/context/delete-entity-node-code.js';
+export { SortEntitiesNodeCode } from './node-code/context/sort-entities-node-code.js';
 
 // Trace
 export type { TraceEntry, ProcessTrace, ProcessTraceCollector } from './trace/process-trace.js';
