@@ -8,7 +8,7 @@
 
 import path from 'path';
 import { findVaultRoot } from '../state/manager.js';
-import { getProcessesDir } from '../paths.js';
+import { getProcessesDir, getFeralProcessesDir } from '../paths.js';
 
 import { NodeCodeFactory } from './node-code/node-code-factory.js';
 import type { NodeCode } from './node-code/node-code.js';
@@ -270,10 +270,22 @@ export async function bootstrapFeral(
     await vaultProcessSource.load(); // silently handles missing dir
     const vaultProcesses: Process[] = vaultProcessSource.getProcesses();
 
+    // 4c. Load Foundation-level process definitions from (Root)/feral/processes/
+    let feralProcessSource: JsonProcessSource | null = null;
+    try {
+        const feralProcessDir = await getFeralProcessesDir();
+        feralProcessSource = new JsonProcessSource(feralProcessDir);
+        await feralProcessSource.load();
+    } catch {
+        // No Foundation or feral dir — skip
+    }
+
     // 5. Wire engine
     const eventDispatcher = new EventDispatcher();
     const engine = new ProcessEngine(eventDispatcher, catalog, nodeCodeFactory);
-    const processFactory = new ProcessFactory([jsonProcessSource, vaultProcessSource, ...processSources]);
+    const allSources: ProcessSource[] = [jsonProcessSource, vaultProcessSource, ...processSources];
+    if (feralProcessSource) allSources.push(feralProcessSource);
+    const processFactory = new ProcessFactory(allSources);
     const runner = new Runner(processFactory, engine);
 
     // 6. Late-registered node codes (depend on processFactory / catalog)

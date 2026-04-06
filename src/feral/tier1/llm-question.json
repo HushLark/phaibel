@@ -1,0 +1,22 @@
+{
+    "schema_version": 1,
+    "key": "tier1.llm-question",
+    "description": "Direct LLM response — no context or tools needed. For simple questions, greetings, and general knowledge.",
+    "context": {},
+    "nodes": [
+        {
+            "key": "respond",
+            "description": "Generate a response using the LLM",
+            "catalog_node_key": "llm_prompt",
+            "configuration": {
+                "system_prompt": "You are Phaibel, a helpful personal agent. Answer the user's question directly and concisely.",
+                "user_prompt_context_path": "user_message",
+                "response_context_path": "response",
+                "capability": "chat"
+            },
+            "edges": {
+                "OK": "__end__"
+            }
+        }
+    ]
+}

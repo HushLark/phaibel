@@ -1,0 +1,33 @@
+{
+    "schema_version": 1,
+    "key": "tier1.custom-process",
+    "description": "LLM designs a custom Feral process using available catalog nodes and context. Fallback for complex requests that don't match other Tier 1 patterns.",
+    "context": {},
+    "nodes": [
+        {
+            "key": "load_catalog",
+            "description": "Load all available catalog nodes so the LLM knows what tools are available",
+            "catalog_node_key": "list_catalog_nodes",
+            "configuration": {
+                "context_path": "catalog_nodes"
+            },
+            "edges": {
+                "OK": "design_process"
+            }
+        },
+        {
+            "key": "design_process",
+            "description": "LLM designs a custom process JSON using available catalog nodes",
+            "catalog_node_key": "llm_prompt",
+            "configuration": {
+                "system_prompt": "You are Phaibel's process designer. Given the user's request and the available catalog nodes, design a Feral process JSON that accomplishes the task. The process should use schema_version 1 and reference catalog nodes by key. Output ONLY valid process JSON.",
+                "user_prompt_context_path": "user_message",
+                "response_context_path": "designed_process",
+                "capability": "reason"
+            },
+            "edges": {
+                "OK": "__end__"
+            }
+        }
+    ]
+}

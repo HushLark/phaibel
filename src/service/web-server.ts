@@ -17,6 +17,7 @@ import { loadCalConfig, saveCalConfig } from '../commands/cal.js';
 import { handleApiRoute } from './api-router.js';
 import { handleCxRoute } from '../cxms/cx-router.js';
 import { handlePiRoute } from '../pi/pi-router.js';
+import { handleFccfRoute } from '../feral/fccf-router.js';
 import { logAccess } from '../cxms/access-log.js';
 import { debug } from '../utils/debug.js';
 import { transcribeAudio } from '../llm/transcribe.js';
@@ -168,6 +169,12 @@ export class WebServer {
         // ── Phaibel Introspection API (/pi/*) ────────────────────────
         if (url.pathname.startsWith('/pi/')) {
             const handled = await handlePiRoute(req, res, url);
+            if (handled) return;
+        }
+
+        // ── Feral CCF API (/fccf/*) ─────────────────────────────────
+        if (url.pathname.startsWith('/fccf/')) {
+            const handled = await handleFccfRoute(req, res, url);
             if (handled) return;
         }
 

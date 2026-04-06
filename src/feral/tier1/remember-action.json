@@ -1,0 +1,33 @@
+{
+    "schema_version": 1,
+    "key": "tier1.remember-action",
+    "description": "Write data to an existing context type. Used when the user mentions something that should be saved (task, event, note, person, etc.).",
+    "context": {},
+    "nodes": [
+        {
+            "key": "load_types",
+            "description": "Load available context types",
+            "catalog_node_key": "list_entity_types",
+            "configuration": {
+                "context_path": "available_types"
+            },
+            "edges": {
+                "OK": "classify_and_extract"
+            }
+        },
+        {
+            "key": "classify_and_extract",
+            "description": "Classify which context type to use and extract fields",
+            "catalog_node_key": "llm_prompt",
+            "configuration": {
+                "system_prompt": "You are Phaibel's data extractor. Given the user's message and available context types, determine which type to use and extract the relevant fields. Output JSON with: contextType, title, and field values matching the type's schema.",
+                "user_prompt_context_path": "user_message",
+                "response_context_path": "extracted_data",
+                "capability": "reason"
+            },
+            "edges": {
+                "OK": "__end__"
+            }
+        }
+    ]
+}

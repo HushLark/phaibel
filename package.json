@@ -32,7 +32,7 @@
   "license": "MIT",
   "scripts": {
     "prepublishOnly": "npm run build",
-    "build": "tsc && cp src/phaibel.txt dist/phaibel.txt && cp src/service/web-client.html dist/service/web-client.html && cp src/service/mobile-client.html dist/service/mobile-client.html",
+    "build": "tsc && cp src/phaibel.txt dist/phaibel.txt && cp src/service/web-client.html dist/service/web-client.html && cp src/service/mobile-client.html dist/service/mobile-client.html && mkdir -p dist/feral/tier1 && cp src/feral/tier1/*.json dist/feral/tier1/",
     "dev": "tsx src/index.ts",
     "start": "node dist/index.js",
     "test": "vitest run --exclude='tests/integration/**'",

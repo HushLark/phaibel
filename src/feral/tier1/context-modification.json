@@ -1,0 +1,33 @@
+{
+    "schema_version": 1,
+    "key": "tier1.context-modification",
+    "description": "Add, update, or delete context types or nodes. Used when the user wants to change their data structure or content.",
+    "context": {},
+    "nodes": [
+        {
+            "key": "load_types",
+            "description": "Load available context types to understand the schema",
+            "catalog_node_key": "list_entity_types",
+            "configuration": {
+                "context_path": "available_types"
+            },
+            "edges": {
+                "OK": "plan_modification"
+            }
+        },
+        {
+            "key": "plan_modification",
+            "description": "Use LLM to plan the modification based on user request and available types",
+            "catalog_node_key": "llm_prompt",
+            "configuration": {
+                "system_prompt": "You are Phaibel's modification planner. Given the user's request and available context types, output a JSON plan describing what to create, update, or delete. Output ONLY valid JSON.",
+                "user_prompt_context_path": "user_message",
+                "response_context_path": "modification_plan",
+                "capability": "reason"
+            },
+            "edges": {
+                "OK": "__end__"
+            }
+        }
+    ]
+}

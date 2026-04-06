@@ -1,0 +1,43 @@
+{
+    "schema_version": 1,
+    "key": "tier1.context-aware-question",
+    "description": "Query CxMS for relevant context, then answer with full awareness of the user's data.",
+    "context": {},
+    "nodes": [
+        {
+            "key": "load_profile",
+            "description": "Load the user profile for personalization",
+            "catalog_node_key": "get_user_profile",
+            "configuration": {},
+            "edges": {
+                "OK": "search_context"
+            }
+        },
+        {
+            "key": "search_context",
+            "description": "Search for relevant context nodes matching the query",
+            "catalog_node_key": "search_entities",
+            "configuration": {
+                "query_context_path": "user_message",
+                "results_context_path": "search_results"
+            },
+            "edges": {
+                "OK": "respond"
+            }
+        },
+        {
+            "key": "respond",
+            "description": "Generate a context-aware response",
+            "catalog_node_key": "llm_prompt",
+            "configuration": {
+                "system_prompt": "You are Phaibel, a personal agent. Use the search results and user profile from context to give a personalized, informed answer.",
+                "user_prompt_context_path": "user_message",
+                "response_context_path": "response",
+                "capability": "chat"
+            },
+            "edges": {
+                "OK": "__end__"
+            }
+        }
+    ]
+}
