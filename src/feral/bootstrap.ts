@@ -84,6 +84,11 @@ import { CreateRecurringTaskNodeCode } from './node-code/context/create-recurrin
 import { SearchEntitiesNodeCode } from './node-code/context/search-entities-node-code.js';
 import { LinkEntitiesNodeCode } from './node-code/context/link-entities-node-code.js';
 
+// Scheduler node codes
+import { ListSchedulerJobsNodeCode } from './node-code/scheduler/list-scheduler-jobs-node-code.js';
+import { ToggleSchedulerJobNodeCode } from './node-code/scheduler/toggle-scheduler-job-node-code.js';
+import { RunSchedulerJobNodeCode } from './node-code/scheduler/run-scheduler-job-node-code.js';
+
 // MCP & A2A node codes
 import { McpCallToolNodeCode } from './node-code/mcp/mcp-call-tool-node-code.js';
 import { A2ASendTaskNodeCode } from './node-code/a2a/a2a-send-task-node-code.js';
@@ -196,6 +201,10 @@ function getBuiltInNodeCodes(): NodeCode[] {
         new PampCheckInboxNodeCode(),
         new PampShareEntityNodeCode(),
         new PampAwaitReplyNodeCode(),
+        // Scheduler
+        new ListSchedulerJobsNodeCode(),
+        new ToggleSchedulerJobNodeCode(),
+        new RunSchedulerJobNodeCode(),
         // MCP
         new McpCallToolNodeCode(),
         // A2A

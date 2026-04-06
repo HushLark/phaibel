@@ -291,12 +291,16 @@ export class CronScheduler {
             state.lastResult = result;
             state.lastError = null;
             console.log(`[cron] ${def.name}: ${result}`);
+            // Push proactive message to chat
+            this.pushJobResult(def.name, result, null);
             return result;
         } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             state.lastRunAt = startTime;
             state.lastError = msg;
             console.error(`[cron] ${def.name} error: ${msg}`);
+            // Push error to chat
+            this.pushJobResult(def.name, null, msg);
             throw err;
         } finally {
             state.running = false;
@@ -306,6 +310,17 @@ export class CronScheduler {
                 state.nextRunAt = new Date(Date.now() + jobConfig.intervalMinutes * 60 * 1000);
             }
         }
+    }
+
+    private pushJobResult(jobName: string, result: string | null, error: string | null): void {
+        // Dynamic import to avoid circular dependency
+        import('../web-server.js').then(({ pushToChat }) => {
+            if (error) {
+                pushToChat(`Scheduler job **${jobName}** failed: ${error}`, 'alert');
+            } else {
+                pushToChat(`Scheduler job **${jobName}** completed: ${result}`, 'info');
+            }
+        }).catch(() => { /* ignore — web server may not be running */ });
     }
 }
 
