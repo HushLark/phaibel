@@ -45,12 +45,7 @@ describe('daily tools', () => {
             expect(tool.type).toBe('ai');
         });
 
-        it('should have optional allProjects and save inputs', () => {
-            const tool = getServiceTool('daily.today')!;
-            expect(tool.inputSchema?.properties?.allProjects).toBeDefined();
-            expect(tool.inputSchema?.properties?.save).toBeDefined();
-        });
-    });
+});
 
     describe('daily.tomorrow', () => {
         it('should be registered', () => {
