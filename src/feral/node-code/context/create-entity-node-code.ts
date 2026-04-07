@@ -142,6 +142,12 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         context.set('filepath', filepath);
         context.set('entity', { filepath, content, ...meta });
 
+        // Accumulate into created_entities array so multi-create processes
+        // expose ALL results to the completion checker (not just the last one)
+        const created = (context.get('created_entities') as unknown[] | undefined) ?? [];
+        created.push({ id, title, entityType, filepath });
+        context.set('created_entities', created);
+
         // Update entity index incrementally
         const index = getEntityIndex();
         if (index.isBuilt) {

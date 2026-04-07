@@ -615,6 +615,8 @@ PROCESS FORMAT RULES:
 19. When setting enum fields (in context object or via set_context_value), use ONLY the valid values from the ENTITY TYPES schema above. For example, task status must be one of [open, in-progress, done, blocked] — do NOT use "todo", "complete", or other values. If unsure, omit the field and let the default apply.
 20. Events ALWAYS require BOTH startDate AND endDate (both are datetime type). Use ISO 8601 with timezone offset: "YYYY-MM-DDTHH:mm:ssZ" (e.g. "2026-03-25T14:00:00-06:00"). If the user doesn't mention a time, default to 09:00 start and 10:00 end in their timezone. If the user only mentions one date, set endDate to 1 hour after startDate. Put both in the process context object and include both in extra_fields: "startDate,endDate".
 21. Prefer ACTION over QUESTIONS. Use sensible defaults for missing fields (today's date, "medium" priority, etc.) rather than asking. Only use prompt_input/prompt_select when the user explicitly asks for help choosing OR a required field truly cannot be inferred. Never chain multiple prompt nodes — one question max per process. If you must ask, wire the prompt node's "ok" edge to the create node so the answer flows into context.
+22. CRITICAL: If you selected create_content_type / create_entity_type in the node list, you MUST include it in the process. When the user mentions items that don't match any existing entity type, create the new type FIRST (wire it before the create_entity nodes). Do NOT fall back to "note" type as a generic bucket — if a pet, recipe, vehicle, etc. deserves its own type, create it.
+23. When creating MULTIPLE entities of the same type in one process, remember that each create_entity node overwrites the shared context keys (title, content, tags). The process engine handles this correctly — all entities ARE created — but the completion checker sees accumulated results in the "created_entities" array. Do NOT worry about context key collisions between sequential create_entity nodes.
 
 EXAMPLE PROCESSES:
 ${examplesStr}
@@ -723,6 +725,8 @@ Is the user's request fulfilled? Consider:
 - If the user asked for multiple DISTINCT actions (e.g., "create a task AND a note"), were all done?
 
 IMPORTANT rules for deciding:
+- Check the "created_entities" array in the results — it accumulates ALL entities created across all nodes in the process, even when individual context keys get overwritten.
+- Check the "created_entity_types" array — it shows all new types that were registered.
 - If an entity was successfully created, the request is COMPLETE — do NOT retry because of minor details like metadata formatting.
 - Do NOT request "more work" for implementation details (e.g., how a blackout window is stored, or whether a field was set in exactly the right way).
 - Do NOT request "more work" to link entities — linking is nice-to-have, not required.

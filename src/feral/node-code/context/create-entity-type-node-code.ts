@@ -170,6 +170,12 @@ export class CreateEntityTypeNodeCode extends AbstractNodeCode {
         }
 
         context.set('entity_type', config);
+
+        // Accumulate into created_entity_types array for multi-step visibility
+        const created = (context.get('created_entity_types') as unknown[] | undefined) ?? [];
+        created.push({ name: typeName, plural, fields: config.fields.length });
+        context.set('created_entity_types', created);
+
         return this.result(ResultStatus.OK, `Created entity type "${typeName}" with ${config.fields.length} field(s).`);
     }
 }
