@@ -48,6 +48,7 @@ Rules:
 - STRICT LIMIT: 3–5 fields maximum. Think "what would I jot on a sticky note?" — only the essential identifying details.
   Example: a "flight" needs departureDate, airline, flightNumber — NOT cabin class, aircraft type, wifi, entertainment, boarding time.
   Example: a "recipe" needs prepTime, servings — NOT cuisine, difficulty, calories, equipment.
+- REQUIRED FIELDS: Set required: false for MOST fields. The entity title already identifies it — extra fields are enrichment, not identity. Only mark a field required if the entity is truly meaningless without it AND there is no sensible default (e.g. a currency amount). When in doubt, mark it optional (required: false). For enum fields, always provide a default value so the field can auto-populate.
 - NEVER create a field called "name" or "title". Every entity already has a built-in title — adding a name/title field causes duplication and validation failures.
 - Only add a completionField/completionValue if the entity genuinely has a done/archived/complete state.
 - Prefer "date" for date-only fields and "datetime" for fields that need a time component.

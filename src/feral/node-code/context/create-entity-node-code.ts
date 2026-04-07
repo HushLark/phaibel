@@ -122,6 +122,22 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
                 if (val === undefined && field.required && field.default !== undefined) {
                     meta[field.key] = field.default;
                 }
+                // Infer missing required string fields from tags or body content
+                if (val === undefined && field.required && field.type === 'string') {
+                    // Check if any tag matches a reasonable value for this field
+                    const tagMatch = tags.find(t =>
+                        t.toLowerCase() !== entityType && t.length > 1
+                    );
+                    if (tagMatch) {
+                        meta[field.key] = tagMatch;
+                    } else if (content) {
+                        // Try to extract from body — look for "is a/an {value}"
+                        const bodyMatch = content.match(new RegExp(`is (?:a |an )?([\\w]+)`, 'i'));
+                        if (bodyMatch) {
+                            meta[field.key] = bodyMatch[1].toLowerCase();
+                        }
+                    }
+                }
             }
 
             const errors = validateEntity(meta, typeConfig, true);

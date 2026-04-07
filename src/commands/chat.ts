@@ -681,7 +681,10 @@ Return ONLY the JSON object, no markdown fences.`,
 
         let contextResult: Record<string, unknown>;
         try {
+            // Merge process-level context values (e.g. field values for extra_fields)
+            const processContext = (processDesign.process.context ?? {}) as Record<string, unknown>;
             const ctx = await runtime.runner.run(process.key, {
+                ...processContext,
                 user_input: userInput,
                 ...(onQuestion ? { _askQuestion: onQuestion } : {}),
             });
