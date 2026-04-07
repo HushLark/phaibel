@@ -277,3 +277,8 @@ export function getEmbeddingIndex(): EmbeddingIndex {
     }
     return _embeddingIndex;
 }
+
+/** Reset the singleton (for testing/eval harness). */
+export function resetEmbeddingIndex(): void {
+    _embeddingIndex = null;
+}

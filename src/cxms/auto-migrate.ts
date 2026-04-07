@@ -103,6 +103,14 @@ async function renameRootMarker(root: string): Promise<void> {
     const oldPath = path.join(root, '.vault.md');
     const newPath = path.join(root, '.phaibel.md');
 
+    // Guard against race: if .vault.md is already gone, skip
+    try {
+        await fs.access(oldPath);
+    } catch {
+        debug('migrate', '.vault.md already removed (concurrent migration?) — skipping rename');
+        return;
+    }
+
     // Read the old vault.md content and update it
     const raw = await fs.readFile(oldPath, 'utf-8');
     const updated = raw
@@ -113,7 +121,11 @@ async function renameRootMarker(root: string): Promise<void> {
             return match;
         });
     await fs.writeFile(newPath, updated);
-    await fs.unlink(oldPath);
+    try {
+        await fs.unlink(oldPath);
+    } catch {
+        // Another concurrent migration may have already removed it
+    }
     debug('migrate', 'Renamed .vault.md → .phaibel.md');
 }
 

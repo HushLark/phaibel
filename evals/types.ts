@@ -18,7 +18,7 @@ export interface VaultSeedEntity {
 export interface EvalScenario {
     id: string;
     name: string;
-    category: 'entity-type' | 'create-vs-update' | 'multi-entity' | 'conversational' | 'persona';
+    category: 'entity-type' | 'create-vs-update' | 'multi-entity' | 'conversational' | 'persona' | 'context-type-creation';
     userInput: string;
     history?: ChatHistoryEntry[];
     vaultSeed?: VaultSeedEntity[];
@@ -79,6 +79,11 @@ export interface ResponseContainsAssertion extends BaseAssertion {
     match: string;
 }
 
+export interface ContextTypeCreatedAssertion extends BaseAssertion {
+    type: 'context_type_created';
+    typeName: string;
+}
+
 export type EvalAssertion =
     | EntityCreatedAssertion
     | EntityUpdatedAssertion
@@ -86,7 +91,8 @@ export type EvalAssertion =
     | EntityFieldAssertion
     | EntityNotCreatedAssertion
     | EntityCountAssertion
-    | ResponseContainsAssertion;
+    | ResponseContainsAssertion
+    | ContextTypeCreatedAssertion;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RESULTS

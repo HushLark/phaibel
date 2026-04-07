@@ -451,3 +451,8 @@ export function getEntityIndex(): EntityIndex {
     }
     return _index;
 }
+
+/** Reset the singleton (for testing/eval harness). */
+export function resetEntityIndex(): void {
+    _index = null;
+}

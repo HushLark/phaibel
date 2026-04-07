@@ -7,8 +7,10 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 import { resetVaultCache } from '../src/state/manager.js';
-import { invalidateCache as invalidateEntityTypeCache } from '../src/entities/entity-type-config.js';
-import { createEntityMeta, writeEntity, listEntities } from '../src/entities/entity.js';
+import { invalidateCache as invalidateEntityTypeCache, loadEntityTypes } from '../src/entities/entity-type-config.js';
+import { createEntityMeta, writeEntity, listEntities, entityFilename } from '../src/entities/entity.js';
+import { resetEntityIndex } from '../src/entities/entity-index.js';
+import { resetEmbeddingIndex } from '../src/entities/embedding-index.js';
 import { DEFAULT_ENTITY_TYPES } from '../src/entities/entity-types-defaults.js';
 import type { VaultSeedEntity, VaultSnapshot, SnapshotEntity } from './types.js';
 
@@ -68,9 +70,17 @@ export async function createEvalVault(
     originalCwd = process.cwd();
     vaultDir = await fs.mkdtemp(path.join(os.tmpdir(), 'phaibel-eval-'));
 
-    // Vault marker
-    const vaultMd = vaultContext ?? '---\ntitle: Eval Vault\n---\nThis is an evaluation vault for testing Phaibel.';
-    await fs.writeFile(path.join(vaultDir, '.vault.md'), vaultMd);
+    // v5 Foundation marker (prevents v4→v5 migration from running)
+    const foundationMd = vaultContext ?? '---\ntitle: Eval Foundation\n---\nThis is an evaluation foundation for testing Phaibel.';
+    await fs.writeFile(path.join(vaultDir, '.phaibel.md'), foundationMd);
+
+    // v5 migration marker — signals already migrated
+    await fs.writeFile(path.join(vaultDir, '.v5-migrated'), JSON.stringify({
+        migratedAt: new Date().toISOString(),
+        fromVersion: 5,
+        toVersion: 5,
+        idsRemapped: 0,
+    }));
 
     // State (test personality)
     await fs.writeFile(path.join(vaultDir, '.state.json'), JSON.stringify({
@@ -97,10 +107,12 @@ export async function createEvalVault(
         await fs.mkdir(path.join(vaultDir, et.directory), { recursive: true });
     }
 
-    // Reset caches so the new vault is discovered
+    // Reset all caches/singletons so the new vault is discovered cleanly
     process.chdir(vaultDir);
     resetVaultCache();
     invalidateEntityTypeCache();
+    resetEntityIndex();
+    resetEmbeddingIndex();
 
     // Seed entities
     if (seed && seed.length > 0) {
@@ -110,8 +122,7 @@ export async function createEvalVault(
                 Object.assign(meta, s.fields);
             }
             const dir = path.join(vaultDir, getEntityDir(s.entityType));
-            const slug = s.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-            const filepath = path.join(dir, `${slug}.md`);
+            const filepath = path.join(dir, entityFilename(s.title, meta.id as string));
             await writeEntity(filepath, meta as unknown as Record<string, unknown>, s.body ?? '');
         }
     }
@@ -134,6 +145,8 @@ export async function destroyEvalVault(): Promise<void> {
     }
     resetVaultCache();
     invalidateEntityTypeCache();
+    resetEntityIndex();
+    resetEmbeddingIndex();
     if (vaultDir) {
         await fs.rm(vaultDir, { recursive: true, force: true });
         vaultDir = null;
@@ -146,16 +159,24 @@ export async function destroyEvalVault(): Promise<void> {
  */
 export async function snapshotVault(): Promise<VaultSnapshot> {
     const snapshot: VaultSnapshot = {};
-    for (const et of EVAL_ENTITY_TYPES) {
+
+    // Load all entity types (including dynamically-created ones)
+    const allTypes = await loadEntityTypes();
+    const typeNames = new Set([
+        ...EVAL_ENTITY_TYPES.map(et => et.name),
+        ...allTypes.map(et => et.name),
+    ]);
+
+    for (const typeName of typeNames) {
         try {
-            const entities = await listEntities(et.name);
-            snapshot[et.name] = entities.map(e => ({
+            const entities = await listEntities(typeName);
+            snapshot[typeName] = entities.map(e => ({
                 title: String(e.meta.title ?? ''),
                 meta: JSON.parse(JSON.stringify(e.meta)),
                 body: e.content,
             }));
         } catch {
-            snapshot[et.name] = [];
+            snapshot[typeName] = [];
         }
     }
     return snapshot;

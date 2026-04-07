@@ -69,6 +69,7 @@ function checkAssertion(
         case 'entity_not_created': return checkEntityNotCreated(a, before, after);
         case 'entity_count': return checkEntityCount(a, after);
         case 'response_contains': return checkResponseContains(a, responseText);
+        case 'context_type_created': return checkContextTypeCreated(a, after);
     }
 }
 
@@ -200,6 +201,18 @@ function checkEntityCount(
         return { description: a.description, type: a.type, passed: true, actual: count, message: `${a.entityType} count = ${count}` };
     }
     return { description: a.description, type: a.type, passed: false, actual: count, message: `${a.entityType} count = ${count}, expected ${a.expected}` };
+}
+
+function checkContextTypeCreated(
+    a: { type: 'context_type_created'; typeName: string; description: string },
+    after: VaultSnapshot,
+): AssertionResult {
+    // A context type is "created" if it has an entry in the snapshot (even if empty)
+    if (a.typeName in after) {
+        return { description: a.description, type: a.type, passed: true, message: `Context type "${a.typeName}" was created` };
+    }
+    const available = Object.keys(after).join(', ');
+    return { description: a.description, type: a.type, passed: false, message: `Context type "${a.typeName}" not found. Available: [${available}]` };
 }
 
 function checkResponseContains(
