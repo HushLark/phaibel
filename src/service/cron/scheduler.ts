@@ -41,7 +41,7 @@ const DEFAULT_CONFIG: CronConfig = {
         'embedding-sync':      { enabled: true, intervalMinutes: 1440 },
         'feedback-analysis':   { enabled: false, intervalMinutes: 1440 },
         'innovate':            { enabled: false, intervalMinutes: 1440 },
-        'world-model':         { enabled: true,  intervalMinutes: 10 },
+        'world-model':         { enabled: true,  intervalMinutes: 1440 },
     },
 };
 
