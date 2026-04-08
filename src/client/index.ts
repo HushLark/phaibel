@@ -36,7 +36,7 @@ export class ServiceClient {
         }
 
         return new Promise((resolve, reject) => {
-            this.socket = net.createConnection(SOCKET_PATH, () => {
+            this.socket = net.createConnection(SOCKET_PATH(), () => {
                 resolve();
             });
 

@@ -638,7 +638,7 @@ This vault is the agent's memory. Content is stored as Markdown files with YAML 
 - Date format: YYYY-MM-DD
 `;
             await fs.writeFile(vaultFilePath, rootVaultFile);
-            await fs.mkdir(SYSTEM_DIR, { recursive: true });
+            await fs.mkdir(SYSTEM_DIR(), { recursive: true });
             await fs.mkdir(path.join(vaultPath, '.phaibel'), { recursive: true });
 
             // Set PHAIBEL_VAULT so subsequent calls find the vault

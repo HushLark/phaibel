@@ -235,7 +235,7 @@ async function main(): Promise<void> {
     process.on('SIGINT', shutdown);
 
     // Start server and processor
-    await server.start(SOCKET_PATH);
+    await server.start(SOCKET_PATH());
     await processor.start();
 
     // Vault-dependent startup — skip gracefully if no vault exists yet.
@@ -279,7 +279,7 @@ async function main(): Promise<void> {
         console.error('Failed to start web server:', err);
     }
 
-    console.log(`Phaibel service running on ${SOCKET_PATH}`);
+    console.log(`Phaibel service running on ${SOCKET_PATH()}`);
 }
 
 if (isService) {

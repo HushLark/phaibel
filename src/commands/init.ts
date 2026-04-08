@@ -88,7 +88,7 @@ This Foundation is the agent's memory. Content is stored as Markdown files with 
         await fs.writeFile(foundationPath, rootFile);
 
         // Ensure ~/.phaibel/ exists for secrets
-        await fs.mkdir(SYSTEM_DIR, { recursive: true });
+        await fs.mkdir(SYSTEM_DIR(), { recursive: true });
 
         // Create v5 directory structure
         const v5Dirs = [

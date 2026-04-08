@@ -16,7 +16,7 @@ export interface DaemonStatus {
  * Ensures the system directory exists.
  */
 async function ensureDirs(): Promise<void> {
-    await fs.mkdir(SYSTEM_DIR, { recursive: true });
+    await fs.mkdir(SYSTEM_DIR(), { recursive: true });
     const vaultConfigDir = await getVaultConfigDir();
     await fs.mkdir(vaultConfigDir, { recursive: true });
 }
@@ -26,7 +26,7 @@ async function ensureDirs(): Promise<void> {
  */
 export async function readPid(): Promise<number | null> {
     try {
-        const content = await fs.readFile(PID_FILE, 'utf-8');
+        const content = await fs.readFile(PID_FILE(), 'utf-8');
         const pid = parseInt(content.trim(), 10);
         return isNaN(pid) ? null : pid;
     } catch (err) {
@@ -40,7 +40,7 @@ export async function readPid(): Promise<number | null> {
  */
 async function writePid(pid: number): Promise<void> {
     await ensureDirs();
-    await fs.writeFile(PID_FILE, pid.toString());
+    await fs.writeFile(PID_FILE(), pid.toString());
 }
 
 /**
@@ -48,7 +48,7 @@ async function writePid(pid: number): Promise<void> {
  */
 async function removePid(): Promise<void> {
     try {
-        await fs.unlink(PID_FILE);
+        await fs.unlink(PID_FILE());
     } catch (err) {
         debug('daemon', err);
         // Ignore errors
@@ -83,7 +83,7 @@ export async function getDaemonStatus(): Promise<DaemonStatus> {
     return {
         running,
         pid: running ? pid : null,
-        socketPath: SOCKET_PATH,
+        socketPath: SOCKET_PATH(),
     };
 }
 
@@ -119,7 +119,7 @@ export async function startDaemon(): Promise<DaemonStatus> {
 
     // Remove stale socket
     try {
-        await fs.unlink(SOCKET_PATH);
+        await fs.unlink(SOCKET_PATH());
     } catch (err) {
         debug('daemon', err);
         // Ignore
@@ -170,7 +170,7 @@ export async function stopDaemon(): Promise<DaemonStatus> {
     const status = await getDaemonStatus();
 
     if (!status.running || status.pid === null) {
-        return { running: false, pid: null, socketPath: SOCKET_PATH };
+        return { running: false, pid: null, socketPath: SOCKET_PATH() };
     }
 
     try {
@@ -198,13 +198,13 @@ export async function stopDaemon(): Promise<DaemonStatus> {
 
     // Remove socket
     try {
-        await fs.unlink(SOCKET_PATH);
+        await fs.unlink(SOCKET_PATH());
     } catch (err) {
         debug('daemon', err);
         // Ignore
     }
 
-    return { running: false, pid: null, socketPath: SOCKET_PATH };
+    return { running: false, pid: null, socketPath: SOCKET_PATH() };
 }
 
 export { SOCKET_PATH, PID_FILE };

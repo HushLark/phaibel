@@ -20,6 +20,14 @@ export function resetFoundationCache(): void {
     cachedFoundationRoot = null;
 }
 
+/**
+ * Explicitly set the foundation root path.
+ * Used by the Expo app where there's no cwd-based discovery.
+ */
+export function setFoundationRoot(path: string): void {
+    cachedFoundationRoot = path;
+}
+
 /** @deprecated Use resetFoundationCache() */
 export const resetVaultCache = resetFoundationCache;
 

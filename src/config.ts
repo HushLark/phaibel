@@ -56,7 +56,7 @@ const DEFAULT_SECRETS: Secrets = {
 };
 
 async function ensureSystemDir(): Promise<void> {
-    await getPlatform().storage.mkdir(SYSTEM_DIR, { recursive: true });
+    await getPlatform().storage.mkdir(SYSTEM_DIR(), { recursive: true });
 }
 
 async function ensureVaultConfigDir(): Promise<void> {
@@ -66,7 +66,7 @@ async function ensureVaultConfigDir(): Promise<void> {
 export async function loadSecrets(): Promise<Secrets> {
     try {
         await ensureSystemDir();
-        const data = await getPlatform().storage.readFile(SECRETS_PATH);
+        const data = await getPlatform().storage.readFile(SECRETS_PATH());
         return SecretsSchema.parse(JSON.parse(data));
     } catch (err) {
         debug('config', err);
@@ -76,7 +76,7 @@ export async function loadSecrets(): Promise<Secrets> {
 
 export async function saveSecrets(secrets: Secrets): Promise<void> {
     await ensureSystemDir();
-    await getPlatform().storage.writeFile(SECRETS_PATH, JSON.stringify(secrets, null, 2));
+    await getPlatform().storage.writeFile(SECRETS_PATH(), JSON.stringify(secrets, null, 2));
 }
 
 export async function loadConfig(): Promise<Config> {

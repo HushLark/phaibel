@@ -407,12 +407,12 @@ const responses: Record<ResponseKey, string[]> = {
     ],
 };
 
-import os from 'os';
+import { getPlatform } from './platform/index.js';
 import { getUserName, getUserGender, getUserHonorific as getHonorific, getAgentName, getPersonalityId } from './state/manager.js';
 import { getPersonality } from './personalities.js';
 
 // ── Cached values for sync substitution ────────────────────────────────────
-let cachedName: string = os.userInfo().username || 'friend';
+let cachedName: string = 'friend';
 let cachedAgentName: string = 'Agent';
 let cachedPersonalityId: string = 'butler';
 let cachedGender: string = 'other';
