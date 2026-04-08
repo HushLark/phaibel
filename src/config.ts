@@ -1,4 +1,4 @@
-import { promises as fs } from 'fs';
+import { getPlatform } from './platform/index.js';
 import { SecretsSchema, ConfigSchema, LLM_CAPABILITIES, type Secrets, type Config, type LLMCapability, type CapabilityModelMapping } from './schemas/index.js';
 import { debug } from './utils/debug.js';
 import { SYSTEM_DIR, SECRETS_PATH, getConfigPath, getVaultConfigDir } from './paths.js';
@@ -56,17 +56,17 @@ const DEFAULT_SECRETS: Secrets = {
 };
 
 async function ensureSystemDir(): Promise<void> {
-    await fs.mkdir(SYSTEM_DIR, { recursive: true });
+    await getPlatform().storage.mkdir(SYSTEM_DIR, { recursive: true });
 }
 
 async function ensureVaultConfigDir(): Promise<void> {
-    await fs.mkdir(await getVaultConfigDir(), { recursive: true });
+    await getPlatform().storage.mkdir(await getVaultConfigDir(), { recursive: true });
 }
 
 export async function loadSecrets(): Promise<Secrets> {
     try {
         await ensureSystemDir();
-        const data = await fs.readFile(SECRETS_PATH, 'utf-8');
+        const data = await getPlatform().storage.readFile(SECRETS_PATH);
         return SecretsSchema.parse(JSON.parse(data));
     } catch (err) {
         debug('config', err);
@@ -76,13 +76,13 @@ export async function loadSecrets(): Promise<Secrets> {
 
 export async function saveSecrets(secrets: Secrets): Promise<void> {
     await ensureSystemDir();
-    await fs.writeFile(SECRETS_PATH, JSON.stringify(secrets, null, 2));
+    await getPlatform().storage.writeFile(SECRETS_PATH, JSON.stringify(secrets, null, 2));
 }
 
 export async function loadConfig(): Promise<Config> {
     try {
         const configPath = await getConfigPath();
-        const data = await fs.readFile(configPath, 'utf-8');
+        const data = await getPlatform().storage.readFile(configPath);
         return ConfigSchema.parse(JSON.parse(data));
     } catch (err) {
         debug('config', err);
@@ -93,7 +93,7 @@ export async function loadConfig(): Promise<Config> {
 export async function saveConfig(config: Config): Promise<void> {
     await ensureVaultConfigDir();
     const configPath = await getConfigPath();
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    await getPlatform().storage.writeFile(configPath, JSON.stringify(config, null, 2));
 }
 
 export async function getApiKey(provider: string): Promise<string | null> {

@@ -6,7 +6,7 @@
 // instances via the spawner system.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import path from 'path';
+import { getPlatform } from '../../../platform/index.js';
 import type { Context } from '../../context/context.js';
 import type { Result } from '../../result/result.js';
 import { ResultStatus } from '../../result/result.js';
@@ -82,7 +82,7 @@ export class CreateRecurringTaskNodeCode extends AbstractNodeCode {
         // ── Create recurrence entity file ────────────────────────────────
         const dir = await ensureEntityDir('recurrence');
         const id = generateEntityId('recurrence');
-        const filepath = path.join(dir, entityFilename(title, id));
+        const filepath = getPlatform().paths.join(dir, entityFilename(title, id));
 
         const meta: Record<string, unknown> = {
             id,

@@ -2,7 +2,7 @@
 // Feral CCF — Catalog Configuration (JSON file at {vault}/.phaibel/feral-catalog.json)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
+import { getPlatform } from '../../platform/index.js';
 import { getFeralCatalogPath, getVaultConfigDir } from '../../paths.js';
 
 /**
@@ -32,7 +32,7 @@ const EMPTY_CONFIG: FeralCatalogConfigJson = { catalog_nodes: [] };
 export async function loadFeralCatalogConfig(): Promise<FeralCatalogConfigJson> {
     try {
         const configPath = await getFeralCatalogPath();
-        const data = await fs.readFile(configPath, 'utf-8');
+        const data = await getPlatform().storage.readFile(configPath);
         const parsed = JSON.parse(data) as FeralCatalogConfigJson;
         return {
             catalog_nodes: Array.isArray(parsed.catalog_nodes) ? parsed.catalog_nodes : [],
@@ -46,8 +46,9 @@ export async function loadFeralCatalogConfig(): Promise<FeralCatalogConfigJson> 
  * Save the catalog config to disk.
  */
 export async function saveFeralCatalogConfig(config: FeralCatalogConfigJson): Promise<void> {
+    const { storage } = getPlatform();
     const dir = await getVaultConfigDir();
-    await fs.mkdir(dir, { recursive: true });
+    await storage.mkdir(dir, { recursive: true });
     const configPath = await getFeralCatalogPath();
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    await storage.writeFile(configPath, JSON.stringify(config, null, 2));
 }

@@ -6,7 +6,7 @@
 // of the tree are materialized to stay within token budgets.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fsP } from 'fs';
+import { getPlatform } from '../platform/index.js';
 import { getVaultContext, getSubdirectoryContext } from './reader.js';
 import { getEntityIndex, type IndexNode, type IndexEdge } from '../entities/entity-index.js';
 import { loadEntityTypes, type EntityTypeConfig, type FieldDef } from '../entities/entity-type-config.js';
@@ -145,7 +145,7 @@ async function buildBranch(
         const toLoad = sorted.slice(0, MAX_FULL_CONTENT_LEAVES);
         leaves = await Promise.all(toLoad.map(async (n) => {
             try {
-                const raw = await fsP.readFile(n.filepath, 'utf-8');
+                const raw = await getPlatform().storage.readFile(n.filepath);
                 const { content } = parseEntity(n.filepath, raw);
                 return indexNodeToLeaf(n, content);
             } catch {

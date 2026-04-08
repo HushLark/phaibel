@@ -5,8 +5,7 @@
 // Users can add, modify, or extend entity types by editing the JSON file.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getPlatform } from '../platform/index.js';
 import { DEFAULT_ENTITY_TYPES, BUILT_IN_TYPE_NAMES } from './entity-types-defaults.js';
 import { debug } from '../utils/debug.js';
 import { getEntityTypesPath, getVaultConfigDir } from '../paths.js';
@@ -92,8 +91,9 @@ export async function loadEntityTypes(): Promise<EntityTypeConfig[]> {
     if (_cache) return _cache;
 
     try {
+        const { storage } = getPlatform();
         const typesPath = await getEntityTypesPath();
-        const raw = await fs.readFile(typesPath, 'utf-8');
+        const raw = await storage.readFile(typesPath, 'utf-8');
         const parsed: EntityTypesFile = JSON.parse(raw);
         if (!Array.isArray(parsed.entityTypes)) {
             throw new Error('entity-types.json missing entityTypes array');
@@ -148,11 +148,12 @@ export async function loadEntityTypes(): Promise<EntityTypeConfig[]> {
  * Save entity type configs to the vault file.
  */
 export async function saveEntityTypes(types: EntityTypeConfig[]): Promise<void> {
+    const { storage } = getPlatform();
     const dir = await getVaultConfigDir();
-    await fs.mkdir(dir, { recursive: true });
+    await storage.mkdir(dir, { recursive: true });
     const typesPath = await getEntityTypesPath();
     const file: EntityTypesFile = { version: 1, entityTypes: types };
-    await fs.writeFile(typesPath, JSON.stringify(file, null, 2));
+    await storage.writeFile(typesPath, JSON.stringify(file, null, 2));
     invalidateCache();
 }
 
@@ -163,7 +164,7 @@ export async function saveEntityTypes(types: EntityTypeConfig[]): Promise<void> 
 export async function initEntityTypes(): Promise<void> {
     try {
         const typesPath = await getEntityTypesPath();
-        await fs.access(typesPath);
+        await getPlatform().storage.access(typesPath);
         debug('entity-types', 'entity-types.json already exists — skipping init');
     } catch {
         await saveEntityTypes(DEFAULT_ENTITY_TYPES);
@@ -227,11 +228,12 @@ export async function addEntityType(config: EntityTypeConfig): Promise<void> {
 
     // Create entity directory + .vault.md context file
     try {
+        const { storage, paths } = getPlatform();
         const vaultRoot = await getVaultRoot();
-        const entityDir = path.join(vaultRoot, config.directory);
-        await fs.mkdir(entityDir, { recursive: true });
+        const entityDir = paths.join(vaultRoot, config.directory);
+        await storage.mkdir(entityDir, { recursive: true });
 
-        const vaultMdPath = path.join(entityDir, '.vault.md');
+        const vaultMdPath = paths.join(entityDir, '.vault.md');
         const fieldLines = config.fields.map(f => {
             let desc = `- **${f.key}** (${f.type})`;
             if (f.label) desc += ` — ${f.label}`;
@@ -259,7 +261,7 @@ ${completionNote}
 - When the user refers to "${config.plural}" or "${config.name}", this is the entity type to use.
 `;
 
-        await fs.writeFile(vaultMdPath, content);
+        await storage.writeFile(vaultMdPath, content);
         debug('entity-types', `Created ${vaultMdPath}`);
     } catch (err) {
         debug('entity-types', `Failed to create .vault.md for ${config.name}: ${err}`);

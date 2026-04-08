@@ -4,8 +4,7 @@
 // Vectors persist to ~/.phaibel/embeddings.json and load into memory on startup.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getPlatform } from '../platform/index.js';
 import { getEmbeddings } from '../llm/router.js';
 import { debug } from '../utils/debug.js';
 import { getEmbeddingsPath } from '../paths.js';
@@ -102,8 +101,9 @@ export class EmbeddingIndex {
 
     async load(): Promise<void> {
         try {
+            const { storage } = getPlatform();
             const embeddingsPath = await getEmbeddingsPath();
-            const raw = await fs.readFile(embeddingsPath, 'utf-8');
+            const raw = await storage.readFile(embeddingsPath, 'utf-8');
             const parsed = JSON.parse(raw) as EmbeddingStore;
 
             // If model or dimensions changed, purge and re-embed on next sync
@@ -123,9 +123,10 @@ export class EmbeddingIndex {
 
     async save(): Promise<void> {
         if (!this.dirty) return;
+        const { storage, paths } = getPlatform();
         const embeddingsPath = await getEmbeddingsPath();
-        await fs.mkdir(path.dirname(embeddingsPath), { recursive: true });
-        await fs.writeFile(embeddingsPath, JSON.stringify(this.store));
+        await storage.mkdir(paths.dirname(embeddingsPath), { recursive: true });
+        await storage.writeFile(embeddingsPath, JSON.stringify(this.store));
         this.dirty = false;
     }
 

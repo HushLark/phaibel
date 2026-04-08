@@ -7,8 +7,7 @@
 // edge list extracted from @slug (people) and type:slug (entity) references.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getPlatform } from '../platform/index.js';
 import { getVaultRoot } from '../state/manager.js';
 import { parseEntity, type EntityTypeName, type EntityLink } from './entity.js';
 import { loadEntityTypes } from './entity-type-config.js';
@@ -88,25 +87,26 @@ export class EntityIndex {
      * Scan all entity directories, build node map and edge list.
      */
     async build(): Promise<void> {
+        const { storage, paths } = getPlatform();
         const vaultRoot = await getVaultRoot();
         const entityTypes = await loadEntityTypes();
 
         // Pass 1: collect all nodes
         for (const typeConfig of entityTypes) {
             const entityType = typeConfig.name;
-            const dir = path.join(vaultRoot, typeConfig.directory);
+            const dir = paths.join(vaultRoot, typeConfig.directory);
 
             try {
-                const files = await fs.readdir(dir);
+                const files = await storage.readdir(dir);
                 for (const file of files) {
                     if (!file.endsWith('.md') || file.startsWith('.')) continue;
 
-                    const filepath = path.join(dir, file);
+                    const filepath = paths.join(dir, file);
 
                     try {
-                        const raw = await fs.readFile(filepath, 'utf-8');
+                        const raw = await storage.readFile(filepath, 'utf-8');
                         const { meta, content } = parseEntity(filepath, raw);
-                        const id = (meta.id as string) || path.basename(file, '.md');
+                        const id = (meta.id as string) || paths.basename(file, '.md');
                         const key = EntityIndex.key(entityType, id);
 
                         this.nodes.set(key, {
@@ -132,19 +132,19 @@ export class EntityIndex {
         const typeNames = entityTypes.map(t => t.name);
         for (const typeConfig of entityTypes) {
             const entityType = typeConfig.name;
-            const dir = path.join(vaultRoot, typeConfig.directory);
+            const dir = paths.join(vaultRoot, typeConfig.directory);
 
             try {
-                const files = await fs.readdir(dir);
+                const files = await storage.readdir(dir);
                 for (const file of files) {
                     if (!file.endsWith('.md') || file.startsWith('.')) continue;
 
-                    const filepath = path.join(dir, file);
+                    const filepath = paths.join(dir, file);
 
                     try {
-                        const raw = await fs.readFile(filepath, 'utf-8');
+                        const raw = await storage.readFile(filepath, 'utf-8');
                         const { meta, content } = parseEntity(filepath, raw);
-                        const id = (meta.id as string) || path.basename(file, '.md');
+                        const id = (meta.id as string) || paths.basename(file, '.md');
                         const sourceKey = EntityIndex.key(entityType, id);
 
                         // @slug → person mention edges
@@ -221,13 +221,14 @@ export class EntityIndex {
      * Avoids a full rebuild when a single entity is created or modified.
      */
     async addOrUpdate(type: EntityTypeName, id: string, title: string, filepath: string, tags?: string[], summary?: string): Promise<void> {
+        const { storage } = getPlatform();
         const key = EntityIndex.key(type, id);
 
         // Read file for bodySnippet and full meta
         let bodySnippet = '';
         let meta: Record<string, unknown> = {};
         try {
-            const raw = await fs.readFile(filepath, 'utf-8');
+            const raw = await storage.readFile(filepath, 'utf-8');
             const parsed = parseEntity(filepath, raw);
             bodySnippet = parsed.content.slice(0, 500);
             meta = parsed.meta;
@@ -241,7 +242,7 @@ export class EntityIndex {
 
         // Re-scan content and frontmatter for new edges
         try {
-            const raw = await fs.readFile(filepath, 'utf-8');
+            const raw = await storage.readFile(filepath, 'utf-8');
             const { meta, content } = parseEntity(filepath, raw);
 
             const peopleSlugs = extractPeopleMentions(content);

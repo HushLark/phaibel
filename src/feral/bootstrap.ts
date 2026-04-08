@@ -6,7 +6,7 @@
 // Call bootstrapFeral() once at service/CLI startup.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import path from 'path';
+import { getPlatform } from '../platform/index.js';
 import { findVaultRoot } from '../state/manager.js';
 import { getProcessesDir, getFeralProcessesDir } from '../paths.js';
 
@@ -275,7 +275,7 @@ export async function bootstrapFeral(
 
     // 4b. Load vault-root process definitions from {vaultRoot}/processes/
     const vaultRoot = await findVaultRoot();
-    const vaultProcessSource = new JsonProcessSource(path.join(vaultRoot ?? '', 'processes'));
+    const vaultProcessSource = new JsonProcessSource(getPlatform().paths.join(vaultRoot ?? '', 'processes'));
     await vaultProcessSource.load(); // silently handles missing dir
     const vaultProcesses: Process[] = vaultProcessSource.getProcesses();
 

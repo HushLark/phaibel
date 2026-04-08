@@ -6,9 +6,8 @@
 //   template     — spawns a fixed set of children once
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
 import matter from 'gray-matter';
+import { getPlatform } from '../platform/index.js';
 import { generateEntityId, writeEntity, ensureEntityDir, entityFilename } from './entity.js';
 import { getEntityType, type SpawnerConfig, type EntityTypeConfig } from './entity-type-config.js';
 import { getVaultRoot } from '../state/manager.js';
@@ -193,13 +192,14 @@ export async function spawnDateSeries(
 
     const occurrences = computeOccurrences(cadence, cadenceDetails, startDate, endDate);
 
+    const { storage, paths } = getPlatform();
     const targetDir = await ensureEntityDir(targetTypeConfig.name);
 
     // Load existing entities for dedup check
     const existingFiles = await safeReaddir(targetDir);
     const existingMetas = await Promise.all(
         existingFiles.filter(f => f.endsWith('.md')).map(async f => {
-            const raw = await fs.readFile(path.join(targetDir, f), 'utf-8');
+            const raw = await storage.readFile(paths.join(targetDir, f), 'utf-8');
             return matter(raw).data;
         }),
     );
@@ -234,7 +234,7 @@ export async function spawnDateSeries(
             }
         }
         const id = generateEntityId(targetTypeConfig.name);
-        const filepath = path.join(targetDir, entityFilename(childTitle, id));
+        const filepath = paths.join(targetDir, entityFilename(childTitle, id));
 
         // Build child meta
         const childMeta: Record<string, unknown> = {
@@ -294,12 +294,13 @@ export async function spawnTemplate(
         return { created: 0, skipped: 0 };
     }
 
+    const { storage, paths } = getPlatform();
     const targetDir = await ensureEntityDir(targetTypeConfig.name);
     const existingFiles = await safeReaddir(targetDir);
     const existingTitles = new Set(
         await Promise.all(
             existingFiles.filter(f => f.endsWith('.md')).map(async f => {
-                const raw = await fs.readFile(path.join(targetDir, f), 'utf-8');
+                const raw = await storage.readFile(paths.join(targetDir, f), 'utf-8');
                 return String(matter(raw).data.title ?? '').toLowerCase();
             }),
         ),
@@ -317,7 +318,7 @@ export async function spawnTemplate(
         }
 
         const id = generateEntityId(targetTypeConfig.name);
-        const filepath = path.join(targetDir, entityFilename(child.title, id));
+        const filepath = paths.join(targetDir, entityFilename(child.title, id));
 
         const childMeta: Record<string, unknown> = {
             id,
@@ -403,7 +404,7 @@ export async function spawn(
 
 async function safeReaddir(dir: string): Promise<string[]> {
     try {
-        return await fs.readdir(dir);
+        return await getPlatform().storage.readdir(dir);
     } catch {
         return [];
     }

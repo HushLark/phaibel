@@ -1,6 +1,4 @@
-import { promises as fs } from 'fs';
-import path from 'path';
-import os from 'os';
+import { getPlatform } from '../platform/index.js';
 import { StateSchema, type State } from '../schemas/index.js';
 import { getResponse } from '../responses.js';
 import { getPersonality } from '../personalities.js';
@@ -35,17 +33,20 @@ export async function findFoundationRoot(): Promise<string | null> {
         return cachedFoundationRoot;
     }
 
+    const { storage, paths } = getPlatform();
+    const platform = getPlatform();
+
     const envVault = process.env.PHAIBEL_VAULT;
     if (envVault) {
         // Try v5 marker first
         try {
-            await fs.access(path.join(envVault, FOUNDATION_FILE));
+            await storage.access(paths.join(envVault, FOUNDATION_FILE));
             cachedFoundationRoot = envVault;
             return envVault;
         } catch {
             // Try v4 fallback — auto-migrate if found
             try {
-                await fs.access(path.join(envVault, VAULT_FILE));
+                await storage.access(paths.join(envVault, VAULT_FILE));
                 await autoMigrateV4ToV5(envVault);
                 cachedFoundationRoot = envVault;
                 return envVault;
@@ -55,24 +56,24 @@ export async function findFoundationRoot(): Promise<string | null> {
         }
     }
 
-    const systemDir = path.join(os.homedir(), '.phaibel');
+    const systemDir = platform.systemDir();
     let currentDir = process.cwd();
 
-    while (currentDir !== path.dirname(currentDir)) {
+    while (currentDir !== paths.dirname(currentDir)) {
         // Never treat the system directory as a foundation
         if (currentDir === systemDir) {
-            currentDir = path.dirname(currentDir);
+            currentDir = paths.dirname(currentDir);
             continue;
         }
         // Try v5 marker first
         try {
-            await fs.access(path.join(currentDir, FOUNDATION_FILE));
+            await storage.access(paths.join(currentDir, FOUNDATION_FILE));
             cachedFoundationRoot = currentDir;
             return currentDir;
         } catch {
             // Try v4 fallback — auto-migrate if found
             try {
-                await fs.access(path.join(currentDir, VAULT_FILE));
+                await storage.access(paths.join(currentDir, VAULT_FILE));
                 await autoMigrateV4ToV5(currentDir);
                 cachedFoundationRoot = currentDir;
                 return currentDir;
@@ -80,7 +81,7 @@ export async function findFoundationRoot(): Promise<string | null> {
                 // Not a foundation
             }
         }
-        currentDir = path.dirname(currentDir);
+        currentDir = paths.dirname(currentDir);
     }
 
     return null;
@@ -120,7 +121,7 @@ export async function isInFoundation(): Promise<boolean> {
 export const isInVault = isInFoundation;
 
 function getStatePath(vaultRoot: string): string {
-    return path.join(vaultRoot, STATE_FILE);
+    return getPlatform().paths.join(vaultRoot, STATE_FILE);
 }
 
 const DEFAULT_STATE: State = {
@@ -130,7 +131,7 @@ const DEFAULT_STATE: State = {
 export async function loadState(): Promise<State> {
     try {
         const vaultRoot = await getVaultRoot();
-        const data = await fs.readFile(getStatePath(vaultRoot), 'utf-8');
+        const data = await getPlatform().storage.readFile(getStatePath(vaultRoot));
         return StateSchema.parse(JSON.parse(data));
     } catch {
         return DEFAULT_STATE;
@@ -140,7 +141,7 @@ export async function loadState(): Promise<State> {
 export async function saveState(state: State): Promise<void> {
     const vaultRoot = await getVaultRoot();
     state.lastUsed = new Date().toISOString().split('T')[0];
-    await fs.writeFile(getStatePath(vaultRoot), JSON.stringify(state, null, 2));
+    await getPlatform().storage.writeFile(getStatePath(vaultRoot), JSON.stringify(state, null, 2));
 }
 
 /**
@@ -148,7 +149,7 @@ export async function saveState(state: State): Promise<void> {
  */
 export async function getUserName(): Promise<string> {
     const state = await loadState();
-    return state.userName || os.userInfo().username || 'friend';
+    return state.userName || 'friend';
 }
 
 /**
@@ -197,7 +198,7 @@ export async function getUserHonorific(): Promise<string> {
 
     // Executive personality has no honorifics — use name
     if (pool.length === 0) {
-        return state.userName || os.userInfo().username || 'friend';
+        return state.userName || 'friend';
     }
 
     return pool[Math.floor(Math.random() * pool.length)];

@@ -2,7 +2,7 @@
 // Feral CCF — Create Entity NodeCode
 // ─────────────────────────────────────────────────────────────────────────────
 
-import path from 'path';
+import { getPlatform } from '../../../platform/index.js';
 import type { Context } from '../../context/context.js';
 import type { Result } from '../../result/result.js';
 import { ResultStatus } from '../../result/result.js';
@@ -86,7 +86,7 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         const dir = await ensureEntityDir(entityType);
         const entityMeta = createEntityMeta(entityType, title, { tags });
         const id = entityMeta.id;
-        const filepath = path.join(dir, entityFilename(title, id));
+        const filepath = getPlatform().paths.join(dir, entityFilename(title, id));
 
         const meta: Record<string, unknown> = { ...entityMeta };
 

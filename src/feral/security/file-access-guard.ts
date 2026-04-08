@@ -9,11 +9,12 @@
 // any read/write operation.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import path from 'path';
-import os from 'os';
+import { getPlatform } from '../../platform/index.js';
 import { findVaultRoot } from '../../state/manager.js';
 
-const PHAIBEL_SYSTEM_DIR = path.join(os.homedir(), '.phaibel');
+function getSystemDir(): string {
+    return getPlatform().systemDir();
+}
 
 export class FileAccessDeniedError extends Error {
     constructor(filePath: string) {
@@ -29,7 +30,7 @@ export class FileAccessDeniedError extends Error {
  * Resolve a file path to absolute form, normalising away any `..` segments.
  */
 function resolveAbsolute(filePath: string): string {
-    return path.resolve(filePath);
+    return getPlatform().paths.resolve(filePath);
 }
 
 /**
@@ -40,7 +41,7 @@ function isUnder(filePath: string, allowedDir: string): boolean {
     const resolved = resolveAbsolute(filePath);
     const dir = resolveAbsolute(allowedDir);
     // Add trailing separator so "/foo/bar" doesn't match "/foo/barbaz"
-    return resolved === dir || resolved.startsWith(dir + path.sep);
+    return resolved === dir || resolved.startsWith(dir + getPlatform().paths.sep);
 }
 
 /**
@@ -55,7 +56,7 @@ export async function assertPathAllowed(filePath: string): Promise<void> {
     const resolved = resolveAbsolute(filePath);
 
     // Always allow ~/.phaibel/
-    if (isUnder(resolved, PHAIBEL_SYSTEM_DIR)) return;
+    if (isUnder(resolved, getSystemDir())) return;
 
     // Allow the vault root (if one is active)
     const vaultRoot = await findVaultRoot();
@@ -71,7 +72,7 @@ export async function assertPathAllowed(filePath: string): Promise<void> {
 export function assertPathAllowedSync(filePath: string, vaultRoot: string | null): void {
     const resolved = resolveAbsolute(filePath);
 
-    if (isUnder(resolved, PHAIBEL_SYSTEM_DIR)) return;
+    if (isUnder(resolved, getSystemDir())) return;
     if (vaultRoot && isUnder(resolved, vaultRoot)) return;
 
     throw new FileAccessDeniedError(resolved);

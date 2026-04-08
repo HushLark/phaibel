@@ -3,9 +3,8 @@
 // All records are Entities — markdown files with gray-matter frontmatter.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
 import matter from 'gray-matter';
+import { getPlatform } from '../platform/index.js';
 import { debug } from '../utils/debug.js';
 import { getVaultRoot } from '../state/manager.js';
 import { getEntityType, loadEntityTypes } from './entity-type-config.js';
@@ -220,20 +219,22 @@ export function createEntityMeta(
  * Reads the entity type config to get the directory name.
  */
 export async function getEntityDir(entityType: EntityTypeName): Promise<string> {
+    const { paths } = getPlatform();
     const vaultRoot = await getVaultRoot();
     const typeConfig = await getEntityType(entityType);
     if (!typeConfig) {
         throw new Error(`Unknown entity type: "${entityType}". Check ~/.phaibel/entity-types.json.`);
     }
-    return path.join(vaultRoot, typeConfig.directory);
+    return paths.join(vaultRoot, typeConfig.directory);
 }
 
 /**
  * Ensure the entity directory exists, return its path.
  */
 export async function ensureEntityDir(entityType: EntityTypeName): Promise<string> {
+    const { storage } = getPlatform();
     const dir = await getEntityDir(entityType);
-    await fs.mkdir(dir, { recursive: true });
+    await storage.mkdir(dir, { recursive: true });
     return dir;
 }
 
@@ -269,7 +270,7 @@ export async function writeEntity(
         }
     }
     const fileContent = matter.stringify(content, cleanMeta);
-    await fs.writeFile(filepath, fileContent);
+    await getPlatform().storage.writeFile(filepath, fileContent);
 }
 
 /**
@@ -279,30 +280,32 @@ export async function writeEntity(
  */
 export async function trashEntity(filepath: string): Promise<string> {
     await assertWithinFoundation(filepath);
+    const { storage, paths } = getPlatform();
+    const { join, basename, dirname } = paths;
     const vaultRoot = await getVaultRoot();
-    const trashRoot = path.join(vaultRoot, '.trash');
+    const trashRoot = join(vaultRoot, '.trash');
 
     // Derive the entity subdirectory from the filepath
     // e.g. ~/.phaibel/projects/work/todos/foo.md → todos
-    const parentDir = path.basename(path.dirname(filepath));
-    const trashDir = path.join(trashRoot, parentDir);
+    const parentDir = basename(dirname(filepath));
+    const trashDir = join(trashRoot, parentDir);
 
-    await fs.mkdir(trashDir, { recursive: true });
+    await storage.mkdir(trashDir, { recursive: true });
 
-    const filename = path.basename(filepath);
-    let trashPath = path.join(trashDir, filename);
+    const filename = basename(filepath);
+    let trashPath = join(trashDir, filename);
 
     // Avoid collisions — append timestamp if file already exists in trash
     try {
-        await fs.access(trashPath);
-        const stem = path.basename(filename, '.md');
+        await storage.access(trashPath);
+        const stem = basename(filename, '.md');
         const ts = Date.now();
-        trashPath = path.join(trashDir, `${stem}-${ts}.md`);
+        trashPath = join(trashDir, `${stem}-${ts}.md`);
     } catch {
         // No collision — use original name
     }
 
-    await fs.rename(filepath, trashPath);
+    await storage.rename(filepath, trashPath);
     debug('entities', `Trashed ${filepath} → ${trashPath}`);
     return trashPath;
 }
@@ -314,13 +317,14 @@ export async function findEntityByTitle(
     entityType: EntityTypeName,
     titleOrFilename: string,
 ): Promise<{ filepath: string; meta: Record<string, unknown>; content: string } | null> {
+    const { storage, paths } = getPlatform();
     // Fast path: use in-memory index if built
     const index = getEntityIndex();
     if (index.isBuilt) {
         const node = index.findByTitle(entityType, titleOrFilename);
         if (node) {
             try {
-                const rawContent = await fs.readFile(node.filepath, 'utf-8');
+                const rawContent = await storage.readFile(node.filepath, 'utf-8');
                 const { meta, content } = parseEntity(node.filepath, rawContent);
                 return { filepath: node.filepath, meta, content };
             } catch (err) {
@@ -337,7 +341,7 @@ export async function findEntityByTitle(
                     const matchedNode = index.getNode(results[0].key);
                     if (matchedNode) {
                         debug('entities', `Semantic match for "${titleOrFilename}" → "${matchedNode.title}" (similarity: ${results[0].similarity.toFixed(3)})`);
-                        const rawContent = await fs.readFile(matchedNode.filepath, 'utf-8');
+                        const rawContent = await storage.readFile(matchedNode.filepath, 'utf-8');
                         const { meta, content } = parseEntity(matchedNode.filepath, rawContent);
                         return { filepath: matchedNode.filepath, meta, content };
                     }
@@ -359,15 +363,15 @@ export async function findEntityByTitle(
         return null;
     }
     try {
-        const files = await fs.readdir(dir);
+        const files = await storage.readdir(dir);
         const needle = titleOrFilename.toLowerCase();
         let partialMatch: { filepath: string; meta: Record<string, unknown>; content: string } | null = null;
 
         for (const file of files) {
             if (!file.endsWith('.md') || file.startsWith('.')) continue;
 
-            const filepath = path.join(dir, file);
-            const rawContent = await fs.readFile(filepath, 'utf-8');
+            const filepath = paths.join(dir, file);
+            const rawContent = await storage.readFile(filepath, 'utf-8');
             const { meta, content } = parseEntity(filepath, rawContent);
 
             // Exact match on id or title — return immediately
@@ -457,10 +461,11 @@ export async function searchEntities(
         const sorted = [...mergedScores.values()].sort((a, b) => b.score - a.score);
 
         // Read full content from disk for matched nodes
+        const { storage } = getPlatform();
         const results: { filepath: string; meta: Record<string, unknown>; content: string; score: number }[] = [];
         for (const { node, score } of sorted) {
             try {
-                const rawContent = await fs.readFile(node.filepath, 'utf-8');
+                const rawContent = await storage.readFile(node.filepath, 'utf-8');
                 const { meta, content } = parseEntity(node.filepath, rawContent);
                 results.push({ filepath: node.filepath, meta, content, score });
             } catch (err) {
@@ -574,10 +579,11 @@ export async function listEntities(
         }
 
         // Read full content from disk for matched nodes
+        const { storage: stg } = getPlatform();
         const results: { filepath: string; meta: Record<string, unknown>; content: string }[] = [];
         for (const n of nodes) {
             try {
-                const rawContent = await fs.readFile(n.filepath, 'utf-8');
+                const rawContent = await stg.readFile(n.filepath, 'utf-8');
                 const { meta, content } = parseEntity(n.filepath, rawContent);
                 results.push({ filepath: n.filepath, meta, content });
             } catch (err) {
@@ -588,6 +594,7 @@ export async function listEntities(
     }
 
     // Fallback: filesystem scan
+    const { storage, paths } = getPlatform();
     let dir: string;
     try {
         dir = await getEntityDir(entityType);
@@ -599,13 +606,13 @@ export async function listEntities(
     const entities: { filepath: string; meta: Record<string, unknown>; content: string }[] = [];
 
     try {
-        const files = await fs.readdir(dir);
+        const files = await storage.readdir(dir);
 
         for (const file of files) {
             if (!file.endsWith('.md') || file.startsWith('.')) continue;
 
-            const filepath = path.join(dir, file);
-            const rawContent = await fs.readFile(filepath, 'utf-8');
+            const filepath = paths.join(dir, file);
+            const rawContent = await storage.readFile(filepath, 'utf-8');
             const { meta, content } = parseEntity(filepath, rawContent);
 
             entities.push({ filepath, meta, content });

@@ -6,8 +6,7 @@
 // Process instances via the ProcessSource interface.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getPlatform } from '../../platform/index.js';
 import type { ProcessSource } from './process-factory.js';
 import type { Process } from './process.js';
 import { hydrateProcess, type ProcessConfigJson } from './process-json-hydrator.js';
@@ -28,12 +27,13 @@ export class JsonProcessSource implements ProcessSource {
     async load(): Promise<void> {
         this.processes = [];
         try {
-            const files = await fs.readdir(this.directory);
+            const { storage, paths } = getPlatform();
+            const files = await storage.readdir(this.directory);
             for (const file of files) {
                 if (!file.endsWith('.json')) continue;
                 try {
-                    const filepath = path.join(this.directory, file);
-                    const raw = await fs.readFile(filepath, 'utf-8');
+                    const filepath = paths.join(this.directory, file);
+                    const raw = await storage.readFile(filepath);
                     const json = JSON.parse(raw) as ProcessConfigJson;
                     this.processes.push(hydrateProcess(json));
                 } catch {

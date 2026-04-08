@@ -2,7 +2,7 @@
 // Feral CCF — Delete Entity NodeCode
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
+import { getPlatform } from '../../../platform/index.js';
 import type { Context } from '../../context/context.js';
 import type { Result } from '../../result/result.js';
 import { ResultStatus } from '../../result/result.js';

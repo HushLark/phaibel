@@ -2,8 +2,7 @@
 // Feral Agent — Write File NodeCode
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { writeFileSync, mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { getPlatform } from '../../../platform/index.js';
 import { AbstractNodeCode } from '../../node-code/abstract-node-code.js';
 import { NodeCodeCategory } from '../../node-code/node-code.js';
 import type { ConfigurationDescription } from '../../configuration/configuration-description.js';
@@ -55,10 +54,11 @@ export class WriteFileNodeCode extends AbstractNodeCode {
         }
 
         try {
+            const { storage, paths } = getPlatform();
             if (createDirs) {
-                mkdirSync(dirname(filePath), { recursive: true });
+                await storage.mkdir(paths.dirname(filePath), { recursive: true });
             }
-            writeFileSync(filePath, text, 'utf-8');
+            await storage.writeFile(filePath, text);
             return this.result(ResultStatus.OK, `Wrote ${text.length} chars to ${filePath}`);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);

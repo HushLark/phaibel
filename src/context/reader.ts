@@ -1,5 +1,4 @@
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getPlatform } from '../platform/index.js';
 import { debug } from '../utils/debug.js';
 import { getVaultRoot } from '../state/manager.js';
 
@@ -10,9 +9,10 @@ const VAULT_FILE = '.vault.md';
  * Returns the content or null if not found.
  */
 async function readVaultFile(dirPath: string): Promise<string | null> {
-    const vaultFilePath = path.join(dirPath, VAULT_FILE);
+    const { storage, paths } = getPlatform();
+    const vaultFilePath = paths.join(dirPath, VAULT_FILE);
     try {
-        return await fs.readFile(vaultFilePath, 'utf-8');
+        return await storage.readFile(vaultFilePath);
     } catch (err) {
         debug('context', err);
         return null;
@@ -27,8 +27,9 @@ export async function buildContextChain(targetPath: string): Promise<string[]> {
     const vaultRoot = await getVaultRoot();
     const contexts: string[] = [];
 
-    let currentPath = path.resolve(targetPath);
-    const rootPath = path.resolve(vaultRoot);
+    const { paths } = getPlatform();
+    let currentPath = paths.resolve(targetPath);
+    const rootPath = paths.resolve(vaultRoot);
 
     // Walk up the directory tree
     while (currentPath.startsWith(rootPath)) {
@@ -38,7 +39,7 @@ export async function buildContextChain(targetPath: string): Promise<string[]> {
         }
 
         // Move to parent
-        const parentPath = path.dirname(currentPath);
+        const parentPath = paths.dirname(currentPath);
         if (parentPath === currentPath) {
             break; // Reached filesystem root
         }
@@ -96,7 +97,7 @@ export async function getSubdirectoryContext(subdirectory: string): Promise<stri
     // Define the hierarchy from root to subdirectory (broadest to most specific)
     const hierarchy = [
         vaultRoot,                                              // .vault.md
-        path.join(vaultRoot, subdirectory),                     // {subdirectory}/.vault.md
+        getPlatform().paths.join(vaultRoot, subdirectory),       // {subdirectory}/.vault.md
     ];
 
     for (const dirPath of hierarchy) {

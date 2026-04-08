@@ -8,8 +8,7 @@
 // Falls back to legacy entity-types.json if context-types/ doesn't exist.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getPlatform } from '../platform/index.js';
 import matter from 'gray-matter';
 import { getContextTypesDir, getContextTypeMappingPath } from '../paths.js';
 import { findFoundationRoot } from '../state/manager.js';
@@ -38,22 +37,27 @@ export async function loadContextTypesFromStore(): Promise<EntityTypeConfig[] | 
     const root = await findFoundationRoot();
     if (!root) return null;
 
-    const ctDir = path.join(root, 'context-types');
+    const { storage, paths } = getPlatform();
+    const ctDir = paths.join(root, 'context-types');
     try {
-        const entries = await fs.readdir(ctDir, { withFileTypes: true });
+        const entries = await storage.readdir(ctDir);
         const types: EntityTypeConfig[] = [];
 
         for (const entry of entries) {
-            if (!entry.isDirectory()) continue;
-
-            const phaibelMd = path.join(ctDir, entry.name, '.phaibel.md');
+            // Check if entry is a directory
             try {
-                const raw = await fs.readFile(phaibelMd, 'utf-8');
+                const st = await storage.stat(paths.join(ctDir, entry));
+                if (!st.isDirectory) continue;
+            } catch { continue; }
+
+            const phaibelMd = paths.join(ctDir, entry, '.phaibel.md');
+            try {
+                const raw = await storage.readFile(phaibelMd);
                 const { data } = matter(raw);
                 const config = data as EntityTypeConfig;
                 // Ensure directory is set correctly
-                config.directory = `context-types/${entry.name}`;
-                if (!config.name) config.name = entry.name;
+                config.directory = `context-types/${entry}`;
+                if (!config.name) config.name = entry;
                 if (!config.fields) config.fields = [];
                 types.push(config);
             } catch {
@@ -78,8 +82,9 @@ export async function writeContextType(config: EntityTypeConfig): Promise<void> 
     const root = await findFoundationRoot();
     if (!root) throw new Error('No foundation found');
 
-    const typeDir = path.join(root, 'context-types', config.name);
-    await fs.mkdir(typeDir, { recursive: true });
+    const { storage, paths } = getPlatform();
+    const typeDir = paths.join(root, 'context-types', config.name);
+    await storage.mkdir(typeDir, { recursive: true });
 
     // Write .phaibel.md — type schema and description
     const fieldLines = config.fields.map(f => {
@@ -125,15 +130,15 @@ ${completionNote}
     if (config.calendarDateField) meta.calendarDateField = config.calendarDateField;
 
     const phaibelMd = matter.stringify(body, meta);
-    await fs.writeFile(path.join(typeDir, '.phaibel.md'), phaibelMd);
+    await storage.writeFile(paths.join(typeDir, '.phaibel.md'), phaibelMd);
 
     // Write .phaibel-examples.md if it doesn't exist
-    const examplesPath = path.join(typeDir, '.phaibel-examples.md');
+    const examplesPath = paths.join(typeDir, '.phaibel-examples.md');
     try {
-        await fs.access(examplesPath);
+        await storage.access(examplesPath);
     } catch {
         const examples = generateExamples(config);
-        await fs.writeFile(examplesPath, examples);
+        await storage.writeFile(examplesPath, examples);
     }
 
     debug('context-type-store', `Wrote context type: ${config.name}`);
@@ -152,7 +157,7 @@ export async function writeMappingIndex(types: EntityTypeConfig[]): Promise<void
             directory: `context-types/${t.name}`,
         })),
     };
-    await fs.writeFile(mappingPath, JSON.stringify(mapping, null, 2));
+    await getPlatform().storage.writeFile(mappingPath, JSON.stringify(mapping, null, 2));
 }
 
 /**
@@ -160,7 +165,7 @@ export async function writeMappingIndex(types: EntityTypeConfig[]): Promise<void
  */
 export async function writeAllContextTypes(types: EntityTypeConfig[]): Promise<void> {
     const ctDir = await getContextTypesDir();
-    await fs.mkdir(ctDir, { recursive: true });
+    await getPlatform().storage.mkdir(ctDir, { recursive: true });
 
     for (const t of types) {
         await writeContextType(t);
@@ -174,8 +179,19 @@ export async function writeAllContextTypes(types: EntityTypeConfig[]): Promise<v
 export async function removeContextTypeDir(name: string): Promise<void> {
     const root = await findFoundationRoot();
     if (!root) throw new Error('No foundation found');
-    const typeDir = path.join(root, 'context-types', name);
-    await fs.rm(typeDir, { recursive: true, force: true });
+    const { storage, paths } = getPlatform();
+    const typeDir = paths.join(root, 'context-types', name);
+    // Remove all files in the directory, then the directory itself
+    try {
+        const entries = await storage.readdir(typeDir);
+        for (const entry of entries) {
+            await storage.unlink(paths.join(typeDir, entry));
+        }
+        // Remove the now-empty directory by unlinking it
+        await storage.unlink(typeDir);
+    } catch {
+        // Directory doesn't exist — nothing to remove
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
