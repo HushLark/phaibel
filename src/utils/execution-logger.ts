@@ -2,8 +2,7 @@
 // Execution Logger — per-execution JSON logs for process learning
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getPlatform } from '../platform/index.js';
 import { getLogsDir } from '../paths.js';
 
 export interface ExecutionLog {
@@ -23,12 +22,13 @@ export interface ExecutionLog {
  * Write a single execution log as a JSON file to {vault}/.phaibel/logs/.
  */
 export async function writeExecutionLog(log: ExecutionLog): Promise<void> {
+    const { storage, paths } = getPlatform();
     const dir = await getLogsDir();
-    await fs.mkdir(dir, { recursive: true });
+    await storage.mkdir(dir, { recursive: true });
 
     const filename = `${log.chat_id}.exec.json`;
-    await fs.writeFile(
-        path.join(dir, filename),
+    await storage.writeFile(
+        paths.join(dir, filename),
         JSON.stringify(log, null, 2),
     );
 }
@@ -37,10 +37,11 @@ export async function writeExecutionLog(log: ExecutionLog): Promise<void> {
  * Read recent execution logs from the vault, filtered by age.
  */
 export async function readRecentExecutionLogs(maxAgeDays = 7): Promise<ExecutionLog[]> {
+    const { storage, paths } = getPlatform();
     const dir = await getLogsDir();
     let files: string[];
     try {
-        files = await fs.readdir(dir);
+        files = await storage.readdir(dir);
     } catch {
         return [];
     }
@@ -51,7 +52,7 @@ export async function readRecentExecutionLogs(maxAgeDays = 7): Promise<Execution
     for (const file of files) {
         if (!file.endsWith('.exec.json')) continue;
         try {
-            const raw = await fs.readFile(path.join(dir, file), 'utf-8');
+            const raw = await storage.readFile(paths.join(dir, file));
             const log = JSON.parse(raw) as ExecutionLog;
             if (new Date(log.timestamp) >= cutoff) {
                 logs.push(log);

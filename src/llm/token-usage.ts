@@ -5,8 +5,7 @@
 // Auto-prunes to 30 days. Provides query functions for per-model and aggregate.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getPlatform } from '../platform/index.js';
 import { getVaultConfigDir } from '../paths.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,7 +41,7 @@ const MAX_DAYS = 30;
 
 async function getUsagePath(): Promise<string> {
     const dir = await getVaultConfigDir();
-    return path.join(dir, 'token-usage.json');
+    return getPlatform().paths.join(dir, 'token-usage.json');
 }
 
 let _cache: UsageData | null = null;
@@ -50,7 +49,7 @@ let _cache: UsageData | null = null;
 async function loadUsage(): Promise<UsageData> {
     if (_cache) return _cache;
     try {
-        const raw = await fs.readFile(await getUsagePath(), 'utf-8');
+        const raw = await getPlatform().storage.readFile(await getUsagePath());
         _cache = JSON.parse(raw) as UsageData;
         return _cache;
     } catch {
@@ -60,9 +59,10 @@ async function loadUsage(): Promise<UsageData> {
 }
 
 async function saveUsage(data: UsageData): Promise<void> {
+    const { storage } = getPlatform();
     const dir = await getVaultConfigDir();
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(await getUsagePath(), JSON.stringify(data, null, 2));
+    await storage.mkdir(dir, { recursive: true });
+    await storage.writeFile(await getUsagePath(), JSON.stringify(data, null, 2));
     _cache = data;
 }
 

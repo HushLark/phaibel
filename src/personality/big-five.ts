@@ -11,8 +11,7 @@
 //   Extraversion · Conscientiousness · Agreeableness · Openness · Emotional Stability
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { promises as fs } from 'fs';
-import path from 'path';
+import { getPlatform } from '../platform/index.js';
 import { getVaultConfigDir } from '../paths.js';
 import { debug } from '../utils/debug.js';
 
@@ -70,11 +69,11 @@ const DEFAULT_SCORES: BigFiveScores = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function getProfilePath(): Promise<string> {
-    return path.join(await getVaultConfigDir(), 'personality-profile.json');
+    return getPlatform().paths.join(await getVaultConfigDir(), 'personality-profile.json');
 }
 
 async function getSamplesPath(): Promise<string> {
-    return path.join(await getVaultConfigDir(), 'personality-samples.jsonl');
+    return getPlatform().paths.join(await getVaultConfigDir(), 'personality-samples.jsonl');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -83,7 +82,7 @@ async function getSamplesPath(): Promise<string> {
 
 export async function loadProfile(): Promise<BigFiveProfile | null> {
     try {
-        const raw = await fs.readFile(await getProfilePath(), 'utf-8');
+        const raw = await getPlatform().storage.readFile(await getProfilePath());
         return JSON.parse(raw) as BigFiveProfile;
     } catch {
         return null;
@@ -91,15 +90,20 @@ export async function loadProfile(): Promise<BigFiveProfile | null> {
 }
 
 async function saveProfile(profile: BigFiveProfile): Promise<void> {
+    const { storage } = getPlatform();
     const dir = await getVaultConfigDir();
-    await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(await getProfilePath(), JSON.stringify(profile, null, 2));
+    await storage.mkdir(dir, { recursive: true });
+    await storage.writeFile(await getProfilePath(), JSON.stringify(profile, null, 2));
 }
 
 async function appendSample(sample: BigFiveSample): Promise<void> {
+    const { storage } = getPlatform();
     const dir = await getVaultConfigDir();
-    await fs.mkdir(dir, { recursive: true });
-    await fs.appendFile(await getSamplesPath(), JSON.stringify(sample) + '\n');
+    await storage.mkdir(dir, { recursive: true });
+    const samplesPath = await getSamplesPath();
+    let existing = '';
+    try { existing = await storage.readFile(samplesPath); } catch { /* new file */ }
+    await storage.writeFile(samplesPath, existing + JSON.stringify(sample) + '\n');
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

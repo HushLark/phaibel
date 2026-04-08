@@ -5,11 +5,8 @@
 // Each chat session gets its own file: {vault}/.phaibel/logs/<chatId>.log
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createWriteStream, type WriteStream } from 'fs';
-import { promises as fs } from 'fs';
-import crypto from 'crypto';
+import { getPlatform } from '../platform/index.js';
 import { getLogsDir } from '../paths.js';
-import path from 'path';
 
 export type ChatLogType =
     | 'start'
@@ -27,14 +24,15 @@ export type ChatLogType =
  * Generate a short chat ID like `chat-a3f2b1`.
  */
 export function generateChatId(): string {
-    return 'chat-' + crypto.randomBytes(3).toString('hex');
+    return 'chat-' + getPlatform().generateId(6);
 }
 
 export class ChatLogger {
-    private stream: WriteStream | null = null;
+    private logFile: string | null = null;
     private initPromise: Promise<void> | null = null;
     private initFailed = false;
     private _chatId: string;
+    private buffer: string[] = [];
 
     constructor(chatId: string) {
         this._chatId = chatId;
@@ -50,7 +48,7 @@ export class ChatLogger {
     async log(type: ChatLogType, data: Record<string, unknown>): Promise<void> {
         if (this.initFailed) return;
 
-        if (!this.stream) {
+        if (!this.logFile) {
             if (!this.initPromise) {
                 this.initPromise = this.init();
             }
@@ -68,24 +66,39 @@ export class ChatLogger {
             data,
         });
 
-        this.stream!.write(line + '\n');
+        this.buffer.push(line);
+        await this.flush();
     }
 
     /**
-     * Flush and close the write stream.
+     * Flush buffer and close.
      */
     close(): void {
-        if (this.stream) {
-            this.stream.end();
-            this.stream = null;
+        // Fire-and-forget final flush
+        if (this.buffer.length > 0 && this.logFile) {
+            this.flush().catch(() => {});
+        }
+    }
+
+    private async flush(): Promise<void> {
+        if (this.buffer.length === 0 || !this.logFile) return;
+        const { storage } = getPlatform();
+        const lines = this.buffer.splice(0);
+        try {
+            // Read existing content and append
+            let existing = '';
+            try { existing = await storage.readFile(this.logFile); } catch { /* new file */ }
+            await storage.writeFile(this.logFile, existing + lines.join('\n') + '\n');
+        } catch {
+            // Logging should never crash the app
         }
     }
 
     private async init(): Promise<void> {
+        const { storage, paths } = getPlatform();
         const logsDir = await getLogsDir();
-        await fs.mkdir(logsDir, { recursive: true });
-        const logFile = path.join(logsDir, `${this._chatId}.log`);
-        this.stream = createWriteStream(logFile, { flags: 'a' });
+        await storage.mkdir(logsDir, { recursive: true });
+        this.logFile = paths.join(logsDir, `${this._chatId}.log`);
     }
 }
 
@@ -98,15 +111,18 @@ export async function appendReaction(
     reaction: 'positive' | 'negative',
     details?: string,
 ): Promise<void> {
+    const { storage, paths } = getPlatform();
     const logsDir = await getLogsDir();
-    await fs.mkdir(logsDir, { recursive: true });
-    const logFile = path.join(logsDir, `${chatId}.log`);
+    await storage.mkdir(logsDir, { recursive: true });
+    const logFile = paths.join(logsDir, `${chatId}.log`);
     const line = JSON.stringify({
         ts: new Date().toISOString(),
         type: 'reaction',
         data: { reaction, details: details || null },
     });
-    await fs.appendFile(logFile, line + '\n');
+    let existing = '';
+    try { existing = await storage.readFile(logFile); } catch { /* new file */ }
+    await storage.writeFile(logFile, existing + line + '\n');
 }
 
 /**
@@ -121,13 +137,16 @@ export async function appendJudgement(
         reasoning: string;
     },
 ): Promise<void> {
+    const { storage, paths } = getPlatform();
     const logsDir = await getLogsDir();
-    await fs.mkdir(logsDir, { recursive: true });
-    const logFile = path.join(logsDir, `${chatId}.log`);
+    await storage.mkdir(logsDir, { recursive: true });
+    const logFile = paths.join(logsDir, `${chatId}.log`);
     const line = JSON.stringify({
         ts: new Date().toISOString(),
         type: 'judge',
         data: judgement,
     });
-    await fs.appendFile(logFile, line + '\n');
+    let existing = '';
+    try { existing = await storage.readFile(logFile); } catch { /* new file */ }
+    await storage.writeFile(logFile, existing + line + '\n');
 }
