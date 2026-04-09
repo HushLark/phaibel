@@ -15,7 +15,7 @@
 
 import chalk from 'chalk';
 import inquirer from 'inquirer';
-import { bootstrapFeral } from '../feral/bootstrap.js';
+import { bootstrapFeral, type BootstrapOptions } from '../feral/bootstrap.js';
 import { hydrateProcessFromString } from '../feral/process/process-json-hydrator.js';
 import type { ProcessSource } from '../feral/process/process-factory.js';
 import type { Process } from '../feral/process/process.js';
@@ -225,6 +225,7 @@ export async function feralChatHeadless(
     onQuestion?: (question: string, options?: string[]) => Promise<string>,
     onChatId?: (chatId: string) => void,
     history?: ChatHistoryEntry[],
+    platform?: BootstrapOptions['platform'],
 ): Promise<string> {
     const status = (s: string) => onStatus?.(s);
     const chatId = generateChatId();
@@ -235,7 +236,7 @@ export async function feralChatHeadless(
 
     status('Thinking…');
 
-    try { return await _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? []); }
+    try { return await _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? [], platform); }
     catch (error) {
         await logger.log('error', { message: error instanceof Error ? error.message : String(error) });
         throw error;
@@ -252,11 +253,12 @@ async function _feralChatHeadlessInner(
     logger: ChatLogger,
     chatId: string,
     history: ChatHistoryEntry[],
+    platform?: BootstrapOptions['platform'],
 ): Promise<string> {
     // ── Bootstrap Feral + load entity types + vault context ────────
     const inMemorySource = new InMemoryProcessSource();
     const [runtime, entityTypes, userName] = await Promise.all([
-        bootstrapFeral([inMemorySource]),
+        bootstrapFeral({ processSources: [inMemorySource], platform }),
         loadEntityTypes().catch(() => []),
         getUserName().catch(() => 'friend'),
     ]);
