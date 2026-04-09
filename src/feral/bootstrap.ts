@@ -24,7 +24,7 @@ import { FeralToolRegistry } from './feral-tool-registry.js';
 import type { ProcessSource } from './process/process-factory.js';
 import type { Process } from './process/process.js';
 
-// Built-in node codes
+// ── Cross-platform node codes (safe for both Node.js and mobile) ─────────
 import { StartNodeCode } from './node-code/flow/start-node-code.js';
 import { StopNodeCode } from './node-code/flow/stop-node-code.js';
 import { NoopNodeCode } from './node-code/flow/noop-node-code.js';
@@ -42,31 +42,19 @@ import { JsonDecodeNodeCode } from './node-code/data/json-decode-node-code.js';
 import { JsonEncodeNodeCode } from './node-code/data/json-encode-node-code.js';
 import { LogNodeCode } from './node-code/data/log-node-code.js';
 import { RandomValueNodeCode } from './node-code/data/random-value-node-code.js';
-import { ReadFileNodeCode } from './node-code/data/read-file-node-code.js';
 import { LlmChatNodeCode } from './node-code/data/llm-chat-node-code.js';
 import { CleanLlmJsonNodeCode } from './node-code/data/clean-llm-json-node-code.js';
 import { WeatherNodeCode } from './node-code/data/weather-node-code.js';
 import { QueryTokenUsageNodeCode } from './node-code/data/query-token-usage-node-code.js';
 import { ChartTokenUsageNodeCode } from './node-code/data/chart-token-usage-node-code.js';
-
-// Slack node codes
-import { SlackBlockBuilderNodeCode } from './node-code/slack/slack-block-builder-node-code.js';
-import { SlackPostWebhookNodeCode } from './node-code/slack/slack-post-webhook-node-code.js';
-import { SlackProcessSlashCommandNodeCode } from './node-code/slack/slack-process-slash-command-node-code.js';
-
-// Agent / GenAI node codes
 import { MergeStringsNodeCode } from './node-code/genai/merge-strings-node-code.js';
 import { DataSynthesisPrepNodeCode } from './node-code/genai/data-synthesis-prep-node-code.js';
-import { WriteFileNodeCode } from './node-code/genai/write-file-node-code.js';
 import { GenerateMarkdownNodeCode } from './node-code/genai/generate-markdown-node-code.js';
 import { GenerateHtmlNodeCode } from './node-code/genai/generate-html-node-code.js';
 import { WriteEntityNodeCode } from './node-code/genai/write-entity-node-code.js';
-import { WriteToRedisNodeCode } from './node-code/genai/write-to-redis-node-code.js';
 import { OpenAiNodeCode } from './node-code/genai/openai-node-code.js';
 import { ModelToOutputNodeCode } from './node-code/genai/model-to-output-node-code.js';
 import { HydrateModelNodeCode } from './node-code/genai/hydrate-model-node-code.js';
-
-// Entity node codes
 import { ListEntitiesNodeCode } from './node-code/context/list-entities-node-code.js';
 import { FindEntityNodeCode } from './node-code/context/find-entity-node-code.js';
 import { CreateEntityNodeCode } from './node-code/context/create-entity-node-code.js';
@@ -83,42 +71,18 @@ import { LoadVaultContextNodeCode } from './node-code/context/load-vault-context
 import { CreateRecurringTaskNodeCode } from './node-code/context/create-recurring-task-node-code.js';
 import { SearchEntitiesNodeCode } from './node-code/context/search-entities-node-code.js';
 import { LinkEntitiesNodeCode } from './node-code/context/link-entities-node-code.js';
-
-// Scheduler node codes
-import { ListSchedulerJobsNodeCode } from './node-code/scheduler/list-scheduler-jobs-node-code.js';
-import { ToggleSchedulerJobNodeCode } from './node-code/scheduler/toggle-scheduler-job-node-code.js';
-import { RunSchedulerJobNodeCode } from './node-code/scheduler/run-scheduler-job-node-code.js';
-
-// MCP & A2A node codes
-import { McpCallToolNodeCode } from './node-code/mcp/mcp-call-tool-node-code.js';
-import { A2ASendTaskNodeCode } from './node-code/a2a/a2a-send-task-node-code.js';
-import { PampSendNodeCode } from './node-code/pamp/pamp-send-node-code.js';
-import { PampCheckInboxNodeCode } from './node-code/pamp/pamp-check-inbox-node-code.js';
-import { PampShareEntityNodeCode } from './node-code/pamp/pamp-share-entity-node-code.js';
-import { PampAwaitReplyNodeCode } from './node-code/pamp/pamp-await-reply-node-code.js';
-
-// Catalog sources
-import { SlackCatalogSource } from './catalog/slack-catalog-source.js';
-import { AgentCatalogSource } from './catalog/agent-catalog-source.js';
-import { EntityCatalogSource } from './catalog/entity-catalog-source.js';
-import { SystemCatalogSource } from './catalog/system-catalog-source.js';
-import { OutputCatalogSource } from './catalog/output-catalog-source.js';
-import { IntrospectCatalogSource } from './catalog/introspect-catalog-source.js';
-import { PampCatalogSource } from './catalog/pamp-catalog-source.js';
-import { McpCatalogSource } from './catalog/mcp-catalog-source.js';
-import { A2ACatalogSource } from './catalog/a2a-catalog-source.js';
-import { UsageCatalogSource } from './catalog/usage-catalog-source.js';
-
-// System & output node codes
-import { CliCommandNodeCode } from './node-code/system/cli-command-node-code.js';
-import { IntrospectNodeCode } from './node-code/system/introspect-node-code.js';
-import { ListProcessesNodeCode } from './node-code/system/list-processes-node-code.js';
-import { ListCatalogNodesNodeCode } from './node-code/system/list-catalog-nodes-node-code.js';
 import { AgentSpeakNodeCode } from './node-code/output/agent-speak-node-code.js';
-
-// Input node codes
 import { PromptInputNodeCode } from './node-code/input/prompt-input-node-code.js';
 import { PromptSelectNodeCode } from './node-code/input/prompt-select-node-code.js';
+
+// ── Cross-platform catalog sources ───────────────────────────────────────
+import { EntityCatalogSource } from './catalog/entity-catalog-source.js';
+import { OutputCatalogSource } from './catalog/output-catalog-source.js';
+import { UsageCatalogSource } from './catalog/usage-catalog-source.js';
+
+// ── System node codes (cross-platform) ──────────────────────────────────
+import { ListProcessesNodeCode } from './node-code/system/list-processes-node-code.js';
+import { ListCatalogNodesNodeCode } from './node-code/system/list-catalog-nodes-node-code.js';
 
 // Process sources
 import { JsonProcessSource } from './process/json-process-source.js';
@@ -127,11 +91,16 @@ import { JsonProcessSource } from './process/json-process-source.js';
 import { loadEntityTypes } from '../entities/entity-type-config.js';
 import { getTrackedModels } from '../llm/token-usage.js';
 
+// ── Node-only imports are loaded dynamically in getNodeOnlyNodeCodes() ───
+// Slack, MCP, A2A, PAMP, Scheduler, CLI, Introspect, ReadFile, WriteFile,
+// WriteToRedis — these transitively depend on Node.js built-ins and must
+// NOT be statically imported so Metro (Expo) doesn't trace them.
+
 /**
- * All built-in NodeCode instances.
+ * Cross-platform NodeCode instances (safe for both Node.js and mobile).
  */
-function getBuiltInNodeCodes(mobile = false): NodeCode[] {
-    const codes: NodeCode[] = [
+function getCrossPlatformNodeCodes(): NodeCode[] {
+    return [
         // Flow
         new StartNodeCode(),
         new StopNodeCode(),
@@ -188,37 +157,103 @@ function getBuiltInNodeCodes(mobile = false): NodeCode[] {
         new PromptInputNodeCode(),
         new PromptSelectNodeCode(),
     ];
+}
 
-    if (!mobile) {
-        // Node.js-only node codes
-        codes.push(
-            new ReadFileNodeCode(),
-            new WriteFileNodeCode(),
-            new WriteToRedisNodeCode(),
-            // Slack
-            new SlackBlockBuilderNodeCode(),
-            new SlackPostWebhookNodeCode(),
-            new SlackProcessSlashCommandNodeCode(),
-            // System
-            new CliCommandNodeCode(),
-            new IntrospectNodeCode(),
-            // PAMP
-            new PampSendNodeCode(),
-            new PampCheckInboxNodeCode(),
-            new PampShareEntityNodeCode(),
-            new PampAwaitReplyNodeCode(),
-            // Scheduler
-            new ListSchedulerJobsNodeCode(),
-            new ToggleSchedulerJobNodeCode(),
-            new RunSchedulerJobNodeCode(),
-            // MCP
-            new McpCallToolNodeCode(),
-            // A2A
-            new A2ASendTaskNodeCode(),
-        );
-    }
+/**
+ * Node.js-only NodeCode instances. Uses dynamic imports to avoid pulling
+ * Node.js dependencies into the Metro bundle on mobile.
+ */
+async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
+    const [
+        { ReadFileNodeCode },
+        { WriteFileNodeCode },
+        { WriteToRedisNodeCode },
+        { SlackBlockBuilderNodeCode },
+        { SlackPostWebhookNodeCode },
+        { SlackProcessSlashCommandNodeCode },
+        { CliCommandNodeCode },
+        { IntrospectNodeCode },
+        { PampSendNodeCode },
+        { PampCheckInboxNodeCode },
+        { PampShareEntityNodeCode },
+        { PampAwaitReplyNodeCode },
+        { ListSchedulerJobsNodeCode },
+        { ToggleSchedulerJobNodeCode },
+        { RunSchedulerJobNodeCode },
+        { McpCallToolNodeCode },
+        { A2ASendTaskNodeCode },
+    ] = await Promise.all([
+        import('./node-code/data/read-file-node-code.js'),
+        import('./node-code/genai/write-file-node-code.js'),
+        import('./node-code/genai/write-to-redis-node-code.js'),
+        import('./node-code/slack/slack-block-builder-node-code.js'),
+        import('./node-code/slack/slack-post-webhook-node-code.js'),
+        import('./node-code/slack/slack-process-slash-command-node-code.js'),
+        import('./node-code/system/cli-command-node-code.js'),
+        import('./node-code/system/introspect-node-code.js'),
+        import('./node-code/pamp/pamp-send-node-code.js'),
+        import('./node-code/pamp/pamp-check-inbox-node-code.js'),
+        import('./node-code/pamp/pamp-share-entity-node-code.js'),
+        import('./node-code/pamp/pamp-await-reply-node-code.js'),
+        import('./node-code/scheduler/list-scheduler-jobs-node-code.js'),
+        import('./node-code/scheduler/toggle-scheduler-job-node-code.js'),
+        import('./node-code/scheduler/run-scheduler-job-node-code.js'),
+        import('./node-code/mcp/mcp-call-tool-node-code.js'),
+        import('./node-code/a2a/a2a-send-task-node-code.js'),
+    ]);
 
-    return codes;
+    return [
+        new ReadFileNodeCode(),
+        new WriteFileNodeCode(),
+        new WriteToRedisNodeCode(),
+        new SlackBlockBuilderNodeCode(),
+        new SlackPostWebhookNodeCode(),
+        new SlackProcessSlashCommandNodeCode(),
+        new CliCommandNodeCode(),
+        new IntrospectNodeCode(),
+        new PampSendNodeCode(),
+        new PampCheckInboxNodeCode(),
+        new PampShareEntityNodeCode(),
+        new PampAwaitReplyNodeCode(),
+        new ListSchedulerJobsNodeCode(),
+        new ToggleSchedulerJobNodeCode(),
+        new RunSchedulerJobNodeCode(),
+        new McpCallToolNodeCode(),
+        new A2ASendTaskNodeCode(),
+    ];
+}
+
+/**
+ * Node.js-only catalog sources. Uses dynamic imports for the same reason.
+ */
+async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown[]) {
+    const [
+        { SlackCatalogSource },
+        { AgentCatalogSource },
+        { SystemCatalogSource },
+        { IntrospectCatalogSource },
+        { PampCatalogSource },
+        { McpCatalogSource },
+        { A2ACatalogSource },
+    ] = await Promise.all([
+        import('./catalog/slack-catalog-source.js'),
+        import('./catalog/agent-catalog-source.js'),
+        import('./catalog/system-catalog-source.js'),
+        import('./catalog/introspect-catalog-source.js'),
+        import('./catalog/pamp-catalog-source.js'),
+        import('./catalog/mcp-catalog-source.js'),
+        import('./catalog/a2a-catalog-source.js'),
+    ]);
+
+    return [
+        new SlackCatalogSource(),
+        new AgentCatalogSource(),
+        new SystemCatalogSource(),
+        new IntrospectCatalogSource(),
+        new PampCatalogSource(),
+        new McpCatalogSource(mcpTools as any),
+        new A2ACatalogSource(a2aAgents as any),
+    ];
 }
 
 /**
@@ -256,9 +291,14 @@ export async function bootstrapFeral(
         : processSourcesOrOpts;
     const processSources = opts.processSources ?? [];
     const isMobile = opts.platform === 'mobile';
-    // 1. NodeCode factory
+
+    // 1. NodeCode factory — start with cross-platform codes
+    const allNodeCodes = getCrossPlatformNodeCodes();
+    if (!isMobile) {
+        allNodeCodes.push(...await getNodeOnlyNodeCodes());
+    }
     const nodeCodeFactory = new NodeCodeFactory([
-        { getNodeCodes: () => getBuiltInNodeCodes(isMobile) },
+        { getNodeCodes: () => allNodeCodes },
     ]);
 
     // 2. Load catalog config, entity types, and optionally MCP/A2A (parallel)
@@ -287,15 +327,7 @@ export async function bootstrapFeral(
         new UsageCatalogSource(trackedModels),
     ];
     if (!isMobile) {
-        catalogSources.push(
-            new SlackCatalogSource(),
-            new AgentCatalogSource(),
-            new SystemCatalogSource(),
-            new IntrospectCatalogSource(),
-            new PampCatalogSource(),
-            new McpCatalogSource(mcpTools as any),
-            new A2ACatalogSource(a2aAgents as any),
-        );
+        catalogSources.push(...await getNodeOnlyCatalogSources(mcpTools, a2aAgents));
     }
     const catalog = new Catalog(catalogSources);
 
