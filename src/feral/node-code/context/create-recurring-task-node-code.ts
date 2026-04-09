@@ -22,7 +22,7 @@ import {
 import { getEntityType } from '../../../entities/entity-type-config.js';
 import { getEntityIndex } from '../../../entities/entity-index.js';
 import { spawn, type ParsedEntity } from '../../../entities/spawner.js';
-import { ensureRecurrenceType } from '../../../commands/recurrence.js';
+import { ensureRecurrenceType } from '../../../entities/recurrence-type.js';
 
 export class CreateRecurringTaskNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [
