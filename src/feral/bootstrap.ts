@@ -130,8 +130,8 @@ import { getTrackedModels } from '../llm/token-usage.js';
 /**
  * All built-in NodeCode instances.
  */
-function getBuiltInNodeCodes(): NodeCode[] {
-    return [
+function getBuiltInNodeCodes(mobile = false): NodeCode[] {
+    const codes: NodeCode[] = [
         // Flow
         new StartNodeCode(),
         new StopNodeCode(),
@@ -151,24 +151,17 @@ function getBuiltInNodeCodes(): NodeCode[] {
         new JsonEncodeNodeCode(),
         new LogNodeCode(),
         new RandomValueNodeCode(),
-        new ReadFileNodeCode(),
         new LlmChatNodeCode(),
         new CleanLlmJsonNodeCode(),
         new WeatherNodeCode(),
         new QueryTokenUsageNodeCode(),
         new ChartTokenUsageNodeCode(),
-        // Slack
-        new SlackBlockBuilderNodeCode(),
-        new SlackPostWebhookNodeCode(),
-        new SlackProcessSlashCommandNodeCode(),
         // Agent / GenAI
         new MergeStringsNodeCode(),
         new DataSynthesisPrepNodeCode(),
-        new WriteFileNodeCode(),
         new GenerateMarkdownNodeCode(),
         new GenerateHtmlNodeCode(),
         new WriteEntityNodeCode(),
-        new WriteToRedisNodeCode(),
         new OpenAiNodeCode(),
         new ModelToOutputNodeCode(),
         new HydrateModelNodeCode(),
@@ -189,27 +182,43 @@ function getBuiltInNodeCodes(): NodeCode[] {
         new CreateRecurringTaskNodeCode(),
         new SearchEntitiesNodeCode(),
         new LinkEntitiesNodeCode(),
-        // System & output
-        new CliCommandNodeCode(),
-        new IntrospectNodeCode(),
+        // Output
         new AgentSpeakNodeCode(),
         // Input
         new PromptInputNodeCode(),
         new PromptSelectNodeCode(),
-        // PAMP
-        new PampSendNodeCode(),
-        new PampCheckInboxNodeCode(),
-        new PampShareEntityNodeCode(),
-        new PampAwaitReplyNodeCode(),
-        // Scheduler
-        new ListSchedulerJobsNodeCode(),
-        new ToggleSchedulerJobNodeCode(),
-        new RunSchedulerJobNodeCode(),
-        // MCP
-        new McpCallToolNodeCode(),
-        // A2A
-        new A2ASendTaskNodeCode(),
     ];
+
+    if (!mobile) {
+        // Node.js-only node codes
+        codes.push(
+            new ReadFileNodeCode(),
+            new WriteFileNodeCode(),
+            new WriteToRedisNodeCode(),
+            // Slack
+            new SlackBlockBuilderNodeCode(),
+            new SlackPostWebhookNodeCode(),
+            new SlackProcessSlashCommandNodeCode(),
+            // System
+            new CliCommandNodeCode(),
+            new IntrospectNodeCode(),
+            // PAMP
+            new PampSendNodeCode(),
+            new PampCheckInboxNodeCode(),
+            new PampShareEntityNodeCode(),
+            new PampAwaitReplyNodeCode(),
+            // Scheduler
+            new ListSchedulerJobsNodeCode(),
+            new ToggleSchedulerJobNodeCode(),
+            new RunSchedulerJobNodeCode(),
+            // MCP
+            new McpCallToolNodeCode(),
+            // A2A
+            new A2ASendTaskNodeCode(),
+        );
+    }
+
+    return codes;
 }
 
 /**
@@ -226,6 +235,12 @@ export interface FeralRuntime {
     readonly vaultProcesses: Process[];
 }
 
+export interface BootstrapOptions {
+    processSources?: ProcessSource[];
+    /** 'node' (default) includes all node codes; 'mobile' excludes CLI, Slack, MCP, A2A, PAMP, Scheduler, raw file I/O */
+    platform?: 'node' | 'mobile';
+}
+
 /**
  * Bootstrap the full Feral runtime:
  * 1. Creates NodeCodeFactory with all built-in node codes
@@ -234,39 +249,55 @@ export interface FeralRuntime {
  * 4. Wires EventDispatcher, ProcessEngine, ProcessFactory, Runner
  */
 export async function bootstrapFeral(
-    processSources: ProcessSource[] = [],
+    processSourcesOrOpts: ProcessSource[] | BootstrapOptions = [],
 ): Promise<FeralRuntime> {
+    const opts: BootstrapOptions = Array.isArray(processSourcesOrOpts)
+        ? { processSources: processSourcesOrOpts }
+        : processSourcesOrOpts;
+    const processSources = opts.processSources ?? [];
+    const isMobile = opts.platform === 'mobile';
     // 1. NodeCode factory
     const nodeCodeFactory = new NodeCodeFactory([
-        { getNodeCodes: () => getBuiltInNodeCodes() },
+        { getNodeCodes: () => getBuiltInNodeCodes(isMobile) },
     ]);
 
-    // 2. Load catalog config, entity types, MCP tools, and A2A agents (parallel — independent)
-    const { mcpManager } = await import('../skills/mcp-manager.js');
-    const { a2aClient } = await import('../agents/a2a-client.js');
-    const [catalogConfig, entityTypes, mcpTools, a2aAgents, trackedModels] = await Promise.all([
+    // 2. Load catalog config, entity types, and optionally MCP/A2A (parallel)
+    let mcpTools: unknown[] = [];
+    let a2aAgents: unknown[] = [];
+    if (!isMobile) {
+        const { mcpManager } = await import('../skills/mcp-manager.js');
+        const { a2aClient } = await import('../agents/a2a-client.js');
+        [mcpTools, a2aAgents] = await Promise.all([
+            mcpManager.discoverAllTools(),
+            a2aClient.discoverAllAgents(),
+        ]);
+    }
+    const [catalogConfig, entityTypes, trackedModels] = await Promise.all([
         loadFeralCatalogConfig(),
         loadEntityTypes(),
-        mcpManager.discoverAllTools(),
-        a2aClient.discoverAllAgents(),
         getTrackedModels(),
     ]);
 
-    // 3. Build catalog from all sources
-    const catalog = new Catalog([
+    // 3. Build catalog from sources (skip Node-only sources on mobile)
+    const catalogSources = [
         new BuiltInCatalogSource(nodeCodeFactory),
         new JsonCatalogSource(catalogConfig),
-        new SlackCatalogSource(),
-        new AgentCatalogSource(),
         new EntityCatalogSource(entityTypes),
-        new SystemCatalogSource(),
         new OutputCatalogSource(),
-        new IntrospectCatalogSource(),
-        new PampCatalogSource(),
-        new McpCatalogSource(mcpTools),
-        new A2ACatalogSource(a2aAgents),
         new UsageCatalogSource(trackedModels),
-    ]);
+    ];
+    if (!isMobile) {
+        catalogSources.push(
+            new SlackCatalogSource(),
+            new AgentCatalogSource(),
+            new SystemCatalogSource(),
+            new IntrospectCatalogSource(),
+            new PampCatalogSource(),
+            new McpCatalogSource(mcpTools as any),
+            new A2ACatalogSource(a2aAgents as any),
+        );
+    }
+    const catalog = new Catalog(catalogSources);
 
     // 4. Load process definitions from {vault}/.phaibel/processes/
     const processDir = await getProcessesDir();
