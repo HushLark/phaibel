@@ -104,7 +104,9 @@ When the user makes a request, ${agentName} builds a process — a graph of oper
 
 ${personalityBlock}
 
-${_cachedBigFiveBlock ? _cachedBigFiveBlock + '\n' : ''}DATE & TIME HANDLING:
+${_cachedBigFiveBlock ? _cachedBigFiveBlock + '\n' : ''}TODAY: ${new Date().toLocaleDateString('en-CA')} (${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })})
+
+DATE & TIME HANDLING:
 - Dates use YYYY-MM-DD format (e.g. 2026-03-25)
 - Datetimes use ISO 8601 with timezone offset (e.g. 2026-03-25T14:00:00-06:00)
 - Always use the user's local timezone when creating events or mentioning times
