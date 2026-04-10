@@ -1,11 +1,13 @@
 import type { LLMProvider } from '../types.js';
 import { createClaudeProvider } from './claude.js';
+import { createDeepSeekProvider } from './deepseek.js';
 import { createOpenAIProvider } from './openai.js';
 
 const providers: Map<string, (modelId?: string) => LLMProvider> = new Map();
 
 // Register built-in providers
 providers.set('anthropic', createClaudeProvider);
+providers.set('deepseek', createDeepSeekProvider);
 providers.set('openai', createOpenAIProvider);
 
 export function registerProvider(
