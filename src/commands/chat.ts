@@ -175,6 +175,20 @@ const EXAMPLE_PROCESSES = [
         },
     },
     {
+        description: 'Create a task with fields (status, priority, dueDate) set via process context',
+        json: {
+            schema_version: 1,
+            key: 'task.create',
+            description: 'Create a task to buy groceries due today',
+            context: { status: 'open', priority: 'medium', dueDate: '2026-04-09' },
+            nodes: [
+                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create' } },
+                { key: 'create', catalog_node_key: 'create_task', configuration: { entity_title: 'Buy groceries', entity_body: 'Pick up groceries from the store.', extra_fields: 'status,priority,dueDate' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
+                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
+            ],
+        },
+    },
+    {
         description: 'While loop: list tasks, iterate over each one, and use LLM to add a summary to each task body',
         json: {
             schema_version: 1,
