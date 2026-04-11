@@ -36,12 +36,14 @@ export class SearchEntitiesNodeCode extends AbstractNodeCode {
         const entityType = this.getOptionalConfigValue('entity_type') as EntityTypeName | null;
         const contextPath = this.getRequiredConfigValue('context_path', 'entities') as string;
 
-        // Resolve query from config (with interpolation) or context
+        // Resolve query from config (with interpolation), then context fallbacks
         let query = this.getOptionalConfigValue('query') as string | null;
         if (query) {
             query = this.interpolate(query, context);
         } else {
-            query = context.get('query') as string | null;
+            // Fallback chain: context 'query' → context 'user_input' (from chat pipeline)
+            query = (context.get('query') as string | null)
+                 ?? (context.get('user_input') as string | null);
         }
 
         const tagsRaw = this.getOptionalConfigValue('tags') as string | null;
