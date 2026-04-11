@@ -5,11 +5,19 @@
 import type { Context } from '../../context/context.js';
 import type { Result } from '../../result/result.js';
 import { ResultStatus } from '../../result/result.js';
+import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
 import type { Catalog } from '../../catalog/catalog.js';
 
 export class ListCatalogNodesNodeCode extends AbstractNodeCode {
+    static readonly configDescriptions: ConfigurationDescription[] = [
+        { key: 'context_path', name: 'Context Path', description: 'Context key to store the grouped catalog nodes.', type: 'string', isOptional: true, default: 'catalog_nodes' },
+        { key: 'group', name: 'Group Filter', description: 'Filter catalog nodes by group name.', type: 'string', isOptional: true },
+    ];
+    static readonly resultDescriptions: ResultDescription[] = [
+        { status: 'ok', description: 'Catalog nodes listed successfully.' },
+    ];
     private catalog: Catalog;
 
     constructor(catalog: Catalog) {

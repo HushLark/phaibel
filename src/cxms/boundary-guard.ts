@@ -25,21 +25,30 @@ export async function assertWithinFoundation(filepath: string): Promise<void> {
     if (!root) {
         throw new Error('No Foundation found — cannot verify boundary');
     }
-    assertWithinRoot(filepath, root);
+    await assertWithinRoot(filepath, root);
 }
 
 /**
- * Synchronous version when the root is already known.
- * Uses getPlatform().paths for cross-platform path resolution.
+ * Assert that a filepath is within a known root directory.
+ * Resolves symlinks (macOS: /var → /private/var) to avoid false violations.
  */
-export function assertWithinRoot(filepath: string, foundationRoot: string): void {
-    const { paths } = getPlatform();
+export async function assertWithinRoot(filepath: string, foundationRoot: string): Promise<void> {
+    const { paths, storage } = getPlatform();
 
-    // Resolve both paths to absolute form
-    const resolved = paths.resolve(filepath);
-    const rootResolved = paths.resolve(foundationRoot);
+    let resolved = paths.resolve(filepath);
+    let rootResolved = paths.resolve(foundationRoot);
 
-    // The resolved path must start with the root path + separator (or be the root itself)
+    // Resolve symlinks when possible to avoid /var vs /private/var mismatches
+    if (storage.realpath) {
+        try { rootResolved = await storage.realpath(rootResolved); } catch { /* ignore */ }
+        try { resolved = await storage.realpath(resolved); } catch {
+            // File may not exist yet — resolve its parent instead
+            const dir = paths.dirname(resolved);
+            const base = paths.basename(resolved);
+            try { resolved = paths.join(await storage.realpath(dir), base); } catch { /* keep original */ }
+        }
+    }
+
     if (resolved !== rootResolved && !resolved.startsWith(rootResolved + paths.sep)) {
         throw new BoundaryViolationError(filepath, foundationRoot);
     }
