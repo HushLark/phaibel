@@ -109,6 +109,11 @@ export async function loadEntityTypes(): Promise<EntityTypeConfig[]> {
                 saved.calendarDateField = builtin.calendarDateField;
                 dirty = true;
             }
+            if (saved.completionField === undefined && builtin.completionField) {
+                saved.completionField = builtin.completionField;
+                saved.completionValue = builtin.completionValue;
+                dirty = true;
+            }
             if (saved.spawner === undefined && builtin.spawner) {
                 saved.spawner = builtin.spawner;
                 dirty = true;

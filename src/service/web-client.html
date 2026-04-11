@@ -1562,6 +1562,7 @@ async function markTaskDone(checkEl) {
         const date = getValidDate(ci.date);
 
         if (ci.entityType === 'task') {
+          if (ci.meta.status === 'done') continue;
           const item = {
             kind: 'task',
             id: ci.id,
