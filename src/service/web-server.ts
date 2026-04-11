@@ -6,6 +6,7 @@ import http from 'http';
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createRequire } from 'module';
 import { WebSocketServer, WebSocket } from 'ws';
 import { listEntities, writeEntity, parseEntity, getEntityDir } from '../entities/entity.js';
 import { feralChatHeadless, type ChatHistoryEntry } from '../commands/chat.js';
@@ -542,7 +543,11 @@ export class WebServer {
             // No vault yet
         }
 
+        const require = createRequire(import.meta.url);
+        const pkg = require('../../package.json');
+
         return {
+            version: pkg.version,
             uptime: Math.round(process.uptime()),
             queueSize,
             graph: { nodes: graphNodes, edges: graphEdges },

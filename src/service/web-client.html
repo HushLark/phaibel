@@ -1289,6 +1289,7 @@
       <div class="stat"><span class="stat-label">Uptime</span><span class="stat-value" id="stat-uptime">--</span></div>
     </div>
     <div class="header-right">
+      <span id="header-version" style="font-size:11px;color:var(--dim);margin-right:12px"></span>
       <div class="ws-status" id="ws-status"><span class="dot"></span>Connected</div>
     </div>
   </div>
@@ -1722,9 +1723,11 @@ async function markTaskDone(checkEl) {
       statGraph.textContent = (data.graph ? data.graph.nodes + 'n / ' + data.graph.edges + 'e' : '--');
       statMem.textContent = (data.memory ? data.memory.rss + ' MB' : '--');
       statUptime.textContent = formatUptime(data.uptime || 0);
-      // Update agent name in header if available
       if (data.agentName) {
         document.getElementById('header-agent-name').textContent = data.agentName;
+      }
+      if (data.version) {
+        document.getElementById('header-version').textContent = 'v' + data.version;
       }
     } catch { /* ignore */ }
   }
