@@ -245,6 +245,11 @@ export async function feralChatHeadless(
     const chatId = generateChatId();
     const logger = new ChatLogger(chatId);
 
+    // Record chat in analytics (fire-and-forget)
+    import('../analytics/analytics-service.js')
+        .then(({ getAnalyticsService }) => getAnalyticsService().recordChat())
+        .catch(() => {});
+
     // Fire the chat ID callback immediately so callers can display/send it
     onChatId?.(chatId);
 

@@ -84,6 +84,7 @@ function prune(data: UsageData): UsageData {
 /**
  * Record token usage for a single LLM call.
  * Called by providers after each API call.
+ * Also feeds the analytics service for cost tracking.
  */
 export async function recordUsage(
     model: string,
@@ -102,6 +103,11 @@ export async function recordUsage(
 
     const pruned = prune(data);
     await saveUsage(pruned);
+
+    // Feed analytics (fire-and-forget)
+    import('../analytics/analytics-service.js')
+        .then(({ getAnalyticsService }) => getAnalyticsService().recordTokens(model, inputTokens, outputTokens))
+        .catch(() => {});
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

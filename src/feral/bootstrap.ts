@@ -83,6 +83,7 @@ import { UsageCatalogSource } from './catalog/usage-catalog-source.js';
 // ── System node codes (cross-platform) ──────────────────────────────────
 import { ListProcessesNodeCode } from './node-code/system/list-processes-node-code.js';
 import { ListCatalogNodesNodeCode } from './node-code/system/list-catalog-nodes-node-code.js';
+import { AnalyticsNodeCode } from './node-code/system/analytics-node-code.js';
 
 // Process sources
 import { JsonProcessSource } from './process/json-process-source.js';
@@ -151,6 +152,8 @@ function getCrossPlatformNodeCodes(): NodeCode[] {
         new CreateRecurringTaskNodeCode(),
         new SearchEntitiesNodeCode(),
         new LinkEntitiesNodeCode(),
+        // Analytics
+        new AnalyticsNodeCode(),
         // Output
         new AgentSpeakNodeCode(),
         // Input
@@ -232,6 +235,7 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         { AgentCatalogSource },
         { SystemCatalogSource },
         { IntrospectCatalogSource },
+        { AnalyticsCatalogSource },
         { PampCatalogSource },
         { McpCatalogSource },
         { A2ACatalogSource },
@@ -240,6 +244,7 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         import('./catalog/agent-catalog-source.js'),
         import('./catalog/system-catalog-source.js'),
         import('./catalog/introspect-catalog-source.js'),
+        import('./catalog/analytics-catalog-source.js'),
         import('./catalog/pamp-catalog-source.js'),
         import('./catalog/mcp-catalog-source.js'),
         import('./catalog/a2a-catalog-source.js'),
@@ -250,6 +255,7 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         new AgentCatalogSource(),
         new SystemCatalogSource(),
         new IntrospectCatalogSource(),
+        new AnalyticsCatalogSource(),
         new PampCatalogSource(),
         new McpCatalogSource(mcpTools as any),
         new A2ACatalogSource(a2aAgents as any),

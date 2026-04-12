@@ -176,6 +176,11 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
             await embeddingIndex.upsert(`${entityType}:${id}`, { title, tags, summary: summary ?? '', bodySnippet: '' });
         }
 
+        // Record in analytics (fire-and-forget)
+        import('../../../analytics/analytics-service.js')
+            .then(({ getAnalyticsService }) => getAnalyticsService().recordEntityCreated(entityType))
+            .catch(() => {});
+
         return this.result(ResultStatus.OK, `Created ${entityType} "${title}" at ${filepath}.`);
     }
 }

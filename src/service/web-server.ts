@@ -19,6 +19,7 @@ import { handleApiRoute } from './api-router.js';
 import { handleCxRoute } from '../cxms/cx-router.js';
 import { handlePiRoute } from '../introspection/pi-router.js';
 import { handleFccfRoute } from '../feral/fccf-router.js';
+import { handleAnalyticsRoute } from '../analytics/analytics-router.js';
 import { logAccess } from '../cxms/access-log.js';
 import { debug } from '../utils/debug.js';
 import { transcribeAudio } from '../llm/transcribe.js';
@@ -170,6 +171,12 @@ export class WebServer {
         // ── Phaibel Introspection API (/pi/*) ────────────────────────
         if (url.pathname.startsWith('/pi/')) {
             const handled = await handlePiRoute(req, res, url);
+            if (handled) return;
+        }
+
+        // ── Analytics API (/analytics/*) ───────────────────────────
+        if (url.pathname.startsWith('/analytics/')) {
+            const handled = await handleAnalyticsRoute(req, res, url);
             if (handled) return;
         }
 
