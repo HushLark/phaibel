@@ -17,7 +17,7 @@ import { getCronScheduler, loadCronConfig, saveCronConfig } from './cron/schedul
 import { loadCalConfig, saveCalConfig } from '../commands/cal.js';
 import { handleApiRoute } from './api-router.js';
 import { handleCxRoute } from '../cxms/cx-router.js';
-import { handlePiRoute } from '../pi/pi-router.js';
+import { handlePiRoute } from '../introspection/pi-router.js';
 import { handleFccfRoute } from '../feral/fccf-router.js';
 import { logAccess } from '../cxms/access-log.js';
 import { debug } from '../utils/debug.js';

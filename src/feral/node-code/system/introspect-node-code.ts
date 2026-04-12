@@ -4,6 +4,7 @@
 //
 // Lets Feral processes query the agent's own configuration without leaking secrets.
 // The `target` config param selects which slice of settings to load.
+// All data is fetched through the IntrospectionService.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Context } from '../../context/context.js';
@@ -12,14 +13,19 @@ import { ResultStatus } from '../../result/result.js';
 import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
+import { IntrospectionService } from '../../../introspection/introspection-service.js';
 
-import { loadState, findVaultRoot } from '../../../state/manager.js';
-import { getConfiguredProviders, getEffectiveConfig } from '../../../config.js';
-import { getDaemonStatus } from '../../../service/daemon.js';
-import { loadCronConfig } from '../../../service/cron/scheduler.js';
-
-const VALID_TARGETS = ['user_profile', 'providers', 'capabilities', 'service', 'vault', 'cron_schedule'] as const;
+const VALID_TARGETS = [
+    'user_profile', 'agent', 'personality', 'big_five',
+    'providers', 'capabilities', 'settings',
+    'service', 'vault', 'cron_schedule',
+    'entity_types', 'entity_stats',
+    'queue', 'token_usage',
+    'mcp_skills', 'a2a_agents', 'recent_chats',
+] as const;
 type IntrospectTarget = (typeof VALID_TARGETS)[number];
+
+const service = new IntrospectionService();
 
 export class IntrospectNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [
@@ -47,7 +53,7 @@ export class IntrospectNodeCode extends AbstractNodeCode {
         super(
             'introspect',
             'Introspect',
-            'Queries the agent\'s own configuration — user profile, providers, capabilities, service status, or vault info.',
+            'Queries the agent\'s own configuration — user profile, agent profile, personality, providers, capabilities, settings, service status, vault info, entity types/stats, queue, token usage, MCP skills, A2A agents, or recent chats.',
             NodeCodeCategory.DATA,
         );
     }
@@ -72,48 +78,23 @@ export class IntrospectNodeCode extends AbstractNodeCode {
 
     private async loadTarget(target: IntrospectTarget): Promise<unknown> {
         switch (target) {
-            case 'user_profile': {
-                const state = await loadState();
-                return {
-                    userName: state.userName,
-                    gender: state.gender,
-                    workType: state.workType,
-                    familySituation: state.familySituation,
-                    hasCar: state.hasCar,
-                    cityLive: state.cityLive,
-                    cityWork: state.cityWork,
-                    lastUsed: state.lastUsed,
-                    interviewComplete: state.interviewComplete,
-                };
-            }
-
-            case 'providers': {
-                return await getConfiguredProviders();
-            }
-
-            case 'capabilities': {
-                return await getEffectiveConfig();
-            }
-
-            case 'service': {
-                const status = await getDaemonStatus();
-                return {
-                    running: status.running,
-                    pid: status.pid,
-                };
-            }
-
-            case 'vault': {
-                const root = await findVaultRoot();
-                return {
-                    root,
-                };
-            }
-
-            case 'cron_schedule': {
-                const config = await loadCronConfig();
-                return config.jobs;
-            }
+            case 'user_profile':   return service.getProfile();
+            case 'agent':          return service.getAgent();
+            case 'personality':    return service.getPersonality();
+            case 'big_five':       return service.getBigFive();
+            case 'providers':      return service.getProviders();
+            case 'capabilities':   return service.getCapabilities();
+            case 'settings':       return service.getSettings();
+            case 'service':        return service.getService();
+            case 'vault':          return service.getFoundation();
+            case 'cron_schedule':  return service.getCron();
+            case 'entity_types':   return service.getEntityTypes();
+            case 'entity_stats':   return service.getEntityStats();
+            case 'queue':          return service.getQueue();
+            case 'token_usage':    return service.getTokenUsage();
+            case 'mcp_skills':     return service.getMcpSkills();
+            case 'a2a_agents':     return service.getA2aAgents();
+            case 'recent_chats':   return service.getRecentChats();
         }
     }
 }

@@ -18,12 +18,20 @@ interface IntrospectEntry {
 }
 
 const INTROSPECT_NODES: IntrospectEntry[] = [
+    // ── Original entries ─────────────────────────────────────────────────
     {
         key: 'get_user_profile',
         name: 'Get User Profile',
         description: 'Loads the user profile (name, gender, work type, etc.) into context.',
         target: 'user_profile',
         contextPath: 'user_profile',
+    },
+    {
+        key: 'get_agent_profile',
+        name: 'Get Agent Profile',
+        description: 'Loads the Phaibel agent profile (name, personality preset) into context.',
+        target: 'agent',
+        contextPath: 'agent_profile',
     },
     {
         key: 'get_configured_providers',
@@ -75,6 +83,77 @@ const INTROSPECT_NODES: IntrospectEntry[] = [
         target: '',
         contextPath: 'catalog_nodes',
         nodeCodeKey: 'list_catalog_nodes',
+    },
+    // ── New v5.1 entries ─────────────────────────────────────────────────
+    {
+        key: 'get_personality',
+        name: 'Get Personality',
+        description: 'Loads the active personality preset (label, description, system prompt block, honorifics).',
+        target: 'personality',
+        contextPath: 'personality',
+    },
+    {
+        key: 'get_big_five',
+        name: 'Get Big Five Profile',
+        description: 'Loads the Big Five personality observation profile (EMA scores for user and robot).',
+        target: 'big_five',
+        contextPath: 'big_five_profile',
+    },
+    {
+        key: 'get_settings',
+        name: 'Get Settings',
+        description: 'Shows capability mapping overrides and default provider (no secrets).',
+        target: 'settings',
+        contextPath: 'settings',
+    },
+    {
+        key: 'get_entity_types',
+        name: 'Get Entity Types',
+        description: 'Lists all configured entity types with their fields and directories.',
+        target: 'entity_types',
+        contextPath: 'entity_types',
+    },
+    {
+        key: 'get_entity_stats',
+        name: 'Get Entity Stats',
+        description: 'Returns entity counts per type and total entities in the vault.',
+        target: 'entity_stats',
+        contextPath: 'entity_stats',
+    },
+    {
+        key: 'get_queue_status',
+        name: 'Get Queue Status',
+        description: 'Shows queue size, pending/processing counts, completed count, and error count.',
+        target: 'queue',
+        contextPath: 'queue_status',
+    },
+    {
+        key: 'get_token_usage',
+        name: 'Get Token Usage',
+        description: 'Returns LLM token usage per model over the last 30 days.',
+        target: 'token_usage',
+        contextPath: 'token_usage',
+    },
+    {
+        key: 'get_mcp_skills',
+        name: 'Get MCP Skills',
+        description: 'Lists all tools available from connected MCP skill servers.',
+        target: 'mcp_skills',
+        contextPath: 'mcp_skills',
+    },
+    {
+        key: 'get_a2a_agents',
+        name: 'Get A2A Agents',
+        description: 'Lists all discovered A2A agents with their skills.',
+        target: 'a2a_agents',
+        contextPath: 'a2a_agents',
+    },
+    {
+        key: 'get_recent_chats',
+        name: 'Get Recent Chats',
+        description: 'Returns summaries of the 20 most recent chat sessions (ID, timestamp, first user message).',
+        target: 'recent_chats',
+        contextPath: 'recent_chats',
     },
 ];
 
