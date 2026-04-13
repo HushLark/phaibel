@@ -30,7 +30,7 @@ configCommand
 
         // Providers
         console.log(chalk.bold('API Keys:'));
-        const knownProviders = ['openai', 'anthropic'];
+        const knownProviders = ['openai', 'anthropic', 'google', 'deepseek'];
         for (const provider of knownProviders) {
             const configured = configuredProviders.includes(provider);
             const tick = configured ? chalk.green('✓') : chalk.gray('○');

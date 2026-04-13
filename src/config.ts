@@ -19,6 +19,10 @@ import { SYSTEM_DIR, SECRETS_PATH, getConfigPath, getVaultConfigDir } from './pa
 // DeepSeek pricing notes:
 //   deepseek-reasoner (R1): $0.55/1M input, $2.19/1M output (strong CoT reasoning, very cheap)
 //   deepseek-chat (V3):     $0.27/1M input, $1.10/1M output (fast general purpose, extremely cheap)
+//
+// Google Gemini pricing notes:
+//   gemini-2.5-pro:   $1.25/1M input, $10.00/1M output (best reasoning, thinking model)
+//   gemini-2.5-flash: $0.15/1M input, $0.60/1M output  (fast, cheap, great all-rounder)
 export const PROVIDER_MODELS: Record<string, Partial<Record<LLMCapability, string>>> = {
     openai: {
         reason: 'gpt-4o',
@@ -36,6 +40,14 @@ export const PROVIDER_MODELS: Record<string, Partial<Record<LLMCapability, strin
         chat: 'claude-sonnet-4-6',
         // embed: not supported by Anthropic
     },
+    google: {
+        reason: 'gemini-2.5-pro',
+        summarize: 'gemini-2.5-flash',
+        categorize: 'gemini-2.5-flash',
+        format: 'gemini-2.5-flash',
+        chat: 'gemini-2.5-flash',
+        // embed: not supported via OpenAI-compat endpoint
+    },
     deepseek: {
         reason: 'deepseek-reasoner',
         summarize: 'deepseek-chat',
@@ -49,12 +61,12 @@ export const PROVIDER_MODELS: Record<string, Partial<Record<LLMCapability, strin
 // Preferred provider order per capability when multiple providers are configured.
 // First available provider with a model for the capability wins.
 const CAPABILITY_PREFERRED_PROVIDERS: Record<LLMCapability, string[]> = {
-    reason: ['anthropic', 'deepseek', 'openai'],      // Claude Sonnet best, DeepSeek-R1 strong & cheap fallback
-    chat: ['anthropic', 'deepseek', 'openai'],        // Claude has best personality, DeepSeek-V3 good & cheap
-    summarize: ['deepseek', 'openai', 'anthropic'],   // DeepSeek-V3 extremely cheap, GPT-4o-mini also good
-    categorize: ['deepseek', 'openai', 'anthropic'],  // DeepSeek-V3 extremely cheap for classification
-    format: ['deepseek', 'openai', 'anthropic'],      // DeepSeek-V3 extremely cheap for formatting
-    embed: ['openai'],                                 // Only OpenAI supports embeddings
+    reason: ['anthropic', 'google', 'deepseek', 'openai'],      // Claude Sonnet best, Gemini 2.5 Pro strong
+    chat: ['anthropic', 'google', 'deepseek', 'openai'],        // Claude best personality, Gemini Flash good & cheap
+    summarize: ['deepseek', 'google', 'openai', 'anthropic'],   // DeepSeek-V3 cheapest, Gemini 2.5 Flash also very cheap
+    categorize: ['deepseek', 'google', 'openai', 'anthropic'],  // DeepSeek-V3 cheapest, Gemini 2.5 Flash also very cheap
+    format: ['deepseek', 'google', 'openai', 'anthropic'],      // DeepSeek-V3 cheapest, Gemini 2.5 Flash also very cheap
+    embed: ['openai'],                                           // Only OpenAI supports embeddings
 };
 
 // Config stores only explicit user overrides; everything else is auto-resolved.

@@ -26,6 +26,9 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
     // DeepSeek
     'deepseek-reasoner':            { inputPerMillion: 0.55, outputPerMillion: 2.19 },
     'deepseek-chat':                { inputPerMillion: 0.27, outputPerMillion: 1.10 },
+    // Google Gemini
+    'gemini-2.5-pro':               { inputPerMillion: 1.25, outputPerMillion: 10.00 },
+    'gemini-2.5-flash':             { inputPerMillion: 0.15, outputPerMillion: 0.60 },
 };
 
 const DEFAULT_PRICING: ModelPricing = { inputPerMillion: 1.00, outputPerMillion: 3.00 };

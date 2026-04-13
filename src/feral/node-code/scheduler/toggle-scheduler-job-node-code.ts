@@ -15,7 +15,7 @@ export class ToggleSchedulerJobNodeCode extends AbstractNodeCode {
         {
             key: 'job_name',
             name: 'Job Name',
-            description: 'The scheduler job name to toggle (e.g. "cal-sync", "world-model").',
+            description: 'The scheduler job name to toggle (e.g. "cal-sync", "embedding-sync").',
             type: 'string',
         },
         {

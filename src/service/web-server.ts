@@ -106,7 +106,7 @@ export class WebServer {
 
     /**
      * Push a proactive message into the chat window of all connected clients.
-     * Used by background processes (cron jobs, world model, etc.) to surface
+     * Used by background processes (cron jobs, etc.) to surface
      * information without the user asking.
      */
     broadcastChat(message: string, category?: string, data?: unknown): void {
@@ -191,7 +191,6 @@ export class WebServer {
             url.pathname.startsWith('/api/entities') ||
             url.pathname.startsWith('/api/search') ||
             url.pathname.startsWith('/api/processes') ||
-            url.pathname.startsWith('/api/insights') ||
             url.pathname === '/api/calendar') {
             res.setHeader('Deprecation', 'true');
             res.setHeader('Link', '</cx/>; rel="successor-version"');
