@@ -137,11 +137,21 @@ ${chalk.cyan('Getting Started')}
   ${chalk.dim('  Then open')} ${chalk.cyan.bold('http://localhost:3737')} ${chalk.dim('to chat with your agent')}
 
 ${chalk.cyan('Configuration')}
-  ${chalk.bold('phaibel config')}              Manage API keys and LLM provider settings
+  ${chalk.bold('phaibel config')}              Show current provider and model settings
+  ${chalk.bold('phaibel config add-provider')} ${chalk.dim('<name>')}     Add an API key (openai, anthropic, google, deepseek)
+  ${chalk.bold('phaibel config set-capability')} ${chalk.dim('<cap> <provider> <model>')}  Override a capability's model
   ${chalk.bold('phaibel setup')}               Update your name, gender, and preferences
   ${chalk.bold('phaibel calendar add')} ${chalk.dim('<name> <ics-url>')}  Add a Google Calendar ICS feed
   ${chalk.bold('phaibel calendar sync')}       Sync calendar events into the vault
   ${chalk.bold('phaibel skill')}               Manage MCP skill servers
+
+${chalk.cyan('Examples')}
+  ${chalk.dim('# Add your Google Gemini API key')}
+  ${chalk.bold('phaibel config add-provider google')}
+  ${chalk.dim('# Use Gemini 2.5 Flash for chat instead of the default')}
+  ${chalk.bold('phaibel config set-capability chat google gemini-2.5-flash')}
+  ${chalk.dim('# Use Claude for reasoning')}
+  ${chalk.bold('phaibel config set-capability reason anthropic claude-sonnet-4-6')}
 
 ${chalk.cyan('Service & Monitoring')}
   ${chalk.bold('phaibel service')} ${chalk.dim('start|stop|restart|status')}  Manage the daemon
