@@ -60,21 +60,6 @@ class InMemoryProcessSource implements ProcessSource {
 
 const EXAMPLE_PROCESSES = [
     {
-        description: 'Simple linear process: list tasks then sort them',
-        json: {
-            schema_version: 1,
-            key: 'tasks.list',
-            description: 'List all tasks, sorted by priority and due date',
-            context: {},
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'list' } },
-                { key: 'list', catalog_node_key: 'list_tasks', configuration: {}, edges: { ok: 'sort' } },
-                { key: 'sort', catalog_node_key: 'sort_tasks', configuration: {}, edges: { ok: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
         description: 'Create multiple entities: a goal and a todont from user input',
         json: {
             schema_version: 1,
@@ -85,36 +70,6 @@ const EXAMPLE_PROCESSES = [
                 { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create_goal' } },
                 { key: 'create_goal', catalog_node_key: 'create_goal', configuration: { entity_title: 'Run 10 miles', entity_body: 'Train progressively to run 10 miles by mid-March' }, edges: { ok: 'create_todont', already_exists: 'create_todont', error: 'create_todont' } },
                 { key: 'create_todont', catalog_node_key: 'create_todont', configuration: { entity_title: 'No pizza or beer', entity_body: 'Avoid pizza and beer while training for the 10-mile run' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
-        description: 'If/else branch: find a task, check its priority, and take different actions based on whether it is high priority',
-        json: {
-            schema_version: 1,
-            key: 'task.priority.check',
-            description: 'Find a task by title, then branch on its priority — set high-priority tasks to in-progress, leave others as-is',
-            context: {},
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'find' } },
-                { key: 'find', catalog_node_key: 'find_task', configuration: {}, edges: { ok: 'check_priority', error: 'done' } },
-                { key: 'check_priority', catalog_node_key: 'context_value_comparator', configuration: { left_context_path: 'priority', right_value: 'high' }, edges: { true: 'set_in_progress', false: 'done' } },
-                { key: 'set_in_progress', catalog_node_key: 'set_task_status', configuration: { value: 'in-progress' }, edges: { ok: 'done', error: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
-        description: 'Tag filter: list only tasks that have a specific tag',
-        json: {
-            schema_version: 1,
-            key: 'tasks.by_tag',
-            description: 'List all tasks with the "home" tag',
-            context: {},
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'list' } },
-                { key: 'list', catalog_node_key: 'list_tasks', configuration: { tags: 'home' }, edges: { ok: 'done' } },
                 { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
             ],
         },
@@ -134,35 +89,22 @@ const EXAMPLE_PROCESSES = [
         },
     },
     {
-        description: 'Link two entities: connect a task to a goal',
+        description: 'Create a new content type then create an entity of that type',
         json: {
             schema_version: 1,
-            key: 'link.task_to_goal',
-            description: 'Link a task to a related goal',
-            context: {},
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'link' } },
-                { key: 'link', catalog_node_key: 'link_entities', configuration: { source_entity_type: 'task', source_entity_title: 'Fix the fence', target_entity_type: 'goal', target_entity_title: 'Home improvement', label: 'contributes-to' }, edges: { ok: 'done', not_found: 'done', error: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
-        description: 'Create a new content type for something not yet tracked',
-        json: {
-            schema_version: 1,
-            key: 'type.create',
-            description: 'Create a recipe content type',
+            key: 'type.create_and_populate',
+            description: 'Create a recipe content type and add a recipe',
             context: {},
             nodes: [
                 { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create_type' } },
-                { key: 'create_type', catalog_node_key: 'create_content_type', configuration: { type_name: 'recipe', description: 'A cooking recipe with ingredients, instructions, prep time, and servings' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
+                { key: 'create_type', catalog_node_key: 'create_content_type', configuration: { type_name: 'recipe', description: 'A cooking recipe with ingredients, instructions, prep time, and servings' }, edges: { ok: 'create_entity', already_exists: 'create_entity', error: 'done' } },
+                { key: 'create_entity', catalog_node_key: 'create_entity', configuration: { entity_type: 'recipe', entity_title: 'Chocolate Chip Cookies', entity_body: 'Ingredients: flour, butter, sugar, eggs, chocolate chips.\nBake at 375F for 10 min.', tags: 'dessert,baking' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
                 { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
             ],
         },
     },
     {
-        description: 'Create an event with fields set via initial context (no set_context_value nodes needed)',
+        description: 'Create an event with fields set via initial context',
         json: {
             schema_version: 1,
             key: 'event.create',
@@ -185,22 +127,6 @@ const EXAMPLE_PROCESSES = [
             nodes: [
                 { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create' } },
                 { key: 'create', catalog_node_key: 'create_task', configuration: { entity_title: 'Buy groceries', entity_body: 'Pick up groceries from the store.', extra_fields: 'status,priority,dueDate' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
-        description: 'While loop: list tasks, iterate over each one, and use LLM to add a summary to each task body',
-        json: {
-            schema_version: 1,
-            key: 'tasks.summarize',
-            description: 'Loop through all tasks and ask the LLM to generate a one-line summary for each',
-            context: {},
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'list' } },
-                { key: 'list', catalog_node_key: 'list_tasks', configuration: {}, edges: { ok: 'iterate' } },
-                { key: 'iterate', catalog_node_key: 'array_iterator', configuration: { source_context_path: 'entities', cursor_context_path: '_cursor', spread_fields: 'true' }, edges: { ok: 'summarize', done: 'done' } },
-                { key: 'summarize', catalog_node_key: 'llm_chat', configuration: { capability: 'summarize', prompt: 'Write a one-line summary for a task titled "{title}".', response_context_path: 'summary' }, edges: { ok: 'iterate', error: 'iterate' } },
                 { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
             ],
         },
