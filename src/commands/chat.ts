@@ -238,9 +238,16 @@ async function _feralChatHeadlessInner(
         entityTypes,
     );
 
-    // Build catalog summary for LLM (only relevant nodes)
-    const catalogSummary = filteredNodes
-        .map(n => `- ${n.key}: ${n.description || n.name} [group: ${n.group}]`)
+    // Build catalog summary for LLM (only relevant nodes, grouped)
+    const nodesByGroup = new Map<string, typeof filteredNodes>();
+    for (const n of filteredNodes) {
+        const group = n.group;
+        if (!nodesByGroup.has(group)) nodesByGroup.set(group, []);
+        nodesByGroup.get(group)!.push(n);
+    }
+    const catalogSummary = Array.from(nodesByGroup.entries())
+        .map(([group, nodes]) =>
+            `[${group}]\n${nodes.map(n => `  ${n.key}: ${n.description || n.name}`).join('\n')}`)
         .join('\n');
 
     const relevanceHintBlock = relevance.relevanceHint
