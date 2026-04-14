@@ -376,43 +376,20 @@ Return ONLY the JSON object, no markdown fences.`,
 ${historyBlock}
 ${contextTreeStr}
 
-ENTITY TYPE CONVENTIONS:
-The agent manages the entity types listed above. When the user mentions something that maps to an entity, prefer creating it.
-Each entity type has create_*, list_*, find_*, update_*, delete_*, complete_* catalog nodes, plus set_{type}_{field} nodes for each field.
-For example: create_task, list_tasks, find_note, set_task_status, complete_task, etc.
+Each entity type has create_*, list_*, find_*, update_*, delete_*, complete_*, set_{type}_{field} catalog nodes.
+CRITICAL: Match entity types precisely — event≠task. Use create_event for appointments/meetings, create_task for todos.
+For new content types (recipe, vehicle, etc.), select "create_content_type". Use "link_entities" to connect related entities.
+For field values on creation, also select "set_context_value" to stage fields in context.
 
-IMPORTANT CAPABILITIES:
-- To filter entities by tag, use the "tags" config on list_* or search_* nodes (comma-separated tag names).
-- To mark an entity as done/complete, use the complete_* node (e.g. complete_task).
-- To create a NEW content type for something tangible the user wants to track (e.g. "recipe", "flight", "medication"), use "create_content_type". Keep the description SHORT and simple — the LLM will design minimal fields. If a content type already exists but needs an extra field, use "update_content_type" instead of recreating it.
-- To link two entities together (e.g. a task relates to a goal), use "link_entities".
-- To add tags to an existing entity, use the add_tag_* nodes (e.g. add_tag_task).
-- To set entity-specific fields (startDate, endDate, priority, location, email, etc.) when creating entities, ALSO select "set_context_value" — you'll need it to put field values into context before the create node.
-
-When the user's request implies creating entities, ALWAYS select the appropriate create_* nodes.
-CRITICAL: Match the entity type precisely. An "event" is NOT a "task" — use create_event for events/appointments/meetings and create_task for todos/action items. Each entity type exists for a reason; never substitute one for another.
-When the user mentions multiple entities, select multiple create_* nodes.
-When the user refers to a content type that doesn't exist yet, select "create_content_type".
-
-Here are all available catalog nodes in the Feral process engine. Each node performs a specific action:
+AVAILABLE CATALOG NODES:
 ${relevanceHintBlock}
 ${catalogSummary}
 
-IMPORTANT RULES:
-- Every process MUST start with "start" and end with "stop"
-- Always include "start" and "stop" in your selection
-- The "llm_chat" node sends a prompt to an LLM. It supports {context_key} interpolation in prompts
-- Only select nodes that are directly useful for fulfilling the user's request
-- Prefer entity nodes (list_*, find_*, create_*, complete_*) for data operations — act, don't just advise
-- Prefer system nodes (get_time, get_date, etc.) for system information
-- When the user wants to CREATE something, use the create_* nodes — don't just use llm_chat to give advice
-- When the user wants to mark something as done/complete, use complete_* nodes (e.g. complete_task)
-- When the user asks about entities by tag, use list_* or search_* with the "tags" config
-- When the user mentions a content type that doesn't exist, select "create_content_type"
-- When the user wants to relate or connect entities, select "link_entities"
-- PROACTIVELY link related entities when the context makes the connection clear (e.g. user says "add a task for my goal X" → create task AND link it to the goal)
-- Consider the "About You" section in vault context — use it to personalise responses and infer intent
-- When creating an entity, prefer ACTION over QUESTIONS. Use sensible defaults for missing optional fields (e.g. use today's date if no date specified, use "medium" priority if not stated). Only select "prompt_input" or "prompt_select" when: (a) the user explicitly asks for help choosing, or (b) a required field has no reasonable default AND the user gave ambiguous info. One question max per request — never chain multiple prompts.
+RULES:
+- Always include "start" and "stop". Select only nodes needed for the request.
+- Prefer entity nodes (create_*, complete_*, find_*) over llm_chat for data operations.
+- For unknown content types, select "create_content_type". For multiple entities, select multiple create_* nodes.
+- Proactively link related entities. Prefer action over questions — use sensible defaults.
 
 Return a JSON object with this exact structure:
 {
