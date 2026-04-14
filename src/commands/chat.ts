@@ -553,31 +553,18 @@ NODE CONFIGURATION DETAILS:
 ${nodeCodeDetails.join('\n\n')}
 
 PROCESS FORMAT RULES:
-1. schema_version MUST be 1
-2. key should be "chat.generated"
-3. First node MUST have key "start" with catalog_node_key "start"
-4. Last node MUST have key "done" with catalog_node_key "stop" and empty edges {}
-5. "edges" maps result status strings to the next node key
-6. Most nodes produce "ok" and "error" results
-7. Use {context_key} syntax in configuration values to interpolate context values
-8. The context starts with: user_input = "${userInput}"
-9. Keep the process as simple as possible — prefer fewer nodes
-10. For entity creation, ALWAYS set entity_title and entity_body in the configuration with concrete values
-11. Use the vault context to inform entity content — respect project goals and conventions
-12. To filter by tag, set "tags" in configuration (comma-separated), e.g. { "tags": "year-of-the-house" }
-13. To link entities, use link_entities with source_entity_type, source_entity_title, target_entity_type, target_entity_title, and label
-14. To complete/finish an entity, use the complete_* catalog node (e.g. complete_task)
-15. ONLY use configuration keys that appear in the NODE CONFIGURATION DETAILS above — do not invent keys. The create_* nodes ONLY accept: entity_type, entity_title, entity_body, tags, extra_fields. Do NOT put field names like startDate, priority, status, location directly in configuration.
-16. To set entity-specific fields (e.g. startDate, endDate, priority, status, location, email): For single-entity processes, put field values in the process "context" object and list field names in extra_fields. Example: "context": { "startDate": "2026-03-25T14:00:00-06:00", "endDate": "2026-03-25T15:00:00-06:00", "location": "Office" } with extra_fields: "startDate,endDate,location". For multi-entity processes where different entities need different values for the same field (e.g. task status="open" vs goal status="active"), use set_context_value nodes between the create nodes to change the value. DATE FORMAT RULES: date fields → YYYY-MM-DD, datetime fields → ISO 8601 with timezone offset. The set_context_value config keys are: "context_path" (the field name), "value" (the value), and "value_type" (REQUIRED for date/datetime).
-17. When referencing existing entities (find_*, link_*, update_*, complete_*, set_*), use EXACT titles from the entity leaves in the CONTEXT TREE — do NOT guess or paraphrase entity titles
-18. CRITICAL: Use the correct entity type catalog node. An event (appointment, meeting, scheduled activity) MUST use create_event, NOT create_task. A task (action item, todo) MUST use create_task, NOT create_event. Never substitute one entity type for another.
-19. When setting enum fields (in context object or via set_context_value), use ONLY the valid values from the ENTITY TYPES schema above. For example, task status must be one of [open, in-progress, done, blocked] — do NOT use "todo", "complete", or other values. If unsure, omit the field and let the default apply.
-20. Events ALWAYS require BOTH startDate AND endDate (both are datetime type). Use ISO 8601 with timezone offset: "YYYY-MM-DDTHH:mm:ssZ" (e.g. "2026-03-25T14:00:00-06:00"). If the user doesn't mention a time, default to 09:00 start and 10:00 end in their timezone. If the user only mentions one date, set endDate to 1 hour after startDate. Put both in the process context object and include both in extra_fields: "startDate,endDate".
-21. Prefer ACTION over QUESTIONS. Use sensible defaults for missing fields (today's date, "medium" priority, etc.) rather than asking. Only use prompt_input/prompt_select when the user explicitly asks for help choosing OR a required field truly cannot be inferred. Never chain multiple prompt nodes — one question max per process. If you must ask, wire the prompt node's "ok" edge to the create node so the answer flows into context.
-22. CRITICAL: If you selected create_content_type / create_entity_type in the node list, you MUST include it in the process. When the user mentions items that don't match any existing entity type, create the new type FIRST (wire it before the create_entity nodes). Do NOT fall back to "note" type as a generic bucket — if a pet, recipe, vehicle, etc. deserves its own type, create it.
-23. When creating MULTIPLE entities of the same type in one process, remember that each create_entity node overwrites the shared context keys (title, content, tags). The process engine handles this correctly — all entities ARE created — but the completion checker sees accumulated results in the "created_entities" array. Do NOT worry about context key collisions between sequential create_entity nodes.
-24. For search_* nodes, ALWAYS set "query" in the node configuration. Extract the search terms from the user's request. Example: { "query": "client ABC" }. Without a query, the search will fall back to the full user_input which may be too broad. You can also use {context_key} interpolation: { "query": "{search_term}" }.
-25. For MCP skill tool nodes (mcp_call_tool / mcp_*_*), put the tool's parameters DIRECTLY in the node configuration. Extract parameter values from the user's message. Example: if the tool needs a "query" parameter and the user said "look up Rise Internet", set { "query": "Rise Internet" } in configuration. The parameter names are listed in the node description. Do NOT leave parameters empty — always extract values from conversation context.
+1. schema_version=1, key="chat.generated". First node: key="start", catalog_node_key="start". Last node: key="done", catalog_node_key="stop", edges={}.
+2. "edges" maps result statuses to next node key. Most nodes produce "ok" and "error". Use {context_key} for interpolation.
+3. Context starts with user_input="${userInput}". Keep processes simple — fewer nodes is better.
+4. For entity creation, ALWAYS set entity_title and entity_body with concrete values.
+5. create_* nodes ONLY accept: entity_type, entity_title, entity_body, tags, extra_fields. To set fields (startDate, priority, etc.): put values in process "context" object, list field names in extra_fields. For multi-entity with different field values, use set_context_value nodes between creates.
+6. DATE FORMAT: date→YYYY-MM-DD, datetime→ISO 8601 with timezone (e.g. "2026-03-25T14:00:00-06:00"). Events ALWAYS need BOTH startDate AND endDate in context+extra_fields. Default to 09:00-10:00 if no time given.
+7. CRITICAL: Match entity types precisely. event≠task. Use create_event for appointments/meetings, create_task for todos. Never substitute types.
+8. When referencing existing entities, use EXACT titles from CONTEXT TREE. Use valid enum values only.
+9. Prefer ACTION over QUESTIONS. Use sensible defaults (today's date, "medium" priority). Max one prompt node per process.
+10. If create_content_type is in your node list, you MUST use it. Create type FIRST, then create_entity. Don't use "note" as a generic bucket.
+11. Multiple create_entity nodes of same type work correctly — don't worry about context key collisions.
+12. For search_* nodes, set "query" in config. For MCP skill nodes, put tool parameters directly in config.
 
 EXAMPLE PROCESSES:
 ${examplesStr}
