@@ -31,6 +31,7 @@ import { getEntityIndex } from '../entities/entity-index.js';
 import { buildContextTree, expandContextTree } from '../context/context-tree.js';
 import { serializeContextTree } from '../context/context-tree-serializer.js';
 import { classifyScope } from '../context/scope-classifier.js';
+import { analyzeQueryRelevance, filterCatalogNodes } from '../context/query-relevance.js';
 import { buildMomentContext, momentToGlobals } from '../context/moment.js';
 import { updateProfile, validateScores, invalidateProfileCache, type BigFiveSample } from '../personality/big-five.js';
 import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../entities/entity.js';
@@ -303,13 +304,24 @@ async function _feralChatHeadlessInner(
 
     const allNodes = runtime.catalog.getAllCatalogNodes();
 
-    // Build catalog summary for LLM
-    const catalogSummary = allNodes
-        .filter(n => !n.key.startsWith('speak_'))  // skip output variants
+    // Deterministic pre-filter: narrow catalog nodes to relevant entity types
+    const relevance = analyzeQueryRelevance(userInput, entityTypes, entityIndex);
+    const filteredNodes = filterCatalogNodes(
+        allNodes.filter(n => !n.key.startsWith('speak_')),
+        relevance.relevantTypes,
+        entityTypes,
+    );
+
+    // Build catalog summary for LLM (only relevant nodes)
+    const catalogSummary = filteredNodes
         .map(n => `- ${n.key}: ${n.description || n.name} [group: ${n.group}]`)
         .join('\n');
 
-    debug('chat', `Catalog has ${allNodes.length} nodes, sending ${catalogSummary.split('\n').length} to LLM`);
+    const relevanceHintBlock = relevance.relevanceHint
+        ? `\nQUERY RELEVANCE (entity matches from vault search):\n${relevance.relevanceHint}\n`
+        : '';
+
+    debug('chat', `Catalog has ${allNodes.length} nodes, sending ${filteredNodes.length} after relevance filter (${relevance.relevantTypes.map(rt => rt.type).join(', ') || 'all'})`);
 
     const llm = await getModelForCapability('reason');
 
@@ -457,7 +469,7 @@ When the user mentions multiple entities, select multiple create_* nodes.
 When the user refers to a content type that doesn't exist yet, select "create_content_type".
 
 Here are all available catalog nodes in the Feral process engine. Each node performs a specific action:
-
+${relevanceHintBlock}
 ${catalogSummary}
 
 IMPORTANT RULES:
