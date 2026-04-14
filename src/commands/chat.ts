@@ -407,7 +407,7 @@ Return a JSON object with this exact structure:
 Return ONLY the JSON object, no markdown fences.`,
         }],
         {
-            systemPrompt: 'You are the reasoning engine for Phaibel, a Personal Digital Agent. It manages a vault of linked content (tasks, events, notes, goals, people, etc.) stored as Markdown files. Content can be linked in a knowledge graph. Your job is to select the minimal set of catalog nodes to fulfill the user\'s request. Always include "start" and "stop". Prefer creating concrete entities over giving advice. Look for opportunities to link related content.',
+            systemPrompt: 'Select the minimal set of catalog nodes to fulfill the user\'s request. Always include "start" and "stop". Prefer entity actions over advice. Link related content proactively.',
             temperature: 0.3,
         },
     );
@@ -564,7 +564,7 @@ IMPORTANT: Keep "reasoning" to ONE sentence. The process JSON is what matters.
 Return ONLY the JSON object, no markdown fences.`,
             }],
             {
-                systemPrompt: 'You are the process designer for Phaibel, a Personal Digital Agent that manages a vault of linked content. Generate a valid process JSON that solves the user\'s request using the provided catalog nodes. The process executes immediately — create real entities, set real values, link real content. Be precise with catalog_node_key values — they must match exactly. Prefer action over advice.',
+                systemPrompt: 'Generate a valid Feral process JSON using provided catalog nodes. catalog_node_key values must match exactly. Prefer action over advice.',
                 temperature: 0.3,
                 maxTokens: 16384,
             },
