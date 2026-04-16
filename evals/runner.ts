@@ -63,7 +63,7 @@ async function runScenario(
                     },
                     () => {},                           // onChatId: no-op
                     scenario.history,
-                ),
+                ).then(r => r.response),
                 new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error(`Scenario timed out after ${timeoutMs}ms`)), timeoutMs),
                 ),

@@ -5,6 +5,7 @@
 // Auto-prunes to 30 days. Provides query functions for per-model and aggregate.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { getPlatform } from '../platform/index.js';
 import { getVaultConfigDir } from '../paths.js';
 
@@ -100,6 +101,9 @@ export async function recordUsage(
     data[today][model].inputTokens += inputTokens;
     data[today][model].outputTokens += outputTokens;
     data[today][model].calls += 1;
+
+    // Feed per-chat tracker if active
+    feedChatTracker(inputTokens, outputTokens);
 
     const pruned = prune(data);
     await saveUsage(pruned);
@@ -205,4 +209,38 @@ export async function getTrackedModels(): Promise<string[]> {
         }
     }
     return [...models].sort();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PER-CHAT TOKEN TRACKING (via AsyncLocalStorage)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ChatTokenTotals {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+}
+
+const chatTokenStore = new AsyncLocalStorage<ChatTokenTotals>();
+
+/**
+ * Called by recordUsage to feed the active per-chat tracker (if any).
+ */
+function feedChatTracker(inputTokens: number, outputTokens: number): void {
+    const tracker = chatTokenStore.getStore();
+    if (tracker) {
+        tracker.inputTokens += inputTokens;
+        tracker.outputTokens += outputTokens;
+        tracker.totalTokens += inputTokens + outputTokens;
+    }
+}
+
+/**
+ * Run an async function with per-chat token tracking.
+ * Returns both the function's result and accumulated token totals.
+ */
+export async function runWithTokenTracker<T>(fn: () => Promise<T>): Promise<{ result: T; tokens: ChatTokenTotals }> {
+    const tokens: ChatTokenTotals = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    const result = await chatTokenStore.run(tokens, fn);
+    return { result, tokens };
 }

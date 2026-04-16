@@ -44,7 +44,7 @@ function getOrCreateServer(): McpServer {
         { message: z.string().describe('The user message to process') },
         async ({ message }) => {
             try {
-                const response = await feralChatHeadless(message);
+                const { response } = await feralChatHeadless(message);
                 return { content: [{ type: 'text' as const, text: response }] };
             } catch (err) {
                 return { content: [{ type: 'text' as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }], isError: true };

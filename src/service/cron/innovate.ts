@@ -328,7 +328,7 @@ async function testReplay(userInput: string, _originalChatId: string): Promise<b
                     return '12:00';
                 },
                 () => {},           // onChatId: no-op
-            ),
+            ).then(r => r.response),
             new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('Replay timed out')), 60_000),
             ),

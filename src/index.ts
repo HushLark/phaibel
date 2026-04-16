@@ -16,6 +16,7 @@ import { cronCommand } from './commands/cron.js';
 import { calCommand } from './commands/cal.js';
 import { skillCommand } from './commands/skill.js';
 import { agentCommand } from './commands/agent.js';
+import { fcpCommand } from './commands/fcp.js';
 import { entityTypeCommand } from './commands/entity-type.js';
 import { entityCommand } from './commands/entity.js';
 import { timeCommand } from './commands/time.js';
@@ -49,6 +50,7 @@ program.addCommand(cronCommand);
 program.addCommand(calCommand);
 program.addCommand(skillCommand);
 program.addCommand(agentCommand);
+program.addCommand(fcpCommand);
 
 // Tool command - run any registered tool
 program
@@ -144,6 +146,7 @@ ${chalk.cyan('Configuration')}
   ${chalk.bold('phaibel calendar add')} ${chalk.dim('<name> <ics-url>')}  Add a Google Calendar ICS feed
   ${chalk.bold('phaibel calendar sync')}       Sync calendar events into the vault
   ${chalk.bold('phaibel skill')}               Manage MCP skill servers
+  ${chalk.bold('phaibel fcp')} ${chalk.dim('list|add|probe|fetch')}    Manage federated context sources
 
 ${chalk.cyan('Examples')}
   ${chalk.dim('# Add your Google Gemini API key')}

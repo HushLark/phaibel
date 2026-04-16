@@ -1,0 +1,1368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Productve</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+        colors: {
+          'surface-0': '#0d0d0f',
+          'surface-1': '#111113',
+          'surface-2': '#18181b',
+          'surface-3': '#1f1f23',
+          'surface-4': '#27272c',
+          'surface-5': '#2e2e34',
+          'border':    '#2e2e34',
+          'accent':    '#6366f1',
+          'accent-hover': '#818cf8',
+          'muted':     '#71717a',
+          'subtle':    '#52525b',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html, body { background: #0d0d0f; color: #d4d4d8; height: 100%; }
+  body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  *::-webkit-scrollbar { width: 6px; height: 6px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb { background: #2e2e34; border-radius: 3px; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { scrollbar-width: none; }
+  /* Tooltip arrow: utility */
+  .tooltip { visibility: hidden; opacity: 0; transition: opacity 150ms; }
+  .has-tooltip:hover .tooltip { visibility: visible; opacity: 1; }
+  /* Bouncing loader */
+  @keyframes bounce-dot { 0%,80%,100% { transform: translateY(0); opacity: .4 } 40% { transform: translateY(-4px); opacity: 1 } }
+  .dot-bounce { animation: bounce-dot 1.2s infinite; }
+  /* Ping override */
+  @keyframes mic-ping {
+    0% { transform: scale(1); opacity: .6 }
+    75%,100% { transform: scale(2); opacity: 0 }
+  }
+  .mic-ping { animation: mic-ping 1.2s cubic-bezier(0,0,.2,1) infinite; }
+</style>
+</head>
+<body class="text-zinc-300">
+
+<div id="app" class="flex h-screen w-screen overflow-hidden bg-surface-0"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- SVG ICONS — inline lucide-style                                     -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<script>
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const ICONS = {
+  LayoutDashboard: 'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z',
+  Mic: 'M12 2a3 3 0 00-3 3v7a3 3 0 006 0V5a3 3 0 00-3-3zM19 10v2a7 7 0 01-14 0v-2 M12 19v3 M8 22h8',
+  Plug2: 'M9 2v6 M15 2v6 M12 22v-5 M6.5 8h11l-1.4 7.4a4 4 0 01-3.9 3.3h-.4a4 4 0 01-3.9-3.3L6.5 8z',
+  Calendar: 'M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V5zM3 9h18M8 3v4M16 3v4',
+  Clock: 'M12 22a10 10 0 110-20 10 10 0 010 20z M12 6v6l4 2',
+  Users: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M9 11a4 4 0 100-8 4 4 0 000 8z M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75',
+  MapPin: 'M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z M12 13a3 3 0 100-6 3 3 0 000 6z',
+  Pin: 'M12 17v5 M9 10.76a2 2 0 01-1.11 1.79l-1.78.9A2 2 0 005 15.24V16a1 1 0 001 1h12a1 1 0 001-1v-.76a2 2 0 00-1.11-1.79l-1.78-.9A2 2 0 0115 10.76V7a1 1 0 011-1 2 2 0 000-4H8a2 2 0 000 4 1 1 0 011 1z',
+  Phone: 'M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.37 1.9.72 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.35 1.85.59 2.81.72a2 2 0 011.72 2z',
+  Sparkles: 'M12 3l1.9 4.6L18.5 9.5l-4.6 1.9L12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3zM19 14l.9 2.1L22 17l-2.1.9L19 20l-.9-2.1L16 17l2.1-.9L19 14zM5 14l.9 2.1L8 17l-2.1.9L5 20l-.9-2.1L2 17l2.1-.9L5 14z',
+  FileText: 'M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8',
+  User: 'M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2 M12 11a4 4 0 100-8 4 4 0 000 8z',
+  Bot: 'M12 8V4H8 M12 2v2 M4 14a2 2 0 012-2h12a2 2 0 012 2v6a2 2 0 01-2 2H6a2 2 0 01-2-2v-6z M2 16h2 M20 16h2 M9 18h.01 M15 18h.01',
+  MoreHorizontal: 'M12 12h.01 M19 12h.01 M5 12h.01',
+  ChevronLeft: 'M15 18l-6-6 6-6',
+  ChevronRight: 'M9 18l6-6-6-6',
+  ChevronDown: 'M6 9l6 6 6-6',
+  ChevronUp: 'M18 15l-6-6-6 6',
+  Search: 'M11 19a8 8 0 100-16 8 8 0 000 16z M21 21l-4.35-4.35',
+  Paperclip: 'M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48',
+  Send: 'M22 2L11 13 M22 2l-7 20-4-9-9-4 20-7z',
+  Download: 'M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4 M7 10l5 5 5-5 M12 15V3',
+  Trash2: 'M3 6h18 M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6 M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2 M10 11v6 M14 11v6',
+  RefreshCw: 'M3 12a9 9 0 019-9 9.75 9.75 0 016.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 01-9 9 9.75 9.75 0 01-6.74-2.74L3 16 M3 21v-5h5',
+  CheckCircle2: 'M22 11.08V12a10 10 0 11-5.93-9.14 M22 4L12 14.01l-3-3',
+  Play: 'M5 3l14 9-14 9V3z',
+  Pause: 'M6 4h4v16H6zM14 4h4v16h-4z',
+  X: 'M18 6L6 18 M6 6l12 12',
+  Mail: 'M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2z M22 6l-10 7L2 6',
+  MessageSquare: 'M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z',
+  Server: 'M20 3H4a2 2 0 00-2 2v3a2 2 0 002 2h16a2 2 0 002-2V5a2 2 0 00-2-2z M20 14H4a2 2 0 00-2 2v3a2 2 0 002 2h16a2 2 0 002-2v-3a2 2 0 00-2-2z M6 7h.01 M6 18h.01',
+  Briefcase: 'M20 7h-4V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v3H4a2 2 0 00-2 2v11a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z M16 21V7a2 2 0 00-2-2h-4a2 2 0 00-2 2v14',
+};
+
+function icon(name, size = 16, extraClass = '') {
+  const d = ICONS[name];
+  if (!d) return '';
+  const paths = d.split(' M').map((p,i) => i===0 ? p : 'M'+p);
+  const pathsHtml = paths.map(p => `<path d="${p}"/>`).join('');
+  return `<svg xmlns="${SVG_NS}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${extraClass}">${pathsHtml}</svg>`;
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- APP SHELL                                                           -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<script>
+// ── Global state ──────────────────────────────────────────────────────
+const state = {
+  activePanel: 'dashboard',             // dashboard | recordings | connections
+  assistantName: 'Stanley',
+  selectedDate: new Date(),
+  viewMonth: new Date(),
+  events: [],                            // CalEvent[]
+  messages: [],                          // Message[]
+  pins: [],                              // PinItem[]
+  voiceMode: 'off',                      // off | auto | on
+  announceMode: 'announce',              // silent | beep | announce | verbal
+  announceOpen: false,
+  isListening: false,
+  currentChatId: null,
+  loading: false,
+  totalTokens: 0,
+  recordings: [],
+  selectedRecordingId: null,
+  recordingSearch: '',
+  recordingPlayback: { playing: false, progress: 0 },
+  transcriptExpanded: false,
+  connections: [],
+  ws: null,
+  onboardingDone: null,                  // null | true | false
+};
+
+const PIN_COLORS = [
+  'border-violet-500/40 bg-violet-500/5',
+  'border-accent/40 bg-accent/5',
+  'border-emerald-500/40 bg-emerald-500/5',
+  'border-amber-500/40 bg-amber-500/5',
+];
+
+const EVENT_TYPE_STYLES = {
+  meeting:  { dot: 'bg-accent',       pill: 'bg-accent/15 border-accent/30 text-accent' },
+  deadline: { dot: 'bg-red-400',      pill: 'bg-red-500/15 border-red-500/30 text-red-400' },
+  focus:    { dot: 'bg-emerald-400',  pill: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' },
+  personal: { dot: 'bg-amber-400',    pill: 'bg-amber-500/15 border-amber-500/30 text-amber-400' },
+};
+
+const DEFAULT_CONNECTIONS = [
+  { id: 'gmail',         name: 'Gmail',              description: 'Inbox search, compose, triage across your primary account', status: 'disconnected', category: 'email' },
+  { id: 'outlook-email', name: 'Outlook Email',      description: 'Microsoft 365 mail — shared with the calendar connector',   status: 'disconnected', category: 'email' },
+  { id: 'gcal',          name: 'Google Calendar',    description: 'Two-way sync of events, availability, and attendee lists',  status: 'disconnected', category: 'calendar' },
+  { id: 'outlook-cal',   name: 'Outlook Calendar',   description: 'Sync meetings and focus blocks from your work account',     status: 'disconnected', category: 'calendar' },
+  { id: 'linear',        name: 'Linear',             description: 'Link issues, cycles, and projects directly from chat',      status: 'disconnected', category: 'pm' },
+  { id: 'jira',          name: 'Jira',               description: 'Pull tickets, statuses, and sprint info into context',      status: 'disconnected', category: 'pm' },
+  { id: 'notion',        name: 'Notion',             description: 'Search pages, databases, and meeting notes',                status: 'disconnected', category: 'pm' },
+  { id: 'slack',         name: 'Slack',              description: 'Mention, post, and search across your workspace',           status: 'disconnected', category: 'messaging' },
+  { id: 'teams',         name: 'Microsoft Teams',    description: 'Chat with colleagues and join scheduled meetings',          status: 'disconnected', category: 'messaging' },
+];
+
+const CONNECTION_ICONS = {
+  gmail: 'Mail', 'outlook-email': 'Mail',
+  gcal: 'Calendar', 'outlook-cal': 'Calendar',
+  linear: 'Briefcase', jira: 'Briefcase', notion: 'FileText',
+  slack: 'MessageSquare', teams: 'MessageSquare',
+};
+
+const CATEGORY_LABELS = { email: 'Email', calendar: 'Calendar', pm: 'Project Management', messaging: 'Messaging' };
+
+const MOCK_RECORDINGS = [
+  {
+    id: 'r1', title: 'Weekly Eng Standup', date: new Date().toISOString().split('T')[0],
+    duration: '28:14', participants: 6, hasTranscript: true,
+    summary: 'Team aligned on the Q2 federation launch timeline. Outstanding blockers: auth token refresh and the CxMS index rebuild. Alice will drive the auth fix by EOW. Ben to review the FCP spec by Thursday.',
+    tags: ['engineering','weekly','federation'],
+  },
+  {
+    id: 'r2', title: '1:1 with Bob', date: new Date(Date.now() - 86400000).toISOString().split('T')[0],
+    duration: '32:41', participants: 2, hasTranscript: true,
+    summary: 'Career conversation and sprint retro. Bob is interested in taking over the ingestion pipeline ownership. Agreed to revisit in 2 weeks after the planning doc lands.',
+    tags: ['1:1','career'],
+  },
+  {
+    id: 'r3', title: 'Product Review — April', date: new Date(Date.now() - 3*86400000).toISOString().split('T')[0],
+    duration: '54:02', participants: 9, hasTranscript: false,
+    summary: 'Walked through the April dashboard. Retention is holding; the new onboarding funnel pushed week-1 activation from 41% to 53%.',
+    tags: ['product','metrics'],
+  },
+];
+
+// ── Utilities ─────────────────────────────────────────────────────────
+
+function formatMonthYear(d) { return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }); }
+function formatLongDate(d)  { return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }); }
+function formatShortDate(d) { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+function formatTime(d)      { return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }); }
+function formatPinTime(d)   { return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' · ' + formatTime(d); }
+function sameDay(a, b)      { return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+function ymd(d)             { return d.toISOString().split('T')[0]; }
+function addDays(d, n)      { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+
+// tiny markdown for assistant messages & pin bodies
+function renderMarkdown(text, small=false) {
+  if (!text) return '';
+  const escapeHtml = (s) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const sizeCls = small ? 'text-[11px]' : 'text-sm';
+  const lines = text.split('\n');
+  let html = '';
+  let inList = null;                      // 'ul' | 'ol' | null
+  function closeList() { if (inList) { html += `</${inList}>`; inList = null; } }
+  const inline = (s) => {
+    s = escapeHtml(s);
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-zinc-100">$1</strong>');
+    return s;
+  };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line.trim()) { closeList(); html += `<div class="h-2"></div>`; continue; }
+    const bulletMatch = line.match(/^\s*[•\-]\s+(.+)$/);
+    const orderedMatch = line.match(/^\s*(\d+)\.\s+(.+)$/);
+    const soloBold = line.match(/^\*\*(.+)\*\*$/);
+    if (bulletMatch) {
+      if (inList !== 'ul') { closeList(); html += `<ul class="space-y-0.5 ${sizeCls}">`; inList = 'ul'; }
+      html += `<li class="flex gap-2"><span class="text-muted">•</span><span class="flex-1">${inline(bulletMatch[1])}</span></li>`;
+      continue;
+    }
+    if (orderedMatch) {
+      if (inList !== 'ol') { closeList(); html += `<ol class="space-y-0.5 ${sizeCls}">`; inList = 'ol'; }
+      html += `<li class="flex gap-2"><span class="text-muted">${orderedMatch[1]}.</span><span class="flex-1">${inline(orderedMatch[2])}</span></li>`;
+      continue;
+    }
+    closeList();
+    if (soloBold) {
+      html += `<p class="font-semibold text-zinc-100 mt-1 ${sizeCls}">${inline(soloBold[1])}</p>`;
+      continue;
+    }
+    if (line.startsWith('🔴')) html += `<p class="text-red-400 font-medium ${sizeCls}">${inline(line)}</p>`;
+    else if (line.startsWith('🟡')) html += `<p class="text-amber-400 font-medium ${sizeCls}">${inline(line)}</p>`;
+    else if (line.startsWith('📅')) html += `<p class="text-cyan-400 font-medium ${sizeCls}">${inline(line)}</p>`;
+    else html += `<p class="${sizeCls}">${inline(line)}</p>`;
+  }
+  closeList();
+  return html;
+}
+
+function uid() { return Math.random().toString(36).slice(2, 10); }
+
+// ── Rendering entry point ─────────────────────────────────────────────
+function render() {
+  const root = document.getElementById('app');
+  root.innerHTML = '';
+  root.appendChild(renderSidebar());
+  const panel = document.createElement('main');
+  panel.className = 'flex-1 flex overflow-hidden';
+  if (state.activePanel === 'dashboard')   panel.appendChild(renderDashboard());
+  if (state.activePanel === 'recordings')  panel.appendChild(renderRecordings());
+  if (state.activePanel === 'connections') panel.appendChild(renderConnections());
+  root.appendChild(panel);
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────
+function renderSidebar() {
+  const side = document.createElement('aside');
+  side.className = 'w-14 shrink-0 bg-surface-1 border-r border-border flex flex-col items-center';
+  side.innerHTML = `
+    <div class="h-14 w-full flex items-center justify-center">
+      <div class="w-7 h-7 rounded bg-accent flex items-center justify-center text-white">${icon('Mic', 14)}</div>
+    </div>
+    <nav class="flex flex-col gap-1 px-2 w-full mt-1">
+      ${navBtn('dashboard',   'LayoutDashboard', 'Dashboard')}
+      ${navBtn('recordings',  'Mic',             'Rembr')}
+      ${navBtn('connections', 'Plug2',           'Connections')}
+    </nav>
+  `;
+  side.querySelectorAll('[data-panel]').forEach(el => {
+    el.addEventListener('click', () => { state.activePanel = el.dataset.panel; render(); });
+  });
+  return side;
+}
+
+function navBtn(id, iconName, label) {
+  const active = state.activePanel === id;
+  const cls = active
+    ? 'bg-accent/15 text-accent'
+    : 'text-muted hover:bg-surface-3 hover:text-zinc-200';
+  return `
+    <div class="relative has-tooltip">
+      <button data-panel="${id}" class="w-full h-10 rounded flex items-center justify-center ${cls} transition-colors">
+        ${icon(iconName, 18)}
+      </button>
+      <span class="tooltip absolute left-full top-1/2 -translate-y-1/2 ml-2 bg-surface-4 text-zinc-200 text-xs rounded px-2 py-1 shadow-lg whitespace-nowrap z-50">${label}</span>
+    </div>
+  `;
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- DASHBOARD PANEL                                                     -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<script>
+function renderDashboard() {
+  const wrap = document.createElement('div');
+  wrap.className = 'flex flex-1 overflow-hidden';
+  wrap.appendChild(renderDashboardLeft());
+  wrap.appendChild(renderChatPanel());
+  return wrap;
+}
+
+function renderDashboardLeft() {
+  const col = document.createElement('aside');
+  col.className = 'w-[272px] shrink-0 bg-surface-1 border-r border-border flex flex-col overflow-y-auto';
+  col.appendChild(renderLeftHeader());
+  col.appendChild(renderMiniCalendar());
+  col.appendChild(render3DayTimeline());
+  col.appendChild(renderPinBoard());
+  return col;
+}
+
+function renderLeftHeader() {
+  const d = document.createElement('div');
+  d.className = 'px-4 pt-5 pb-4 border-b border-border';
+  d.innerHTML = `
+    <div class="text-[10px] font-semibold text-muted uppercase tracking-wider">Dashboard</div>
+    <div class="mt-1 text-[15px] font-semibold text-zinc-100">${formatLongDate(new Date())}</div>
+  `;
+  return d;
+}
+
+function renderMiniCalendar() {
+  const wrap = document.createElement('section');
+  wrap.className = 'px-4 py-4 border-b border-border';
+  const eventDays = new Set(state.events.map(e => e.date));
+  const today = new Date();
+  const month = state.viewMonth;
+  const first = new Date(month.getFullYear(), month.getMonth(), 1);
+  const startWeekday = first.getDay();
+  const daysInMonth = new Date(month.getFullYear(), month.getMonth()+1, 0).getDate();
+
+  let cells = '';
+  for (let i=0;i<startWeekday;i++) cells += `<div></div>`;
+  for (let d=1; d<=daysInMonth; d++) {
+    const date = new Date(month.getFullYear(), month.getMonth(), d);
+    const key = ymd(date);
+    const isToday = sameDay(date, today);
+    const isSelected = sameDay(date, state.selectedDate);
+    const hasEvents = eventDays.has(key);
+    let cls = 'text-zinc-400 hover:bg-surface-4 hover:text-zinc-200';
+    if (isToday) cls = 'bg-accent/15 text-accent';
+    if (isSelected) cls = 'bg-accent text-white';
+    const dot = hasEvents ? `<span class="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full ${isSelected ? 'bg-white/60' : 'bg-accent/70'}"></span>` : '';
+    cells += `<button data-day="${key}" class="relative h-7 rounded text-[11px] ${cls} transition-colors">${d}${dot}</button>`;
+  }
+
+  wrap.innerHTML = `
+    <div class="flex items-center gap-1.5 mb-3">
+      ${icon('Calendar', 10, 'text-muted')}
+      <span class="text-[10px] font-semibold text-muted uppercase tracking-wider">Calendar</span>
+    </div>
+    <div class="flex items-center justify-between mb-2">
+      <button id="cal-prev" class="w-6 h-6 rounded flex items-center justify-center text-muted hover:bg-surface-4 hover:text-zinc-200">${icon('ChevronLeft', 14)}</button>
+      <span class="text-xs font-medium text-zinc-200">${formatMonthYear(month)}</span>
+      <button id="cal-next" class="w-6 h-6 rounded flex items-center justify-center text-muted hover:bg-surface-4 hover:text-zinc-200">${icon('ChevronRight', 14)}</button>
+    </div>
+    <div class="grid grid-cols-7 gap-0.5 mb-1 text-center">
+      ${['S','M','T','W','T','F','S'].map(d => `<div class="text-[10px] text-muted">${d}</div>`).join('')}
+    </div>
+    <div class="grid grid-cols-7 gap-0.5">${cells}</div>
+  `;
+  wrap.querySelector('#cal-prev').addEventListener('click', () => {
+    state.viewMonth = new Date(month.getFullYear(), month.getMonth()-1, 1); render();
+  });
+  wrap.querySelector('#cal-next').addEventListener('click', () => {
+    state.viewMonth = new Date(month.getFullYear(), month.getMonth()+1, 1); render();
+  });
+  wrap.querySelectorAll('[data-day]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.selectedDate = new Date(el.dataset.day);
+      render();
+    });
+  });
+  return wrap;
+}
+
+function render3DayTimeline() {
+  const wrap = document.createElement('section');
+  wrap.className = 'px-4 py-4 border-b border-border';
+  const today = new Date();
+  const days = [0,1,2].map(offset => addDays(state.selectedDate, offset));
+  const dayBlocks = days.map(date => {
+    const key = ymd(date);
+    const isToday = sameDay(date, today);
+    const evs = state.events.filter(e => e.date === key);
+    const label = isToday ? 'Today' : date.toLocaleDateString('en-US', { weekday: 'long' });
+    const pills = evs.length === 0
+      ? `<div class="text-[10px] italic text-muted">No events</div>`
+      : evs.map(ev => eventPill(ev)).join('');
+    return `
+      <div class="space-y-1.5">
+        <div class="flex items-center gap-1.5">
+          <span class="text-[11px] font-semibold ${isToday ? 'text-accent' : 'text-muted'}">${label}</span>
+          <span class="text-[10px] text-muted">${formatShortDate(date)}</span>
+          ${isToday ? '<span class="w-1.5 h-1.5 rounded-full bg-accent"></span>' : ''}
+        </div>
+        <div class="space-y-1">${pills}</div>
+      </div>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="flex items-center gap-1.5 mb-3">
+      ${icon('Clock', 10, 'text-muted')}
+      <span class="text-[10px] font-semibold text-muted uppercase tracking-wider">Next 3 Days</span>
+    </div>
+    <div class="space-y-4">${dayBlocks}</div>
+  `;
+  return wrap;
+}
+
+function eventPill(ev) {
+  const s = EVENT_TYPE_STYLES[ev.type] || EVENT_TYPE_STYLES.meeting;
+  const meta = [];
+  if (ev.start) meta.push(`<span class="flex items-center gap-0.5 opacity-70">${icon('Clock', 9)}${ev.start}${ev.end ? '–'+ev.end : ''}</span>`);
+  if (ev.attendees) meta.push(`<span class="flex items-center gap-0.5 opacity-70">${icon('Users', 9)}${ev.attendees}</span>`);
+  if (ev.location) meta.push(`<span class="flex items-center gap-0.5 opacity-70">${icon('MapPin', 9)}${ev.location}</span>`);
+  return `
+    <div class="rounded border ${s.pill} px-2 py-1.5">
+      <div class="flex items-center gap-1.5">
+        <span class="w-1 h-1 rounded-full ${s.dot}"></span>
+        <span class="text-[11px] font-medium truncate flex-1">${escapeText(ev.title)}</span>
+      </div>
+      ${meta.length ? `<div class="flex gap-2 mt-0.5 text-[10px]">${meta.join('')}</div>` : ''}
+    </div>`;
+}
+
+function escapeText(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderPinBoard() {
+  const wrap = document.createElement('section');
+  wrap.className = 'px-4 py-4 flex-1';
+  const count = state.pins.length;
+  const pinCards = count === 0
+    ? `<div class="text-[11px] italic text-muted">Pin messages or call highlights here</div>`
+    : state.pins.map((p, i) => pinCard(p, i)).join('');
+
+  wrap.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-1.5">
+        ${icon('Pin', 10, 'text-muted')}
+        <span class="text-[10px] font-semibold text-muted uppercase tracking-wider">Pin Board</span>
+      </div>
+      ${count ? `<span class="text-[10px] text-muted">${count}</span>` : ''}
+    </div>
+    <div class="space-y-2">${pinCards}</div>
+  `;
+  wrap.querySelectorAll('[data-pin-remove]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const pid = el.dataset.pinRemove;
+      state.pins = state.pins.filter(p => p.id !== pid);
+      savePins();
+      render();
+    });
+  });
+  return wrap;
+}
+
+function pinCard(pin, i) {
+  const color = pin.color || PIN_COLORS[i % PIN_COLORS.length];
+  const typeIcon = pin.type === 'call' ? 'Phone' : pin.type === 'chat' ? 'Sparkles' : 'FileText';
+  return `
+    <div class="group relative rounded-xl border ${color} px-3 py-2.5">
+      <button data-pin-remove="${pin.id}" class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted hover:text-zinc-200">${icon('X', 12)}</button>
+      <div class="flex items-center gap-1 opacity-60 mb-0.5">
+        ${icon(typeIcon, 10)}
+        <span class="text-[10px] uppercase tracking-wider">${pin.type}</span>
+      </div>
+      <div class="text-[11px] font-semibold text-zinc-200 pr-5">${escapeText(pin.title)}</div>
+      <div class="mt-1">${renderMarkdown(pin.body, true)}</div>
+      <div class="mt-1.5 text-[10px] text-muted">${formatPinTime(new Date(pin.ts))}</div>
+    </div>
+  `;
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- CHAT PANEL                                                          -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<script>
+function renderChatPanel() {
+  const wrap = document.createElement('div');
+  wrap.className = 'flex-1 flex flex-col overflow-hidden bg-surface-0';
+  wrap.appendChild(renderChatHeader());
+
+  const list = document.createElement('div');
+  list.id = 'chat-list';
+  list.className = 'flex-1 overflow-y-auto px-6 py-5 space-y-5';
+  state.messages.forEach(m => list.appendChild(renderMessage(m)));
+
+  if (state.messages.length <= 1) {
+    list.appendChild(renderQuickPrompts());
+  }
+  if (state.loading) list.appendChild(renderLoading());
+  wrap.appendChild(list);
+
+  wrap.appendChild(renderInputBar());
+  setTimeout(() => { list.scrollTop = list.scrollHeight; }, 0);
+  return wrap;
+}
+
+function renderChatHeader() {
+  const header = document.createElement('header');
+  header.className = 'h-14 border-b border-border bg-surface-1/50 backdrop-blur flex items-center justify-between px-6 shrink-0';
+  header.innerHTML = `
+    <div class="flex items-center gap-3">
+      <div class="w-7 h-7 rounded-full bg-accent/15 text-accent flex items-center justify-center">${icon('Sparkles', 14)}</div>
+      <div class="leading-tight">
+        <div class="text-sm font-semibold text-zinc-100">${escapeText(state.assistantName)}</div>
+        <div class="text-[11px] text-muted">Ask about meetings, todos, your calendar</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      ${renderVoiceSwitch()}
+      <div class="h-4 w-px bg-border"></div>
+      <button class="text-muted hover:text-zinc-200">${icon('MoreHorizontal', 16)}</button>
+    </div>
+  `;
+  // wire voice switch buttons
+  header.querySelectorAll('[data-voice]').forEach(btn => {
+    btn.addEventListener('click', () => { state.voiceMode = btn.dataset.voice; state.announceOpen = false; render(); });
+  });
+  const announceBtn = header.querySelector('#announce-trigger');
+  if (announceBtn) {
+    announceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      state.announceOpen = !state.announceOpen;
+      render();
+    });
+  }
+  header.querySelectorAll('[data-announce]').forEach(btn => {
+    btn.addEventListener('click', () => { state.announceMode = btn.dataset.announce; state.announceOpen = false; render(); });
+  });
+  return header;
+}
+
+function renderVoiceSwitch() {
+  const micColor = state.voiceMode === 'off' ? 'text-muted' : state.voiceMode === 'auto' ? 'text-amber-400' : 'text-red-400';
+  const seg = (val, activeCls, label) => {
+    const active = state.voiceMode === val;
+    const cls = active ? activeCls : 'text-muted hover:text-zinc-300';
+    return `<button data-voice="${val}" class="px-3 py-1 rounded-full text-[11px] font-medium transition-colors ${cls}">${label}</button>`;
+  };
+  let statusGroup = '';
+  if (state.voiceMode === 'auto') {
+    statusGroup = `
+      <div class="h-4 w-px bg-border"></div>
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-amber-400/80">Listening…</span>
+        ${renderAnnounceDropdown()}
+      </div>`;
+  } else if (state.voiceMode === 'on') {
+    statusGroup = `
+      <div class="h-4 w-px bg-border"></div>
+      <div class="flex items-center gap-2">
+        <span class="relative flex w-2 h-2">
+          <span class="absolute inline-flex h-full w-full rounded-full bg-red-500 mic-ping"></span>
+          <span class="relative inline-flex w-2 h-2 rounded-full bg-red-500"></span>
+        </span>
+        <span class="text-xs text-red-400">Recording</span>
+        ${renderAnnounceDropdown()}
+      </div>`;
+  }
+  return `
+    <div class="flex items-center gap-2">
+      ${icon('Mic', 13, micColor)}
+      <div class="flex items-center rounded-full bg-surface-3 border border-border p-0.5">
+        ${seg('off',  'bg-zinc-600 text-zinc-200', 'Off')}
+        ${seg('auto', 'bg-amber-500/80 text-white', 'Auto')}
+        ${seg('on',   'bg-red-500 text-white', 'On')}
+      </div>
+      ${statusGroup}
+    </div>
+  `;
+}
+
+const ANNOUNCE_OPTIONS = [
+  { value: 'silent',   label: 'Silent',       description: 'No notification — all parties must consent in advance' },
+  { value: 'beep',     label: 'Beep tone',    description: 'Periodic tone alerts parties that recording is active' },
+  { value: 'announce', label: 'Announcement', description: 'Plays: "This call is being recorded for quality purposes"' },
+  { value: 'verbal',   label: 'Verbal notice', description: () => `${state.assistantName} verbally informs all parties before recording starts` },
+];
+
+function renderAnnounceDropdown() {
+  const current = ANNOUNCE_OPTIONS.find(o => o.value === state.announceMode) || ANNOUNCE_OPTIONS[2];
+  const panel = state.announceOpen ? `
+    <div class="absolute right-0 top-full mt-1.5 w-72 bg-surface-3 rounded-xl shadow-2xl border border-border z-50 overflow-hidden">
+      <div class="px-3 py-2 border-b border-border">
+        <div class="text-[10px] font-semibold text-muted uppercase tracking-wider">Recording Notice</div>
+        <div class="text-[10px] text-muted mt-0.5">California requires all-party consent (CIPA §632)</div>
+      </div>
+      <div class="py-1">
+        ${ANNOUNCE_OPTIONS.map(o => {
+          const active = state.announceMode === o.value;
+          const desc = typeof o.description === 'function' ? o.description() : o.description;
+          return `
+            <button data-announce="${o.value}" class="w-full text-left px-3 py-2 flex items-start gap-2 ${active ? 'bg-amber-500/10' : 'hover:bg-surface-4'}">
+              <div class="flex-1">
+                <div class="text-xs font-medium ${active ? 'text-amber-400' : 'text-zinc-200'}">${o.label}</div>
+                <div class="text-[11px] text-muted mt-0.5">${desc}</div>
+              </div>
+              ${active ? '<span class="w-1.5 h-1.5 rounded-full bg-amber-400 mt-1 shrink-0"></span>' : ''}
+            </button>`;
+        }).join('')}
+      </div>
+    </div>` : '';
+  return `
+    <div class="relative">
+      <button id="announce-trigger" class="flex items-center gap-1 px-2 py-1 rounded-md border border-amber-500/20 text-[11px] text-amber-400/90 hover:bg-amber-500/5">
+        <span>${current.label}</span>
+        ${icon('ChevronDown', 12)}
+      </button>
+      ${panel}
+    </div>`;
+}
+
+function renderMessage(m) {
+  if (m.role === 'user') {
+    const wrap = document.createElement('div');
+    wrap.className = 'flex flex-row-reverse items-end gap-3 group';
+    wrap.innerHTML = `
+      <div class="w-7 h-7 rounded-full bg-surface-4 text-zinc-400 flex items-center justify-center shrink-0">${icon('User', 13)}</div>
+      <div class="flex flex-col items-end max-w-[70%]">
+        <div class="bg-accent text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm">${escapeText(m.content)}</div>
+        <div class="mt-1 text-[11px] text-muted">${formatTime(new Date(m.ts))}</div>
+      </div>`;
+    return wrap;
+  }
+  // assistant
+  const wrap = document.createElement('div');
+  wrap.className = 'flex items-start gap-3 group';
+  const procDiagram = renderProcessDiagram(m.processVariant || 'standard');
+  wrap.innerHTML = `
+    <div class="w-7 h-7 rounded-full bg-accent/15 text-accent flex items-center justify-center shrink-0 mt-1">${icon('Bot', 13)}</div>
+    <div class="flex-1 max-w-[75%]">
+      ${procDiagram}
+      <div class="bg-surface-2 border border-border text-zinc-300 rounded-2xl rounded-tl-sm px-4 py-3 space-y-1">${renderMarkdown(m.content)}</div>
+      <div class="mt-1 flex items-center gap-3 text-[11px] text-muted">
+        <span>${formatTime(new Date(m.ts))}</span>
+        <button data-pin-msg="${m.id}" class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 hover:text-accent">
+          ${icon('Pin', 11)}
+          <span>pin</span>
+        </button>
+      </div>
+    </div>`;
+  const pinBtn = wrap.querySelector('[data-pin-msg]');
+  if (pinBtn) {
+    pinBtn.addEventListener('click', () => {
+      if (state.pins.some(p => p.sourceId === m.id)) return;
+      const body = m.content.replace(/^[🔴🟡📅]\s*/,'').slice(0, 140);
+      state.pins.unshift({
+        id: uid(), sourceId: m.id, type: 'chat',
+        title: state.assistantName,
+        body, ts: new Date().toISOString(),
+        color: PIN_COLORS[state.pins.length % PIN_COLORS.length],
+      });
+      savePins();
+      render();
+    });
+  }
+  return wrap;
+}
+
+function renderProcessDiagram(variant) {
+  const dId = `proc-${uid()}`;
+  return `
+    <details class="mb-1.5">
+      <summary class="cursor-pointer text-[11px] font-mono text-muted hover:text-zinc-300 list-none select-none">▶ Process diagram</summary>
+      <div class="mt-1.5 bg-[#0d0d0f] border border-border rounded-lg p-3">${svgForVariant(variant)}</div>
+    </details>`;
+}
+
+function svgForVariant(v) {
+  const NODE = '#18181b', STROKE = '#3f3f46', ARROW = '#22d3ee', ERR = '#52525b', TEXT = '#e4e4e7', BADGE = '#27272c', BADGE_TXT = '#a1a1aa';
+  const arrowDef = `
+    <defs>
+      <marker id="arr-cyan" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="${ARROW}"/>
+      </marker>
+      <marker id="arr-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="${ERR}"/>
+      </marker>
+    </defs>`;
+  const ellipse = (cx, cy, rx, ry, label) => `
+    <ellipse cx="${cx}" cy="${cy}" rx="${rx}" ry="${ry}" fill="${NODE}" stroke="${STROKE}" stroke-width="1.5"/>
+    <text x="${cx}" y="${cy+4}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="${TEXT}">${label}</text>`;
+  const rect = (x, y, w, h, label) => `
+    <rect x="${x}" y="${y}" width="${w}" height="${h}" rx="3" fill="${NODE}" stroke="${STROKE}" stroke-width="1.5"/>
+    <text x="${x+w/2}" y="${y+h/2+4}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="${TEXT}">${label}</text>`;
+  const line = (x1,y1,x2,y2) => `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${ARROW}" stroke-width="1.2" marker-end="url(#arr-cyan)"/>`;
+  const errPath = (d) => `<path d="${d}" fill="none" stroke="${ERR}" stroke-width="1.2" stroke-dasharray="4,3" marker-end="url(#arr-err)"/>`;
+  const errBadge = (x,y,label='error') => `
+    <rect x="${x}" y="${y}" width="34" height="14" rx="2" fill="${BADGE}" stroke="${STROKE}" stroke-width="1"/>
+    <text x="${x+17}" y="${y+10}" text-anchor="middle" font-family="ui-monospace,monospace" font-size="9" fill="${BADGE_TXT}">${label}</text>`;
+
+  if (v === 'simple') {
+    return `<svg viewBox="0 0 420 60" class="w-full">${arrowDef}
+      ${ellipse(40, 30, 28, 16, 'start')}
+      ${line(70, 30, 170, 30)}
+      ${rect(170, 14, 90, 32, 'llm_chat')}
+      ${line(260, 30, 360, 30)}
+      ${ellipse(390, 30, 28, 16, 'stop')}
+    </svg>`;
+  }
+  if (v === 'complex') {
+    return `<svg viewBox="0 0 640 180" class="w-full">${arrowDef}
+      ${ellipse(30, 30, 24, 14, 'start')}
+      ${line(56, 30, 116, 30)}
+      ${rect(116, 14, 108, 32, 'list_entities')}
+      ${line(170, 46, 170, 76)}
+      ${rect(116, 76, 108, 32, 'sort_entities')}
+      ${line(224, 92, 284, 92)}
+      ${rect(284, 76, 108, 32, 'list_entities')}
+      ${line(338, 76, 338, 46)}
+      ${line(392, 92, 452, 92)}
+      ${rect(452, 76, 90, 32, 'llm_chat')}
+      ${errBadge(420, 68)}
+      ${line(542, 92, 592, 92)}
+      ${ellipse(612, 92, 24, 14, 'stop')}
+      ${errBadge(560, 74)}
+      ${errPath('M 170 46 C 210 10, 250 60, 284 92')}
+    </svg>`;
+  }
+  // standard
+  return `<svg viewBox="0 0 520 120" class="w-full">${arrowDef}
+    ${ellipse(30, 30, 24, 14, 'start')}
+    ${line(56, 30, 116, 30)}
+    ${rect(116, 14, 128, 32, 'retrieve_context')}
+    ${line(244, 30, 304, 30)}
+    ${rect(304, 14, 90, 32, 'llm_chat')}
+    ${line(394, 30, 454, 30)}
+    ${ellipse(478, 30, 24, 14, 'stop')}
+    ${errBadge(418, 14)}
+    ${errPath('M 244 46 C 270 80, 290 80, 304 52')}
+  </svg>`;
+}
+
+function pickProcessVariant(text) {
+  const len = (text || '').length;
+  if (len < 120) return 'simple';
+  if (len < 400) return 'standard';
+  return 'complex';
+}
+
+function renderQuickPrompts() {
+  const div = document.createElement('div');
+  div.className = 'flex flex-wrap gap-2 pl-10';
+  const prompts = [
+    'Summarize my last meeting',
+    'What are my action items?',
+    "What's on my calendar today?",
+    'Show high-priority todos',
+  ];
+  div.innerHTML = prompts.map(p => `
+    <button data-prompt="${escapeText(p)}" class="text-xs px-3 py-1.5 rounded-full bg-surface-2 border border-border text-muted hover:text-zinc-200 hover:border-subtle">${p}</button>
+  `).join('');
+  div.querySelectorAll('[data-prompt]').forEach(btn => {
+    btn.addEventListener('click', () => sendChat(btn.dataset.prompt));
+  });
+  return div;
+}
+
+function renderLoading() {
+  const wrap = document.createElement('div');
+  wrap.className = 'flex items-start gap-3';
+  wrap.innerHTML = `
+    <div class="w-7 h-7 rounded-full bg-accent/15 text-accent flex items-center justify-center">${icon('Bot', 13)}</div>
+    <div class="bg-surface-2 border border-border rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1">
+      <span class="w-1.5 h-1.5 rounded-full bg-muted dot-bounce"></span>
+      <span class="w-1.5 h-1.5 rounded-full bg-muted dot-bounce" style="animation-delay:.15s"></span>
+      <span class="w-1.5 h-1.5 rounded-full bg-muted dot-bounce" style="animation-delay:.3s"></span>
+    </div>`;
+  if (state._thinkingStatus) {
+    const tag = document.createElement('div');
+    tag.className = 'text-[10px] text-muted ml-10 mt-1 flex-1';
+    tag.textContent = state._thinkingStatus;
+    wrap.appendChild(tag);
+  }
+  return wrap;
+}
+
+function renderInputBar() {
+  const wrap = document.createElement('div');
+  wrap.className = 'px-6 pb-5 pt-2 shrink-0';
+  const listening = state.isListening;
+  const borderCls = listening ? 'border-red-500/50' : 'border-border focus-within:border-accent/50';
+  wrap.innerHTML = `
+    <form id="chat-form" class="rounded-2xl bg-surface-2 border ${borderCls} px-4 py-3 transition-colors">
+      <div class="flex items-end gap-3">
+        <button type="button" class="text-muted hover:text-zinc-300 mb-1">${icon('Paperclip', 16)}</button>
+        <button type="button" id="mic-btn" class="relative mb-1 ${listening ? 'text-red-400' : 'text-muted hover:text-zinc-300'}">
+          ${listening ? '<span class="absolute inset-0 rounded-full bg-red-500/20 mic-ping"></span>' : ''}
+          <span class="relative">${icon('Mic', 16)}</span>
+        </button>
+        <textarea id="chat-input"
+          rows="1"
+          placeholder="${listening ? 'Listening…' : 'Ask anything…'}"
+          class="flex-1 resize-none bg-transparent text-sm text-zinc-200 placeholder-muted outline-none max-h-48 no-scrollbar"></textarea>
+        <button type="submit" id="chat-submit"
+          class="w-8 h-8 rounded-xl bg-accent flex items-center justify-center text-white disabled:opacity-30 shrink-0"
+          ${state.loading ? 'disabled' : ''}>
+          ${icon('Send', 14)}
+        </button>
+      </div>
+    </form>
+    <div class="mt-2 text-center text-[11px] text-muted">Shift+Enter for new line · Enter to send · hover a response to pin it</div>
+  `;
+  const form = wrap.querySelector('#chat-form');
+  const input = wrap.querySelector('#chat-input');
+  const submit = wrap.querySelector('#chat-submit');
+  const micBtn = wrap.querySelector('#mic-btn');
+
+  const syncSubmit = () => { submit.disabled = state.loading || !input.value.trim(); };
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 192) + 'px';
+    syncSubmit();
+  });
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); }
+  });
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = input.value.trim();
+    if (!v || state.loading) return;
+    sendChat(v);
+    input.value = '';
+    input.style.height = 'auto';
+    syncSubmit();
+  });
+  micBtn.addEventListener('click', () => {
+    if (state.isListening) {
+      state.isListening = false;
+      render();
+      return;
+    }
+    state.isListening = true;
+    render();
+    setTimeout(() => {
+      if (!state.isListening) return;
+      state.isListening = false;
+      const el = document.getElementById('chat-input');
+      if (el) el.value = 'Quick question about my schedule today';
+      render();
+    }, 3000);
+  });
+  setTimeout(syncSubmit, 0);
+  return wrap;
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- REMBR PANEL                                                         -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<script>
+function renderRecordings() {
+  const wrap = document.createElement('div');
+  wrap.className = 'flex flex-1 overflow-hidden';
+  wrap.appendChild(renderRecordingList());
+  wrap.appendChild(renderRecordingDetail());
+  return wrap;
+}
+
+function renderRecordingList() {
+  const col = document.createElement('aside');
+  col.className = 'w-72 shrink-0 bg-surface-1 border-r border-border flex flex-col overflow-hidden';
+  const transcribedCount = state.recordings.filter(r => r.hasTranscript).length;
+  const q = (state.recordingSearch || '').toLowerCase();
+  const filtered = state.recordings.filter(r =>
+    !q || r.title.toLowerCase().includes(q) || (r.tags||[]).some(t => t.toLowerCase().includes(q)),
+  );
+
+  col.innerHTML = `
+    <div class="px-4 pt-5 pb-3 border-b border-border flex items-start justify-between gap-3">
+      <div>
+        <h1 class="text-[18px] font-semibold text-zinc-100">Rembr</h1>
+        <div class="text-xs text-muted mt-0.5">${state.recordings.length} recordings · ${transcribedCount} transcribed</div>
+      </div>
+      <button class="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1.5 rounded-md border border-red-500/30 bg-red-500/15 text-red-400 hover:bg-red-500/20">
+        <span class="relative flex w-2 h-2">
+          <span class="absolute inline-flex w-full h-full rounded-full bg-red-500 mic-ping"></span>
+          <span class="relative w-2 h-2 rounded-full bg-red-500"></span>
+        </span>
+        Record New
+      </button>
+    </div>
+    <div class="px-4 py-3 border-b border-border">
+      <div class="relative">
+        <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted">${icon('Search', 13)}</span>
+        <input id="rec-search" value="${escapeText(state.recordingSearch || '')}" placeholder="Search recordings…"
+          class="w-full pl-8 pr-3 py-2 text-xs bg-surface-3 border border-border rounded-lg text-zinc-200 placeholder-muted outline-none focus:border-subtle" />
+      </div>
+    </div>
+    <div id="rec-list" class="flex-1 overflow-y-auto px-3 py-3 space-y-2">
+      ${filtered.length === 0
+        ? '<div class="text-xs text-muted italic px-1">No recordings match.</div>'
+        : filtered.map(r => recordingCard(r)).join('')}
+    </div>
+  `;
+  col.querySelector('#rec-search').addEventListener('input', (e) => {
+    state.recordingSearch = e.target.value;
+    const list = col.querySelector('#rec-list');
+    const ns = state.recordingSearch.toLowerCase();
+    const next = state.recordings.filter(r =>
+      !ns || r.title.toLowerCase().includes(ns) || (r.tags||[]).some(t => t.toLowerCase().includes(ns)));
+    list.innerHTML = next.length === 0
+      ? '<div class="text-xs text-muted italic px-1">No recordings match.</div>'
+      : next.map(r => recordingCard(r)).join('');
+    list.querySelectorAll('[data-rec]').forEach(el => el.addEventListener('click', () => { state.selectedRecordingId = el.dataset.rec; render(); }));
+  });
+  col.querySelectorAll('[data-rec]').forEach(el => {
+    el.addEventListener('click', () => { state.selectedRecordingId = el.dataset.rec; state.transcriptExpanded = false; render(); });
+  });
+  return col;
+}
+
+function recordingCard(r) {
+  const selected = state.selectedRecordingId === r.id;
+  const baseCls = selected ? 'bg-accent/10 border-accent/30' : 'bg-surface-2 border-border hover:border-subtle';
+  const tagClsSel = selected ? 'bg-accent/15 border-accent/30 text-accent' : 'bg-surface-3 border-border text-muted';
+  const transcriptCls = selected ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400' : 'bg-surface-3 border-border text-muted';
+  const fmtDate = new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return `
+    <button data-rec="${r.id}" class="w-full text-left rounded-xl border ${baseCls} p-3 transition-colors">
+      <div class="flex items-start gap-2">
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium text-zinc-100 truncate">${escapeText(r.title)}</div>
+          <div class="mt-1 flex items-center gap-3 text-[11px] text-muted">
+            <span class="flex items-center gap-1">${icon('Clock', 10)}${r.duration}</span>
+            <span class="flex items-center gap-1">${icon('Users', 10)}${r.participants}</span>
+            <span>${fmtDate}</span>
+          </div>
+          <div class="mt-2 flex flex-wrap gap-1">
+            ${(r.tags||[]).map(t => `<span class="text-[10px] px-1.5 py-0.5 rounded-full border ${tagClsSel}">${escapeText(t)}</span>`).join('')}
+            ${r.hasTranscript ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full border ${transcriptCls}">transcript</span>` : ''}
+          </div>
+        </div>
+        <span class="${selected ? 'text-accent' : 'text-muted'} mt-0.5">${icon('ChevronRight', 13)}</span>
+      </div>
+    </button>`;
+}
+
+function renderRecordingDetail() {
+  const wrap = document.createElement('section');
+  wrap.className = 'flex-1 overflow-y-auto';
+  const r = state.recordings.find(x => x.id === state.selectedRecordingId) || state.recordings[0];
+  if (!r) {
+    wrap.innerHTML = `<div class="flex items-center justify-center h-full text-muted">No recording selected.</div>`;
+    return wrap;
+  }
+  const p = state.recordingPlayback;
+  const fakeTranscript = [
+    { speaker: 'Alice', text: "Let's quickly review where we are on the federation launch." },
+    { speaker: 'Bob',   text: 'Auth token refresh is the only blocker. I\'ve got a patch ready for review.' },
+    { speaker: 'Alice', text: 'Great — merge by EOW and we can cut the release Thursday.' },
+    { speaker: 'Bob',   text: 'Works for me. I\'ll also kick off the index rebuild tonight so it\'s warm.' },
+  ];
+  wrap.innerHTML = `
+    <div class="max-w-[672px] mx-auto px-8 py-8 space-y-6">
+      <div class="flex items-start justify-between gap-4">
+        <h2 class="text-[20px] font-semibold text-zinc-100">${escapeText(r.title)}</h2>
+        <div class="flex items-center gap-2">
+          <button class="w-8 h-8 flex items-center justify-center rounded border border-border text-muted hover:text-zinc-200">${icon('Download', 14)}</button>
+          <button class="w-8 h-8 flex items-center justify-center rounded border border-border text-muted hover:text-red-400">${icon('Trash2', 14)}</button>
+        </div>
+      </div>
+      <div class="flex items-center gap-6 text-sm text-muted">
+        <span class="flex items-center gap-1.5">${icon('Clock', 14)}${r.duration}</span>
+        <span class="flex items-center gap-1.5">${icon('Users', 14)}${r.participants}</span>
+        <span>${new Date(r.date).toLocaleDateString('en-US',{weekday:'long', month:'long', day:'numeric'})}</span>
+      </div>
+      <div class="bg-surface-2 border border-border rounded-xl p-4 flex items-center gap-4">
+        <button id="rec-play" class="w-9 h-9 rounded-full bg-accent/15 text-accent flex items-center justify-center">${p.playing ? icon('Pause', 14) : icon('Play', 14)}</button>
+        <div class="flex-1">
+          <div id="rec-track" class="relative h-1.5 rounded-full bg-surface-4 cursor-pointer">
+            <div class="absolute inset-y-0 left-0 rounded-full bg-accent" style="width:${p.progress*100}%"></div>
+            <div class="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow" style="left: calc(${p.progress*100}% - 6px)"></div>
+          </div>
+        </div>
+        <div class="text-[11px] font-mono text-muted">${formatPlaybackTime(r.duration, p.progress)} / ${r.duration}</div>
+      </div>
+      <div class="bg-surface-2 border border-border rounded-xl p-4">
+        <div class="flex items-center gap-1.5 text-xs font-semibold text-accent uppercase tracking-wider">
+          ${icon('Mic', 12)} AI Summary
+        </div>
+        <div class="mt-3 text-sm text-zinc-300 leading-relaxed">${escapeText(r.summary)}</div>
+      </div>
+      ${r.hasTranscript ? `
+        <div class="bg-surface-2 border border-border rounded-xl">
+          <button id="transcript-toggle" class="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-zinc-200">
+            <span class="flex items-center gap-1.5">${icon('FileText', 14, 'text-muted')} Transcript</span>
+            <span class="text-[11px] text-muted flex items-center gap-1">${state.transcriptExpanded ? 'collapse' : 'expand'} ${state.transcriptExpanded ? icon('ChevronUp', 12) : icon('ChevronDown', 12)}</span>
+          </button>
+          ${state.transcriptExpanded ? `
+            <div class="px-4 pb-4 space-y-3">
+              ${fakeTranscript.map(line => `
+                <div class="flex gap-3">
+                  <div class="w-14 text-xs font-semibold text-accent shrink-0">${escapeText(line.speaker)}</div>
+                  <div class="text-sm text-zinc-400 leading-relaxed">${escapeText(line.text)}</div>
+                </div>`).join('')}
+              <div class="text-[11px] italic text-muted mt-3">Transcript generated by Rembr · speaker labels approximate.</div>
+            </div>` : ''}
+        </div>` : ''}
+    </div>
+  `;
+  wrap.querySelector('#rec-play')?.addEventListener('click', () => {
+    state.recordingPlayback.playing = !state.recordingPlayback.playing; render();
+  });
+  wrap.querySelector('#rec-track')?.addEventListener('click', (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    state.recordingPlayback.progress = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    render();
+  });
+  wrap.querySelector('#transcript-toggle')?.addEventListener('click', () => {
+    state.transcriptExpanded = !state.transcriptExpanded; render();
+  });
+  return wrap;
+}
+
+function formatPlaybackTime(duration, progress) {
+  const [mm, ss] = duration.split(':').map(Number);
+  const total = mm*60 + ss;
+  const cur = Math.floor(total * progress);
+  const m = Math.floor(cur/60), s = cur % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- CONNECTIONS PANEL                                                   -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<script>
+function renderConnections() {
+  const wrap = document.createElement('section');
+  wrap.className = 'flex-1 overflow-y-auto';
+  const connected = state.connections.filter(c => c.status === 'connected').length;
+  const total = state.connections.length;
+  const byCategory = {};
+  for (const c of state.connections) {
+    (byCategory[c.category] ||= []).push(c);
+  }
+  const ordered = ['email','calendar','pm','messaging'].filter(k => byCategory[k]);
+
+  wrap.innerHTML = `
+    <div class="max-w-[800px] mx-auto px-8 py-8 space-y-8">
+      <div>
+        <h1 class="text-[18px] font-semibold text-zinc-100">Connections</h1>
+        <div class="text-xs text-muted mt-1">${connected} of ${total} services connected</div>
+      </div>
+      ${ordered.map(cat => `
+        <section class="space-y-3">
+          <h2 class="text-xs font-semibold text-muted uppercase tracking-wider">${CATEGORY_LABELS[cat]}</h2>
+          <div class="space-y-2">
+            ${byCategory[cat].map(c => connectionRow(c)).join('')}
+          </div>
+        </section>
+      `).join('')}
+    </div>
+  `;
+  wrap.querySelectorAll('[data-conn-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.connToggle;
+      const c = state.connections.find(x => x.id === id);
+      if (!c) return;
+      c.status = c.status === 'connected' ? 'disconnected' : 'connected';
+      if (c.status === 'connected') {
+        c.account = c.account || 'you@example.com';
+        c.lastSync = 'just now';
+      } else {
+        c.account = undefined; c.lastSync = undefined;
+      }
+      render();
+    });
+  });
+  return wrap;
+}
+
+function connectionRow(c) {
+  const connected = c.status === 'connected';
+  const syncing = c.status === 'syncing';
+  const outer = connected || syncing ? 'bg-surface-2 border-border' : 'bg-surface-1 border-border/50';
+  const iconName = CONNECTION_ICONS[c.id] || 'Server';
+  const statusIcon = connected
+    ? `<span class="text-emerald-400">${icon('CheckCircle2', 13)}</span>`
+    : syncing
+    ? `<span class="text-amber-400"><span class="inline-block animate-spin">${icon('RefreshCw', 12)}</span></span>`
+    : '';
+  let actionBtn;
+  if (syncing) {
+    actionBtn = `<button class="px-3 py-1.5 rounded-md border border-amber-500/40 text-amber-400 text-xs cursor-default">Syncing…</button>`;
+  } else if (connected) {
+    actionBtn = `<button data-conn-toggle="${c.id}" class="px-3 py-1.5 rounded-md border border-border text-xs text-muted hover:text-red-400 hover:border-red-400/40">Disconnect</button>`;
+  } else {
+    actionBtn = `<button data-conn-toggle="${c.id}" class="px-3 py-1.5 rounded-md border border-accent/40 text-accent text-xs hover:bg-accent/10">Connect</button>`;
+  }
+  const accountLine = connected && (c.account || c.lastSync)
+    ? `<div class="text-xs text-subtle mt-1">${escapeText(c.account || '')}${c.lastSync ? ' · synced ' + escapeText(c.lastSync) : ''}</div>`
+    : '';
+  return `
+    <div class="flex items-center gap-4 p-4 rounded-xl border ${outer}">
+      <div class="w-10 h-10 rounded-lg bg-surface-3 flex items-center justify-center text-zinc-300 shrink-0">${icon(iconName, 20)}</div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium text-zinc-200">${escapeText(c.name)}</span>
+          ${statusIcon}
+        </div>
+        <div class="text-xs text-muted leading-relaxed mt-0.5">${escapeText(c.description)}</div>
+        ${accountLine}
+      </div>
+      <div class="shrink-0">${actionBtn}</div>
+    </div>`;
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- CHAT WIRING (WebSocket)                                             -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<script>
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  state.ws = ws;
+  ws.onopen  = () => { /* no-op */ };
+  ws.onclose = () => { setTimeout(connectWs, 3000); };
+  ws.onerror = () => {};
+  ws.onmessage = (ev) => {
+    let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+    switch (msg.type) {
+      case 'chat.start':
+        state.currentChatId = msg.chatId || null;
+        break;
+      case 'chat.thinking':
+        state._thinkingStatus = msg.status || '';
+        render();
+        break;
+      case 'chat.process':
+        // keep the diagram generic; spec uses our own variant logic
+        break;
+      case 'chat.response': {
+        state.loading = false;
+        state._thinkingStatus = '';
+        state.totalTokens += (msg.totalTokens || 0);
+        state.messages.push({
+          id: uid(), role: 'assistant',
+          content: msg.message || '',
+          ts: new Date().toISOString(),
+          processVariant: pickProcessVariant(msg.message),
+        });
+        state.currentChatId = null;
+        render();
+        break;
+      }
+      case 'chat.error':
+        state.loading = false;
+        state._thinkingStatus = '';
+        state.messages.push({
+          id: uid(), role: 'assistant',
+          content: `🔴 ${msg.error || 'Something went wrong.'}`,
+          ts: new Date().toISOString(),
+          processVariant: 'simple',
+        });
+        render();
+        break;
+      case 'chat.proactive':
+        state.messages.push({
+          id: uid(), role: 'assistant',
+          content: msg.message || '',
+          ts: new Date().toISOString(),
+          processVariant: 'simple',
+        });
+        render();
+        break;
+      case 'refresh':
+        loadEvents();
+        break;
+    }
+  };
+}
+
+function sendChat(text) {
+  if (!text || state.loading) return;
+  const ws = state.ws;
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  state.messages.push({ id: uid(), role: 'user', content: text, ts: new Date().toISOString() });
+  state.loading = true;
+  state._thinkingStatus = '';
+  ws.send(JSON.stringify({ type: 'chat', message: text }));
+  render();
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- DATA LOADERS                                                        -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<script>
+async function loadEvents() {
+  try {
+    // Prefer CxMS endpoint for events
+    const res = await fetch('/cx/context-types/event');
+    if (!res.ok) throw new Error('no cx');
+    const data = await res.json();
+    const rows = Array.isArray(data) ? data : (data.nodes || data.entities || []);
+    state.events = rows.map(toCalEvent).filter(Boolean);
+  } catch {
+    try {
+      const res2 = await fetch('/api/events?days=14');
+      if (res2.ok) {
+        const j = await res2.json();
+        const events = [];
+        for (const [date, list] of Object.entries(j.dates || {})) {
+          for (const ev of list) events.push(toCalEvent({ ...ev, date }));
+        }
+        state.events = events.filter(Boolean);
+      }
+    } catch {}
+  }
+  render();
+}
+
+function toCalEvent(src) {
+  if (!src) return null;
+  const meta = src.meta || src;
+  const startIso = meta.startDate || meta.start || src.startDate;
+  const endIso = meta.endDate || meta.end || src.endDate;
+  if (!startIso) return null;
+  const start = new Date(startIso);
+  const end = endIso ? new Date(endIso) : null;
+  const title = meta.title || src.title || '(untitled)';
+  const loc = meta.location || src.location;
+  const type = (meta.type || meta.category || 'meeting');
+  const validTypes = ['meeting','deadline','focus','personal'];
+  return {
+    id: meta.id || src.id || uid(),
+    title,
+    date: ymd(start),
+    start: start.toTimeString().slice(0,5),
+    end: end ? end.toTimeString().slice(0,5) : undefined,
+    type: validTypes.includes(type) ? type : 'meeting',
+    attendees: meta.attendees || undefined,
+    location: loc || undefined,
+  };
+}
+
+async function loadAgentName() {
+  try {
+    const res = await fetch('/pi/agent');
+    if (res.ok) {
+      const a = await res.json();
+      if (a.name) state.assistantName = a.name;
+    }
+  } catch {}
+  try {
+    const res = await fetch('/api/status');
+    if (res.ok) {
+      const s = await res.json();
+      if (s.agentName && state.assistantName === 'Stanley') state.assistantName = s.agentName;
+    }
+  } catch {}
+}
+
+async function loadConnections() {
+  // Start from defaults, then augment from PI endpoints
+  const merged = DEFAULT_CONNECTIONS.map(c => ({ ...c }));
+
+  // Google Calendars → /api/calendars
+  try {
+    const res = await fetch('/api/calendars');
+    if (res.ok) {
+      const cals = await res.json();
+      if (Array.isArray(cals) && cals.length) {
+        const gc = merged.find(c => c.id === 'gcal');
+        if (gc) { gc.status = 'connected'; gc.account = cals.map(c => c.name).join(', '); gc.lastSync = 'recently'; }
+      }
+    }
+  } catch {}
+
+  // FCP sources → treat each as extra connection under "pm" if not matching a known id
+  try {
+    const reg = await fetch('/pi/foundation').then(r => r.ok ? r.json() : null).catch(() => null);
+    // best-effort; PI/foundation doesn't expose FCP — leave defaults
+  } catch {}
+
+  // MCP skills → add as a "pm" row
+  try {
+    const res = await fetch('/pi/mcp-skills');
+    if (res.ok) {
+      const j = await res.json();
+      const skills = j.skills || j.servers || j;
+      if (Array.isArray(skills) && skills.length) {
+        merged.push({
+          id: 'mcp-skills', name: `MCP Skills (${skills.length})`,
+          description: 'Local Model Context Protocol skill servers available to the agent',
+          status: 'connected', category: 'pm',
+          account: `${skills.length} server${skills.length === 1 ? '' : 's'}`,
+          lastSync: 'live',
+        });
+      }
+    }
+  } catch {}
+
+  state.connections = merged;
+  render();
+}
+
+function savePins() {
+  try { localStorage.setItem('productve.pins', JSON.stringify(state.pins)); } catch {}
+}
+function loadPins() {
+  try {
+    const raw = localStorage.getItem('productve.pins');
+    if (raw) state.pins = JSON.parse(raw);
+  } catch {}
+}
+function saveAssistantName() {
+  try { localStorage.setItem('productve.assistantName', state.assistantName); } catch {}
+}
+function loadAssistantNameCached() {
+  try {
+    const n = localStorage.getItem('productve.assistantName');
+    if (n) state.assistantName = n;
+  } catch {}
+}
+</script>
+
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<!-- BOOT                                                                -->
+<!-- ═══════════════════════════════════════════════════════════════════ -->
+<script>
+(async function boot() {
+  loadPins();
+  loadAssistantNameCached();
+  state.recordings = MOCK_RECORDINGS;
+  state.selectedRecordingId = MOCK_RECORDINGS[0]?.id || null;
+  state.connections = DEFAULT_CONNECTIONS.map(c => ({ ...c }));
+
+  // Greeting
+  state.messages.push({
+    id: uid(), role: 'assistant',
+    content: `Hi — I'm **${state.assistantName}**. Ask me about your meetings, calendar, or anything on your plate today.`,
+    ts: new Date().toISOString(),
+    processVariant: 'simple',
+  });
+
+  render();
+  connectWs();
+  await Promise.all([loadAgentName(), loadEvents(), loadConnections()]);
+  saveAssistantName();
+  render();
+
+  // Close announce dropdown on outside click
+  document.addEventListener('click', () => {
+    if (state.announceOpen) { state.announceOpen = false; render(); }
+  }, true);
+})();
+</script>
+
+</body>
+</html>

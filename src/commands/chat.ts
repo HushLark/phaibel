@@ -37,6 +37,7 @@ import { updateProfile, validateScores, invalidateProfileCache, type BigFiveSamp
 import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../entities/entity.js';
 import { getEntityType } from '../entities/entity-type-config.js';
 import type { LLMProvider } from '../llm/types.js';
+import { runWithTokenTracker, type ChatTokenTotals } from '../llm/token-usage.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IN-MEMORY PROCESS SOURCE
@@ -159,6 +160,11 @@ function formatHistoryBlock(history: ChatHistoryEntry[]): string {
 // CORE: feralChatHeadless — headless pipeline, returns the response string
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface ChatResult {
+    response: string;
+    tokens: ChatTokenTotals;
+}
+
 export async function feralChatHeadless(
     userInput: string,
     onStatus?: (status: string) => void,
@@ -167,7 +173,7 @@ export async function feralChatHeadless(
     onChatId?: (chatId: string) => void,
     history?: ChatHistoryEntry[],
     platform?: BootstrapOptions['platform'],
-): Promise<string> {
+): Promise<ChatResult> {
     const status = (s: string) => onStatus?.(s);
     const chatId = generateChatId();
     const logger = new ChatLogger(chatId);
@@ -182,7 +188,12 @@ export async function feralChatHeadless(
 
     status('Thinking…');
 
-    try { return await _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? [], platform); }
+    try {
+        const { result: response, tokens } = await runWithTokenTracker(() =>
+            _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? [], platform)
+        );
+        return { response, tokens };
+    }
     catch (error) {
         await logger.log('error', { message: error instanceof Error ? error.message : String(error) });
         throw error;

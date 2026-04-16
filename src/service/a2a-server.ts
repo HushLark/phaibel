@@ -98,7 +98,7 @@ const AGENT_CARD = {
 // ── Skill handlers ──────────────────────────────────────────────────────────
 
 async function handleChatSkill(text: string): Promise<A2AArtifact[]> {
-    const response = await feralChatHeadless(text);
+    const { response } = await feralChatHeadless(text);
     return [{
         name: 'response',
         parts: [{ type: 'text', text: response }],

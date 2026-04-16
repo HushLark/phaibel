@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { WebSocketServer, WebSocket } from 'ws';
 import { listEntities, writeEntity, parseEntity, getEntityDir } from '../entities/entity.js';
-import { feralChatHeadless, type ChatHistoryEntry } from '../commands/chat.js';
+import { feralChatHeadless, type ChatHistoryEntry, type ChatResult } from '../commands/chat.js';
 import { getQueueManager } from './queue/manager.js';
 import { getEntityIndex } from '../entities/entity-index.js';
 import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, saveProfile } from '../state/manager.js';
@@ -19,6 +19,7 @@ import { handleApiRoute } from './api-router.js';
 import { handleCxRoute } from '../cxms/cx-router.js';
 import { handlePiRoute } from '../introspection/pi-router.js';
 import { handleFccfRoute } from '../feral/fccf-router.js';
+import { handleFcpRoute } from '../federation/fcp-server.js';
 import { handleAnalyticsRoute } from '../analytics/analytics-router.js';
 import { logAccess } from '../cxms/access-log.js';
 import { debug } from '../utils/debug.js';
@@ -36,6 +37,7 @@ export class WebServer {
     private wss: WebSocketServer | null = null;
     private htmlContent: string = '';
     private mobileHtmlContent: string = '';
+    private productveHtmlContent: string = '';
 
     async start(port: number): Promise<void> {
         // Load HTML at startup
@@ -49,6 +51,12 @@ export class WebServer {
                 'utf-8',
             );
         } catch { /* mobile client optional */ }
+        try {
+            this.productveHtmlContent = await fs.readFile(
+                path.join(__dirname, 'productve.html'),
+                'utf-8',
+            );
+        } catch { /* productve client optional */ }
 
         this.server = http.createServer(async (req, res) => {
             const startTime = Date.now();
@@ -144,6 +152,17 @@ export class WebServer {
             return;
         }
 
+        if (req.method === 'GET' && (url.pathname === '/productve.html' || url.pathname === '/productve')) {
+            if (this.productveHtmlContent) {
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(this.productveHtmlContent);
+            } else {
+                res.writeHead(404);
+                res.end('Productve client not available');
+            }
+            return;
+        }
+
         // ── A2A Agent Card ─────────────────────────────────────────────
         if (req.method === 'GET' && url.pathname === '/.well-known/agent.json') {
             handleAgentCard(req, res);
@@ -183,6 +202,12 @@ export class WebServer {
         // ── Feral CCF API (/fccf/*) ─────────────────────────────────
         if (url.pathname.startsWith('/fccf/')) {
             const handled = await handleFccfRoute(req, res, url);
+            if (handled) return;
+        }
+
+        // ── Federated Context Protocol (/fcp/*) ──────────────────────
+        if (url.pathname.startsWith('/fcp/')) {
+            const handled = await handleFcpRoute(req, res, url);
             if (handled) return;
         }
 
@@ -399,7 +424,7 @@ export class WebServer {
     ): Promise<void> {
         let currentChatId: string | undefined;
         try {
-            const response = await feralChatHeadless(
+            const { response, tokens } = await feralChatHeadless(
                 message,
                 (status) => {
                     if (ws.readyState === WebSocket.OPEN) {
@@ -429,7 +454,7 @@ export class WebServer {
             }
 
             if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'chat.response', message: response, chatId: currentChatId }));
+                ws.send(JSON.stringify({ type: 'chat.response', message: response, chatId: currentChatId, totalTokens: tokens.totalTokens }));
             }
 
             // If the chat likely mutated entities, tell clients to refresh
