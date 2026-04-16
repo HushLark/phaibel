@@ -112,7 +112,8 @@ function icon(name, size = 16, extraClass = '') {
 // ── Global state ──────────────────────────────────────────────────────
 const state = {
   activePanel: 'dashboard',             // dashboard | recordings | connections
-  assistantName: 'Stanley',
+  assistantName: 'Phaibel',
+  userName: null,
   selectedDate: new Date(),
   viewMonth: new Date(),
   events: [],                            // CalEvent[]
@@ -1263,9 +1264,50 @@ async function loadAgentName() {
     const res = await fetch('/api/status');
     if (res.ok) {
       const s = await res.json();
-      if (s.agentName && state.assistantName === 'Stanley') state.assistantName = s.agentName;
+      if (s.agentName) state.assistantName = s.agentName;
     }
   } catch {}
+}
+
+async function loadUserName() {
+  try {
+    const res = await fetch('/pi/profile');
+    if (res.ok) {
+      const p = await res.json();
+      state.userName = p.userName || p.name || null;
+    }
+  } catch {}
+}
+
+function buildGreeting() {
+  const hour = new Date().getHours();
+  const greet = hour < 5  ? 'Still up'
+              : hour < 12 ? 'Good morning'
+              : hour < 17 ? 'Good afternoon'
+              : hour < 22 ? 'Good evening'
+              :             'Evening';
+  const who = state.userName ? `, ${state.userName}` : '';
+  const name = state.assistantName;
+  const today = ymd(new Date());
+  const todayEvents = state.events.filter(e => e.date === today);
+  const next = todayEvents
+    .filter(e => e.start && e.start >= new Date().toTimeString().slice(0,5))
+    .sort((a,b) => a.start.localeCompare(b.start))[0];
+
+  let schedule;
+  if (todayEvents.length === 0) {
+    schedule = "Your calendar's clear today — good day to chip away at the backlog.";
+  } else if (next) {
+    schedule = `You have **${todayEvents.length} event${todayEvents.length === 1 ? '' : 's'}** today — next up is **${next.title}** at ${next.start}.`;
+  } else {
+    schedule = `You had **${todayEvents.length} event${todayEvents.length === 1 ? '' : 's'}** today — looks like you're through the worst of it.`;
+  }
+
+  return [
+    `${greet}${who}. I'm **${name}**.`,
+    schedule,
+    'Ask me to prep for a meeting, pull up your action items, or summarise a recording.',
+  ].join('\n\n');
 }
 
 async function loadConnections() {
@@ -1343,18 +1385,19 @@ function loadAssistantNameCached() {
   state.selectedRecordingId = MOCK_RECORDINGS[0]?.id || null;
   state.connections = DEFAULT_CONNECTIONS.map(c => ({ ...c }));
 
-  // Greeting
+  render();
+  connectWs();
+  await Promise.all([loadAgentName(), loadUserName(), loadEvents(), loadConnections()]);
+  saveAssistantName();
+
+  // Compose a context-aware greeting once the agent's real name + today's
+  // calendar have loaded, so we don't lead with a placeholder.
   state.messages.push({
     id: uid(), role: 'assistant',
-    content: `Hi — I'm **${state.assistantName}**. Ask me about your meetings, calendar, or anything on your plate today.`,
+    content: buildGreeting(),
     ts: new Date().toISOString(),
     processVariant: 'simple',
   });
-
-  render();
-  connectWs();
-  await Promise.all([loadAgentName(), loadEvents(), loadConnections()]);
-  saveAssistantName();
   render();
 
   // Close announce dropdown on outside click
