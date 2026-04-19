@@ -48,6 +48,7 @@
     "eval:compare": "tsx evals/compare.ts"
   },
   "dependencies": {
+    "@phaibel/cxms": "^2.1.18",
     "@anthropic-ai/sdk": "^0.39.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "chalk": "^5.3.0",
