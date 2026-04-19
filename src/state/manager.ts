@@ -4,7 +4,7 @@ import { getResponse } from '../responses.js';
 import { getPersonality } from '../personalities.js';
 import { debug } from '../utils/debug.js';
 import { autoMigrateV4ToV5 } from '../cxms/auto-migrate.js';
-import { setFoundationRoot as setCxmsFoundationRoot } from '@phaibel/cxms';
+import { setFoundationRoot as setCxmsFoundationRoot } from '@gclift/cxms';
 import chalk from 'chalk';
 
 const CXMS_FILE = '.cxms.md';
@@ -14,7 +14,7 @@ const STATE_FILE = '.state.json';
 
 let cachedFoundationRoot: string | null = null;
 
-/** Internal helper: cache the root and sync it to @phaibel/cxms */
+/** Internal helper: cache the root and sync it to @gclift/cxms */
 function cacheRoot(root: string): void {
     cachedFoundationRoot = root;
     setCxmsFoundationRoot(root);
