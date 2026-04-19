@@ -212,7 +212,7 @@ export async function getSpawnerTypes(): Promise<EntityTypeConfig[]> {
 
 /**
  * Add a new entity type. Throws if name already exists.
- * Creates the entity directory and a .vault.md context file.
+ * Creates the entity directory and a .cxms.md context file.
  */
 export async function addEntityType(config: EntityTypeConfig): Promise<void> {
     const types = await loadEntityTypes();
@@ -231,14 +231,14 @@ export async function addEntityType(config: EntityTypeConfig): Promise<void> {
     types.push(config);
     await saveEntityTypes(types);
 
-    // Create entity directory + .vault.md context file
+    // Create entity directory + .cxms.md context file
     try {
         const { storage, paths } = getPlatform();
         const vaultRoot = await getVaultRoot();
         const entityDir = paths.join(vaultRoot, config.directory);
         await storage.mkdir(entityDir, { recursive: true });
 
-        const vaultMdPath = paths.join(entityDir, '.vault.md');
+        const vaultMdPath = paths.join(entityDir, '.cxms.md');
         const fieldLines = config.fields.map(f => {
             let desc = `- **${f.key}** (${f.type})`;
             if (f.label) desc += ` — ${f.label}`;
@@ -269,7 +269,7 @@ ${completionNote}
         await storage.writeFile(vaultMdPath, content);
         debug('entity-types', `Created ${vaultMdPath}`);
     } catch (err) {
-        debug('entity-types', `Failed to create .vault.md for ${config.name}: ${err}`);
+        debug('entity-types', `Failed to create .cxms.md for ${config.name}: ${err}`);
         // Non-fatal — type is already registered
     }
 }

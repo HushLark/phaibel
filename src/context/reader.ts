@@ -2,21 +2,22 @@ import { getPlatform } from '../platform/index.js';
 import { debug } from '../utils/debug.js';
 import { getVaultRoot } from '../state/manager.js';
 
-const VAULT_FILE = '.vault.md';
+const CONTEXT_FILES = ['.cxms.md', '.phaibel.md', '.vault.md'];
 
 /**
- * Reads a single .vault.md file if it exists.
- * Returns the content or null if not found.
+ * Reads the context file from a directory (.cxms.md → .phaibel.md → .vault.md fallback).
+ * Returns the content or null if none found.
  */
-async function readVaultFile(dirPath: string): Promise<string | null> {
+async function readContextFile(dirPath: string): Promise<string | null> {
     const { storage, paths } = getPlatform();
-    const vaultFilePath = paths.join(dirPath, VAULT_FILE);
-    try {
-        return await storage.readFile(vaultFilePath);
-    } catch (err) {
-        debug('context', err);
-        return null;
+    for (const filename of CONTEXT_FILES) {
+        try {
+            return await storage.readFile(paths.join(dirPath, filename));
+        } catch {
+            // Try next
+        }
     }
+    return null;
 }
 
 /**
@@ -33,7 +34,7 @@ export async function buildContextChain(targetPath: string): Promise<string[]> {
 
     // Walk up the directory tree
     while (currentPath.startsWith(rootPath)) {
-        const content = await readVaultFile(currentPath);
+        const content = await readContextFile(currentPath);
         if (content) {
             contexts.push(content);
         }
@@ -101,7 +102,7 @@ export async function getSubdirectoryContext(subdirectory: string): Promise<stri
     ];
 
     for (const dirPath of hierarchy) {
-        const content = await readVaultFile(dirPath);
+        const content = await readContextFile(dirPath);
         if (content) {
             contexts.push(content);
         }

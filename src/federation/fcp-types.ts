@@ -157,6 +157,10 @@ export const SourceConfigSchema = z.object({
     id: z.string(),
     /** Base URL — endpoints are {url}/probe, {url}/fetch, {url}/manifest. */
     url: z.string().url(),
+    /** Human-readable description of what this source contains, e.g. "Employee directory". */
+    description: z.string().optional(),
+    /** Access mode — read: probe/fetch only; readwrite: can also create/update/delete nodes. */
+    mode: z.enum(['read', 'readwrite']).default('read'),
     /** Trust tier assigned locally — may differ from source's self-declared trust. */
     trust: z.enum(['own', 'team', 'peer', 'public']),
     /** Authentication config. */

@@ -15,13 +15,15 @@ You are an autonomous improvement agent for Phaibel. Your job is to run evaluati
 **Format**: `<aspect> [for <persona context>]`
 
 Parse it as follows:
-1. Extract the **aspect** (first word): `prompts`, `model`, or `process`. Default to `prompts` if missing.
+1. Extract the **aspect** (first word): `prompts`, `model`, `process`, or `cxms`. Default to `prompts` if missing.
 2. Extract the **context** (everything after "for"): a use-case persona describing who Phaibel is serving.
 
 **Examples:**
 - `/innovate prompts` — improve prompts using core scenarios only
 - `/innovate prompts for parents managing a family calendar` — generate family-oriented scenarios, then improve prompts
 - `/innovate model for business users managing multiple teams` — generate business scenarios, then experiment with models
+- `/innovate cxms` — improve context assembly (vault context, scope, moment, relevance filtering)
+- `/innovate cxms for solo freelancers tracking clients and invoices` — generate freelancer scenarios, then tune context management
 - `/innovate for solo freelancers tracking clients and invoices` — defaults to prompts, generates freelancer scenarios
 
 ## Workflow — Repeat up to 10 times
@@ -133,6 +135,26 @@ Try changing one capability's model assignment. Examples:
 - Switch `reason` from `claude-opus-4-6` to `claude-sonnet-4-6` (cheaper, sometimes comparable)
 - Switch `chat` provider preference order
 - Try `gpt-4o` for `reason` instead of Claude
+
+#### If "cxms":
+
+Innovate on **context assembly** — what vault context, scope, moment information, and catalog relevance filtering the LLM receives. Do NOT modify context type schemas, catalog node generation, or search indexes (embedding/BM25).
+
+Key files:
+- `src/context/reader.ts` — `buildContextChain()`: walks `.cxms.md`/`.vault.md` files up the directory tree. Try adjusting what gets included or how much is trimmed.
+- `src/context/moment.ts` — `buildMomentContext()` / `formatMomentBlock()`: current date, overdue tasks, upcoming schedule injected as globals. Try adjusting what moment signals are surfaced or how they're formatted.
+- `src/context/context-tree.ts` — `buildContextTree()` / `expandContextTree()`: structures context into scoped branches. Try adjusting depth limits or token budgets.
+- `src/context/context-tree-serializer.ts` — `serializeContextTree()`: converts the tree to markdown for the prompt. Try adjusting formatting or section ordering.
+- `src/context/scope-classifier.ts` — `classifyScope()`: determines which vault subdirectories are relevant to a request. Try tightening or broadening classification rules.
+- `src/context/query-relevance.ts` — `analyzeQueryRelevance()` / `filterCatalogNodes()`: pre-filters catalog nodes before Step 1. Try adjusting keyword extraction or relevance thresholds.
+
+These are all imported and used in `src/commands/chat.ts` lines 229-266 (context assembly block).
+
+Make small, targeted edits. Examples:
+- Adjust how many overdue tasks appear in the moment block
+- Change the scope classifier to include a broader or narrower set of subdirectories
+- Tune the relevance threshold so fewer (or more) catalog nodes reach the LLM
+- Adjust context tree serialization to front-load the most relevant branch
 
 #### If "process":
 Create or modify saved Feral process JSON files. Processes live in the vault's `.phaibel/processes/` directory.

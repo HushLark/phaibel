@@ -1,0 +1,2572 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Phaibel — Executive AI</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<style>
+  :root {
+    /* Deep navy + warm ivory executive palette */
+    --ink:        #0E1B2C;   /* deep navy - primary */
+    --ink-2:      #16283F;   /* navy-2 */
+    --ink-3:      #233A55;   /* navy-3 */
+    --paper:      #F5EFE4;   /* warm ivory */
+    --paper-2:    #EFE7D7;   /* ivory-2 */
+    --paper-3:    #E6DBC5;   /* ivory-3 edge */
+    --line:       #D8CDB4;   /* hairline on ivory */
+    --line-ink:   #1E3148;   /* hairline on navy */
+    --muted:      #6B6352;   /* warm taupe text */
+    --muted-2:    #958B74;
+    --gold:       #B8964E;   /* muted gold accent */
+    --gold-soft:  #D9BE84;
+    --oxblood:    #8B3A3A;   /* alert / overdue */
+    --sage:       #5B7A5E;   /* done / positive */
+
+    --radius:     5px;
+    --radius-sm:  3px;
+    --radius-lg:  8px;
+
+    --shadow-sm: 0 1px 0 rgba(14,27,44,.04), 0 1px 2px rgba(14,27,44,.05);
+    --shadow-md: 0 1px 0 rgba(14,27,44,.04), 0 6px 20px -10px rgba(14,27,44,.18);
+
+    --font-serif: "Source Serif 4", ui-serif, Georgia, serif;
+    --font-sans:  "Inter", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:  "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body, #root { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+  button { font-family: inherit; color: inherit; }
+
+  /* subtle warm paper grain */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    pointer-events: none;
+    background-image: radial-gradient(rgba(14,27,44,.025) 1px, transparent 1px);
+    background-size: 3px 3px;
+    mix-blend-mode: multiply;
+    opacity: .5;
+    z-index: 0;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="application/json" id="tweak-defaults">
+</script>
+
+<script type="text/babel" data-presets="react">
+/* ============================================================
+   TWEAKS — default config (persisted via __edit_mode_set_keys)
+   ============================================================ */
+const TWEAKS = /*EDITMODE-BEGIN*/{
+  "theme": "navy",
+  "density": "balanced",
+  "radius": 5,
+  "typePair": "serif-sans",
+  "micActive": false
+}/*EDITMODE-END*/;
+
+/* ============================================================
+   DATA — realistic tech-CEO content
+   ============================================================ */
+const TODAY = new Date(2026, 3, 18); // Apr 18, 2026 (Sat -> shift mentally but fine)
+
+const CAL_EVENTS = {
+  overdue: [
+    { t: "Sign Q1 board minutes", who: "Legal · Priya", kind: "todo" },
+    { t: "Review Series D term sheet redlines", who: "CFO · Daniel", kind: "delegated" },
+  ],
+  today: [
+    { t: "Exec staff weekly", time: "09:00", kind: "meeting" },
+    { t: "Product review — Atlas 3.0 GA", time: "11:30", kind: "meeting" },
+    { t: "1:1 Head of Eng", time: "14:00", kind: "meeting" },
+    { t: "Draft all-hands narrative", kind: "todo" },
+    { t: "Approve comp bands — L7+", who: "CPO · Maya", kind: "delegated" },
+  ],
+  tomorrow: [
+    { t: "Board pre-read circulates", time: "08:00", kind: "todo" },
+    { t: "Analyst briefing — Morgan Stanley", time: "13:00", kind: "meeting" },
+    { t: "Reforecast FY26 — review", who: "CFO · Daniel", kind: "delegated" },
+  ],
+  plus2: [
+    { t: "Q2 Board meeting", time: "09:00–13:00", kind: "meeting" },
+    { t: "Press embargo lifts — Atlas GA", time: "06:00", kind: "milestone" },
+    { t: "Exec dinner, Quince", time: "19:30", kind: "meeting" },
+  ],
+};
+
+const PINBOARD_INIT = [
+  {
+    id: "pin-4a2f",
+    title: "Atlas 3.0 GA — launch readiness",
+    body: "P0s: 0 open. P1s: 3 (all on track for cut). Docs 94%. Revenue readiness sign-off outstanding from Maya.",
+    tag: "Product",
+    when: "Pinned 2h ago",
+  },
+  {
+    id: "pin-81c3",
+    title: "Board narrative — 3 takeaways",
+    body: "1) NRR inflected to 129%  2) Enterprise ACV +41% YoY  3) Infra margin recovered 380 bps post-migration.",
+    tag: "Board",
+    when: "Pinned yesterday",
+  },
+  {
+    id: "pin-0f7e",
+    title: "Headcount plan delta",
+    body: "Eng +14, GTM +9, G&A flat. Net burn trajectory unchanged. Daniel to confirm by Fri.",
+    tag: "People",
+    when: "Pinned Wed",
+  },
+];
+
+const INITIAL_MESSAGES = [
+  {
+    id: "m-9c21-0001",
+    role: "assistant",
+    kind: "proactive",
+    text: "Morning. Your exec staff starts in 38 minutes. I've pre-read the weekly — three items want a decision from you: Atlas 3.0 launch gate, Daniel's reforecast, and the L7+ comp bands from Maya.",
+    at: "08:22",
+    tokens: 312,
+  },
+  {
+    id: "m-9c21-0002",
+    role: "user",
+    text: "Give me the summary of Daniel's reforecast. What changed from last month?",
+    at: "08:24",
+  },
+  {
+    id: "m-9c21-0003",
+    role: "assistant",
+    text: "Top-line FY26 tightened by $14M (3.1%) — almost entirely expansion pacing in mid-market. Pipeline coverage for H2 slipped from 3.4× to 3.1×. He's compensating by pulling forward two enterprise deals and holding S&M hiring through Q2. Net: plan still lands within the 15% guidance range, but cushion is thinner.",
+    at: "08:24",
+    tokens: 486,
+    sources: ["reforecast_v7.xlsx", "pipeline_snapshot_0417.csv"],
+  },
+  {
+    id: "m-9c21-0004",
+    role: "user",
+    text: "Pin that. And draft a two-line note to Daniel — I want to understand the enterprise pull-forward assumptions before I sign off.",
+    at: "08:25",
+  },
+  {
+    id: "m-9c21-0005",
+    role: "assistant",
+    text: "Pinned. Draft ready — sending to your review in Outlook:\n\n“Daniel — want to dig in on the enterprise pull-forward before I green-light the reforecast. Specifically: which two deals, what's the confidence, and what does it cost us if either slips? 15 min after staff?”",
+    at: "08:25",
+    tokens: 221,
+    actions: ["Drafted email", "Held for your approval"],
+  },
+  {
+    id: "m-9c21-0006",
+    role: "assistant",
+    kind: "proactive",
+    text: "Heads up — Priya flagged the Series D redlines as blocking for Monday. I moved it to Overdue on your board. Want me to set a 20-minute block at 16:30 today with Legal?",
+    at: "08:41",
+    tokens: 178,
+  },
+];
+
+/* ============================================================
+   ROOT
+   ============================================================ */
+const { useState, useEffect, useRef, useMemo } = React;
+
+function App() {
+  const [tweaks, setTweaks] = useState(TWEAKS);
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [pinboard, setPinboard] = useState(PINBOARD_INIT);
+  const [input, setInput] = useState("");
+  const [micActive, setMicActive] = useState(tweaks.micActive);
+  const [thinking, setThinking] = useState(false);
+  const [activeTab, setActiveTab] = useState("chat");
+  const threadRef = useRef(null);
+
+  // Edit-mode wiring
+  useEffect(() => {
+    const onMsg = (e) => {
+      const d = e.data || {};
+      if (d.type === "__activate_edit_mode") setTweaksOpen(true);
+      if (d.type === "__deactivate_edit_mode") setTweaksOpen(false);
+    };
+    window.addEventListener("message", onMsg);
+    window.parent.postMessage({ type: "__edit_mode_available" }, "*");
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  const updateTweak = (k, v) => {
+    setTweaks((t) => {
+      const next = { ...t, [k]: v };
+      window.parent.postMessage({ type: "__edit_mode_set_keys", edits: { [k]: v } }, "*");
+      return next;
+    });
+    if (k === "micActive") setMicActive(v);
+  };
+
+  // Apply theme CSS vars
+  useEffect(() => {
+    const root = document.documentElement;
+    const themes = {
+      navy: {
+        "--ink":"#0E1B2C","--ink-2":"#16283F","--ink-3":"#233A55",
+        "--paper":"#F5EFE4","--paper-2":"#EFE7D7","--paper-3":"#E6DBC5",
+        "--line":"#D8CDB4","--line-ink":"#1E3148",
+        "--muted":"#6B6352","--muted-2":"#958B74",
+        "--gold":"#B8964E","--gold-soft":"#D9BE84",
+        "--oxblood":"#8B3A3A","--sage":"#5B7A5E",
+      },
+      charcoal: {
+        "--ink":"#1C1E22","--ink-2":"#2A2D33","--ink-3":"#3A3E46",
+        "--paper":"#F3F1EC","--paper-2":"#ECE9E2","--paper-3":"#E1DDD2",
+        "--line":"#D4CFC3","--line-ink":"#32353B",
+        "--muted":"#6E6A62","--muted-2":"#948F84",
+        "--gold":"#A88441","--gold-soft":"#CEAA6E",
+        "--oxblood":"#7E3636","--sage":"#5A7458",
+      },
+      forest: {
+        "--ink":"#15291E","--ink-2":"#1E3A2C","--ink-3":"#2B4D3C",
+        "--paper":"#F3EEE1","--paper-2":"#EBE5D3","--paper-3":"#DFD6BE",
+        "--line":"#CFC4A9","--line-ink":"#22402F",
+        "--muted":"#6B6350","--muted-2":"#978D74",
+        "--gold":"#B18A3E","--gold-soft":"#D2B172",
+        "--oxblood":"#7A2F2F","--sage":"#4E6B4F",
+      },
+    };
+    const t = themes[tweaks.theme] || themes.navy;
+    Object.entries(t).forEach(([k, v]) => root.style.setProperty(k, v));
+    root.style.setProperty("--radius", `${tweaks.radius}px`);
+    root.style.setProperty("--radius-sm", `${Math.max(2, tweaks.radius - 2)}px`);
+    root.style.setProperty("--radius-lg", `${tweaks.radius + 3}px`);
+
+    const pairs = {
+      "serif-sans": { serif: `"Source Serif 4", Georgia, serif`, sans: `"Inter", system-ui, sans-serif` },
+      "all-sans":   { serif: `"Inter", system-ui, sans-serif`, sans: `"Inter", system-ui, sans-serif` },
+      "serif-serif":{ serif: `"Source Serif 4", Georgia, serif`, sans: `"Source Serif 4", Georgia, serif` },
+    };
+    const p = pairs[tweaks.typePair] || pairs["serif-sans"];
+    root.style.setProperty("--font-serif", p.serif);
+    root.style.setProperty("--font-sans", p.sans);
+
+    const density = {
+      spacious: { pad: "20px", gap: "18px", rowPad: "11px 14px" },
+      balanced: { pad: "16px", gap: "14px", rowPad: "9px 12px" },
+      dense:    { pad: "12px", gap: "10px", rowPad: "6px 10px" },
+    };
+    const d = density[tweaks.density] || density.balanced;
+    root.style.setProperty("--pad", d.pad);
+    root.style.setProperty("--gap", d.gap);
+    root.style.setProperty("--row-pad", d.rowPad);
+  }, [tweaks]);
+
+  // auto-scroll
+  useEffect(() => {
+    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+  }, [messages.length, thinking]);
+
+  const handleSend = () => {
+    const text = input.trim();
+    if (!text) return;
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, "0");
+    const mm = String(now.getMinutes()).padStart(2, "0");
+    const userMsg = {
+      id: `m-${randId()}`, role: "user", text, at: `${hh}:${mm}`,
+    };
+    setMessages((m) => [...m, userMsg]);
+    setInput("");
+    setThinking(true);
+    setTimeout(() => {
+      setThinking(false);
+      const reply = {
+        id: `m-${randId()}`,
+        role: "assistant",
+        text: composeReply(text),
+        at: `${hh}:${mm}`,
+        tokens: 180 + Math.floor(Math.random() * 400),
+      };
+      setMessages((m) => [...m, reply]);
+    }, 1200);
+  };
+
+  const handlePinMessage = (msg) => {
+    if (pinboard.some((p) => p.sourceId === msg.id)) return;
+    const newPin = {
+      id: `pin-${randId().slice(0, 4)}`,
+      sourceId: msg.id,
+      title: msg.text.slice(0, 56).replace(/\n/g, " ") + (msg.text.length > 56 ? "…" : ""),
+      body: msg.text,
+      tag: "From chat",
+      when: "Pinned just now",
+    };
+    setPinboard((p) => [newPin, ...p]);
+  };
+
+  const handleRemovePin = (id) => setPinboard((p) => p.filter((x) => x.id !== id));
+
+  const handleMic = () => {
+    setMicActive((v) => !v);
+    updateTweak("micActive", !micActive);
+  };
+
+  return (
+    <div className="app">
+      <LeftPanel pinboard={pinboard} onRemovePin={handleRemovePin} />
+      <RightPanel
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        messages={messages}
+        pinboard={pinboard}
+        input={input}
+        setInput={setInput}
+        onSend={handleSend}
+        thinking={thinking}
+        micActive={micActive}
+        onMic={handleMic}
+        onPin={handlePinMessage}
+      />
+      {tweaksOpen && (
+        <TweaksPanel tweaks={tweaks} update={updateTweak} onClose={() => setTweaksOpen(false)} />
+      )}
+      <GlobalStyle />
+    </div>
+  );
+}
+
+function randId() {
+  return Math.random().toString(16).slice(2, 6) + "-" + Math.random().toString(16).slice(2, 6);
+}
+
+function composeReply(text) {
+  const t = text.toLowerCase();
+  if (t.includes("board")) return "Board pre-read is 78% drafted. Outstanding: CFO section (Daniel committed EOD) and the ‘strategic bets' appendix. I can assemble a v1 PDF at 17:00 for your review tonight.";
+  if (t.includes("draft") || t.includes("email")) return "Drafted. Held in your review queue — tone is direct, 3 sentences, no pleasantries. Send when ready.";
+  if (t.includes("pin")) return "Pinned to your board. It'll stay visible until you remove it.";
+  if (t.includes("cancel") || t.includes("move")) return "Done. I've offered two alternate slots and flagged the conflict owner. Will confirm once both sides accept.";
+  return "Noted. I've logged this against today's context and will surface a follow-up at your next free moment. Anything else you want me to prep before staff?";
+}
+
+/* ============================================================
+   LEFT PANEL — calendar + timeline + pinboard
+   ============================================================ */
+function LeftPanel({ pinboard, onRemovePin }) {
+  return (
+    <aside className="left">
+      <header className="brand">
+        <div className="brand-mark" aria-hidden>
+          <svg viewBox="0 0 24 24" width="22" height="22">
+            <rect x="2" y="2" width="20" height="20" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M7 16 L12 7 L17 16" fill="none" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M9.5 13 L14.5 13" stroke="currentColor" strokeWidth="1.4"/>
+          </svg>
+        </div>
+        <div>
+          <div className="brand-name">Phaibel</div>
+          <div className="brand-sub">Executive agent</div>
+        </div>
+        <div className="brand-status">
+          <span className="dot" /> Online
+        </div>
+      </header>
+
+      <MiniCalendar />
+      <Timeline />
+      <Pinboard pins={pinboard} onRemove={onRemovePin} />
+
+      <footer className="left-foot">
+        <div className="who">
+          <div className="avatar-ex">EM</div>
+          <div>
+            <div className="who-name">Evelyn Marsh</div>
+            <div className="who-role">CEO · Halcyon Labs</div>
+          </div>
+        </div>
+        <button className="icon-btn" title="Settings" aria-label="Settings">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        </button>
+      </footer>
+    </aside>
+  );
+}
+
+function MiniCalendar() {
+  // Build a month grid around Apr 2026
+  const year = 2026, month = 3; // April
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = 18;
+  const cells = [];
+  const lead = (firstDay + 6) % 7; // Mon-start
+  for (let i = 0; i < lead; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const hasEvent = { 17: 2, 18: 5, 19: 3, 20: 3, 22: 2, 24: 1, 27: 4, 29: 2 };
+
+  return (
+    <div className="card calendar">
+      <div className="card-head">
+        <div>
+          <div className="eyebrow">Calendar</div>
+          <div className="month">April <span className="year">2026</span></div>
+        </div>
+        <div className="month-nav">
+          <button aria-label="Previous">‹</button>
+          <button aria-label="Next">›</button>
+        </div>
+      </div>
+      <div className="dow">
+        {["M","T","W","T","F","S","S"].map((d, i) => <span key={i}>{d}</span>)}
+      </div>
+      <div className="days">
+        {cells.map((d, i) => {
+          if (d === null) return <span key={i} className="day empty" />;
+          const cls = [
+            "day",
+            d === today ? "today" : "",
+            [4,5,11,12,18,19,25,26].includes(d) ? "weekend" : "",
+          ].join(" ");
+          return (
+            <span key={i} className={cls}>
+              {d}
+              {hasEvent[d] ? <span className="day-dots" data-n={Math.min(3, hasEvent[d])}>
+                {Array.from({length: Math.min(3, hasEvent[d])}).map((_,j) => <i key={j}/>)}
+              </span> : null}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Timeline() {
+  const groups = [
+    { key: "overdue",  label: "Overdue",   sub: "2 items",      tone: "alert",  items: CAL_EVENTS.overdue },
+    { key: "today",    label: "Today",     sub: "Sat · Apr 18", tone: "accent", items: CAL_EVENTS.today },
+    { key: "tomorrow", label: "Tomorrow",  sub: "Sun · Apr 19", tone: "",       items: CAL_EVENTS.tomorrow },
+    { key: "plus2",    label: "Monday",    sub: "Apr 20",       tone: "",       items: CAL_EVENTS.plus2 },
+  ];
+  return (
+    <div className="card timeline">
+      <div className="card-head flat">
+        <div className="eyebrow">Timeline</div>
+        <button className="link">Open week</button>
+      </div>
+      <div className="tl-body">
+        {groups.map((g) => (
+          <section key={g.key} className={`tl-group ${g.tone}`}>
+            <div className="tl-head">
+              <span className="tl-label">{g.label}</span>
+              <span className="tl-sub">{g.sub}</span>
+            </div>
+            <ul className="tl-items">
+              {g.items.map((it, i) => (
+                <li key={i} className={`tl-item kind-${it.kind}`}>
+                  <span className="tl-kind" aria-hidden>
+                    {it.kind === "meeting" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="2" width="8" height="7" fill="none" stroke="currentColor" strokeWidth="1"/><path d="M1 4 H9" stroke="currentColor" strokeWidth="1"/></svg>}
+                    {it.kind === "todo" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}
+                    {it.kind === "delegated" && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5 L8 5 M5 2 L8 5 L5 8" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}
+                    {it.kind === "milestone" && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1 L9 5 L5 9 L1 5 Z" fill="currentColor"/></svg>}
+                  </span>
+                  <div className="tl-main">
+                    <div className="tl-t">{it.t}</div>
+                    {(it.who || it.time) && (
+                      <div className="tl-meta">
+                        {it.time && <span className="tl-time">{it.time}</span>}
+                        {it.who && <span className="tl-who">{it.who}</span>}
+                      </div>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Pinboard({ pins, onRemove }) {
+  return (
+    <div className="card pinboard">
+      <div className="card-head flat">
+        <div>
+          <div className="eyebrow">Pinboard</div>
+          <div className="pin-count">{pins.length} pinned</div>
+        </div>
+        <button className="link">Clear all</button>
+      </div>
+      <div className="pin-list">
+        {pins.map((p) => (
+          <article key={p.id} className="pin">
+            <header>
+              <span className="pin-tag">{p.tag}</span>
+              <button className="pin-x" onClick={() => onRemove(p.id)} aria-label="Unpin">×</button>
+            </header>
+            <h4>{p.title}</h4>
+            <p>{p.body}</p>
+            <footer className="pin-foot">
+              <span className="pin-when">{p.when}</span>
+              <span className="pin-id">{p.id}</span>
+            </footer>
+          </article>
+        ))}
+        {pins.length === 0 && <div className="pin-empty">Nothing pinned yet. Hover any AI reply and pin it.</div>}
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   RIGHT PANEL — chat
+   ============================================================ */
+function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInput, onSend, thinking, micActive, onMic, onPin }) {
+  const tabs = [
+    { key: "chat",     label: "Chat",     count: messages.length },
+    { key: "people",   label: "People",   count: 6 },
+    { key: "settings", label: "Settings", count: null },
+  ];
+  return (
+    <main className="right">
+      <nav className="tabs" role="tablist">
+        <div className="tabs-inner">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              role="tab"
+              aria-selected={activeTab === t.key}
+              className={`tab ${activeTab === t.key ? "on" : ""}`}
+              onClick={() => setActiveTab(t.key)}
+            >
+              <span className="tab-label">{t.label}</span>
+              {t.count != null && <span className="tab-count mono">{t.count}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="tabs-right">
+          <span className="tab-status"><span className="dot sage" /> Connected</span>
+        </div>
+      </nav>
+
+      {activeTab === "chat" && (
+        <ChatTab
+          messages={messages} pinboard={pinboard} input={input} setInput={setInput}
+          onSend={onSend} thinking={thinking}
+          micActive={micActive} onMic={onMic} onPin={onPin}
+        />
+      )}
+      {activeTab === "people" && <PeopleTab />}
+      {activeTab === "settings" && <SettingsTab />}
+    </main>
+  );
+}
+
+function ChatTab({ messages, pinboard, input, setInput, onSend, thinking, micActive, onMic, onPin }) {
+  const pinned = new Set((pinboard || []).map((p) => p.sourceId).filter(Boolean));
+  return (
+    <div className="chat-panel">
+      <section className="thread-wrap">
+        <div className="thread" id="thread">
+          <DayDivider label="Today · Apr 18" />
+          {messages.map((m) => (
+            <Message key={m.id} m={m} onPin={onPin} pinned={pinned} />
+          ))}
+          {thinking && <Thinking />}
+        </div>
+      </section>
+
+      <Composer
+        input={input} setInput={setInput} onSend={onSend}
+        micActive={micActive} onMic={onMic}
+      />
+    </div>
+  );
+}
+
+const PEOPLE = [
+  { name: "Daniel Okafor",   role: "CFO",                   team: "Finance",  status: "busy",   ctx: "Reforecast review — expects 15 min after staff", last: "08:25", pending: 2 },
+  { name: "Maya Sundaram",   role: "CPO",                   team: "Product",  status: "online", ctx: "Atlas 3.0 launch gate owner · holds L7+ comp bands", last: "07:58", pending: 1 },
+  { name: "Jonas Bergström", role: "Head of Engineering",   team: "Eng",      status: "online", ctx: "1:1 at 14:00 · driving infra margin recovery", last: "Yesterday", pending: 0 },
+  { name: "Priya Shah",      role: "General Counsel",       team: "Legal",    status: "away",   ctx: "Series D redlines blocking for Monday", last: "07:12", pending: 1 },
+  { name: "Anton Reyes",     role: "Chief of Staff",        team: "CEO Office",status: "online",ctx: "Board pre-read coordinator · press embargo owner", last: "08:40", pending: 0 },
+  { name: "Lena Voss",       role: "VP, Communications",    team: "Comms",    status: "online", ctx: "Analyst briefing prep · Morgan Stanley tomorrow", last: "Yesterday", pending: 0 },
+];
+
+function PeopleTab() {
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState(PEOPLE[0]);
+  const filtered = PEOPLE.filter((p) =>
+    (p.name + p.role + p.team).toLowerCase().includes(q.toLowerCase())
+  );
+  return (
+    <div className="people">
+      <header className="sub-head">
+        <div>
+          <div className="chat-title">
+            <span className="serif">People</span>
+            <span className="chat-sep">·</span>
+            <span className="mono chat-tid">exec team · 6</span>
+          </div>
+          <div className="chat-sub">Agent has context on each person and their open threads.</div>
+        </div>
+        <div className="search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16 16"/></svg>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people, teams, context…" />
+        </div>
+      </header>
+      <div className="people-body">
+        <ul className="people-list">
+          {filtered.map((p) => (
+            <li
+              key={p.name}
+              className={`person ${sel?.name === p.name ? "on" : ""}`}
+              onClick={() => setSel(p)}
+            >
+              <div className={`p-avatar status-${p.status}`}>{initials(p.name)}</div>
+              <div className="p-main">
+                <div className="p-row">
+                  <span className="p-name">{p.name}</span>
+                  <span className="p-last mono">{p.last}</span>
+                </div>
+                <div className="p-row">
+                  <span className="p-role">{p.role}</span>
+                  {p.pending > 0 && <span className="p-badge">{p.pending} open</span>}
+                </div>
+                <div className="p-ctx">{p.ctx}</div>
+              </div>
+            </li>
+          ))}
+          {filtered.length === 0 && <li className="pin-empty">No one matches “{q}”.</li>}
+        </ul>
+        <aside className="person-detail">
+          {sel && (
+            <>
+              <div className={`p-avatar-lg status-${sel.status}`}>{initials(sel.name)}</div>
+              <h3>{sel.name}</h3>
+              <div className="p-role-lg">{sel.role} · {sel.team}</div>
+              <div className="p-ctx-lg">{sel.ctx}</div>
+
+              <div className="detail-section">
+                <div className="eyebrow">Open threads</div>
+                <ul className="detail-list">
+                  <li><span className="dot-s"/> Reforecast assumptions <span className="mono dim">waiting on you</span></li>
+                  <li><span className="dot-s sage"/> Atlas launch readiness <span className="mono dim">on track</span></li>
+                </ul>
+              </div>
+              <div className="detail-section">
+                <div className="eyebrow">Agent actions</div>
+                <div className="detail-btns">
+                  <button className="btn">Draft message</button>
+                  <button className="btn ghost">Schedule 15 min</button>
+                  <button className="btn ghost">Brief me</button>
+                </div>
+              </div>
+            </>
+          )}
+        </aside>
+      </div>
+    </div>
+  );
+}
+function initials(n) { return n.split(" ").map(s => s[0]).slice(0,2).join(""); }
+
+const ROLE_GOALS = {
+  Parent: ["School logistics", "Kids' activities", "Family planning", "Home management", "Health & wellness", "Finances", "Travel"],
+  Educator: ["Lesson planning", "Student progress", "Parent comms", "Team/class management", "Practice plans", "Admin tasks", "Research"],
+  Professional: ["Meeting prep", "Email triage", "Project tracking", "Team 1:1s", "Strategic planning", "Research", "Travel logistics"],
+  Entrepreneur: ["Fundraising", "Investor updates", "Product strategy", "Hiring", "Go-to-market", "Board prep", "Operations"],
+  Student: ["Coursework", "Research & papers", "Study schedules", "Applications", "Internships", "Note-taking", "Exam prep"],
+  Other: ["Scheduling", "Communications", "Research", "Note-taking", "Planning", "Reminders", "Learning"],
+};
+
+const PERSONALITIES = [
+  { key: "Butler",               blurb: "Formal, proper. \u201cVery good, ma'am.\u201d" },
+  { key: "Friend",               blurb: "Warm, casual, encouraging." },
+  { key: "Executive",            blurb: "Sharp, professional, results-focused." },
+  { key: "Rockstar",             blurb: "High-energy, fun, enthusiastic." },
+  { key: "European Male Model",  blurb: "Effortlessly charming, smouldering, impossibly stylish." },
+  { key: "Pip",                  blurb: "Devoted house helper, speaks in third person, overcome with joy to assist." },
+];
+
+function SettingsTab() {
+  const [section, setSection] = useState("server");
+
+  // Server
+  const [foundationRoot, setFoundationRoot] = useState("/Users/evelyn/Foundation");
+  const [port, setPort] = useState(3800);
+  const [instanceName, setInstanceName] = useState("Main");
+  const [instanceDesc, setInstanceDesc] = useState("The main Context Management System");
+  const [authEnabled, setAuthEnabled] = useState(true);
+  const tokenMasked = "cxms_\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022h47q";
+
+  // User Profile
+  const [userName, setUserName] = useState("Evelyn Marsh");
+  const [honorific, setHonorific] = useState("Female");
+  const [tz, setTz] = useState("America/Los_Angeles");
+  const [lang, setLang] = useState("en");
+  const [role, setRole] = useState("Entrepreneur");
+  const [commStyle, setCommStyle] = useState("Brief");
+  const [goals, setGoals] = useState(["Board prep", "Investor updates", "Product strategy"]);
+  const [roleField1, setRoleField1] = useState("Halcyon Labs");
+  const [roleField2, setRoleField2] = useState("");
+  const [roleField3, setRoleField3] = useState("");
+
+  // Assistant
+  const [assistantName, setAssistantName] = useState("Phaibel");
+  const [personality, setPersonality] = useState("Executive");
+
+  // Search
+  const [semanticOn, setSemanticOn] = useState(true);
+
+  const sections = [
+    { key: "server",     label: "Server",           sub: "~/.cxms/config.json" },
+    { key: "profile",    label: "User Profile",      sub: "profiles/user-profile.md" },
+    { key: "assistant",  label: "Assistant",         sub: "profiles/phaibel-profile.md" },
+    { key: "search",     label: "Search",            sub: "BM25 + optional semantic" },
+    { key: "models",     label: "Models in Use",     sub: "OpenAI \u00b7 Anthropic" },
+    { key: "foundation", label: "Foundation Info",   sub: "Read-only" },
+  ];
+
+  const toggleGoal = (g) => setGoals((gs) => gs.includes(g) ? gs.filter(x => x !== g) : [...gs, g]);
+
+  const roleExtras = () => {
+    if (role === "Parent") return (
+      <>
+        <Field label="Kids' ages" value={roleField1} onChange={setRoleField1} placeholder="e.g. 7, 10, 13" />
+        <Field label="Family situation" value={roleField2} onChange={setRoleField2} placeholder="e.g. two working parents" />
+      </>
+    );
+    if (role === "Educator") return (
+      <>
+        <Field label="Sport or subject" value={roleField1} onChange={setRoleField1} placeholder="e.g. football, math" />
+        <Field label="Team or class size" value={roleField2} onChange={setRoleField2} placeholder="number" type="number" />
+      </>
+    );
+    if (role === "Professional") return (
+      <>
+        <Field label="Employer / company" value={roleField1} onChange={setRoleField1} />
+        <Field label="Job title" value={roleField2} onChange={setRoleField2} />
+        <Field label="Team size" value={roleField3} onChange={setRoleField3} type="number" />
+      </>
+    );
+    if (role === "Entrepreneur") return (
+      <Field label="Employer / company" value={roleField1} onChange={setRoleField1} />
+    );
+    return null;
+  };
+
+  return (
+    <div className="settings">
+      <header className="sub-head">
+        <div>
+          <div className="chat-title">
+            <span className="serif">Settings</span>
+            <span className="chat-sep">·</span>
+            <span className="mono chat-tid">{assistantName.toLowerCase()}@halcyonlabs.ai</span>
+          </div>
+          <div className="chat-sub">How {assistantName} is configured on your Foundation.</div>
+        </div>
+      </header>
+
+      <div className="settings-layout">
+        <nav className="settings-nav">
+          {sections.map((s) => (
+            <button
+              key={s.key}
+              className={`set-nav-item ${section === s.key ? "on" : ""}`}
+              onClick={() => setSection(s.key)}
+            >
+              <span className="set-nav-label">{s.label}</span>
+              <span className="set-nav-sub mono">{s.sub}</span>
+            </button>
+          ))}
+        </nav>
+
+        <div className="settings-body settings-body-scroll">
+          {section === "server" && (
+            <>
+              <section className="settings-card wide">
+                <div className="eyebrow">Server</div>
+                <h4>CxMS instance</h4>
+                <Field label="Foundation root" value={foundationRoot} onChange={setFoundationRoot} mono hint="Absolute path to the Foundation directory (contains .cxms.md). Required to start." />
+                <div className="grid-2">
+                  <Field label="Port" value={port} onChange={(v) => setPort(+v || 0)} type="number" mono hint="HTTP port for the REST API and MCP server." />
+                  <Field label="Instance name" value={instanceName} onChange={setInstanceName} hint="Shown on startup and health endpoint." />
+                </div>
+                <Field label="Instance description" value={instanceDesc} onChange={setInstanceDesc} hint="Short description of this instance's purpose." />
+              </section>
+
+              <section className="settings-card wide">
+                <div className="eyebrow">Authentication</div>
+                <h4>Bearer token</h4>
+                <label className="check">
+                  <input type="checkbox" checked={authEnabled} onChange={(e) => setAuthEnabled(e.target.checked)} />
+                  <span>Enable bearer token auth <span className="dim">— when disabled, all API requests are accepted without a token</span></span>
+                </label>
+                <div className="token-row">
+                  <input className="field-input mono" value={tokenMasked} readOnly />
+                  <button className="btn ghost">Regenerate</button>
+                </div>
+                <p className="settings-hint">Token is auto-generated and stored at <span className="mono">~/.cxms/token</span>. Never displayed in full.</p>
+                <p className="settings-hint save-line">Saved to <span className="mono">~/.cxms/config.json</span></p>
+              </section>
+            </>
+          )}
+
+          {section === "profile" && (
+            <>
+              <section className="settings-card wide">
+                <div className="eyebrow">User Profile</div>
+                <h4>How {assistantName} knows you</h4>
+                <div className="grid-2">
+                  <Field label="Name" value={userName} onChange={setUserName} required />
+                  <SelectField label="Gender / Honorific" value={honorific} onChange={setHonorific}
+                    options={[["Male","Male (Sir)"],["Female","Female (Ma'am)"],["Other","Other (neutral)"]]}
+                  />
+                </div>
+                <div className="grid-2">
+                  <Field label="Timezone" value={tz} onChange={setTz} mono placeholder="America/Chicago" />
+                  <Field label="Language" value={lang} onChange={setLang} mono placeholder="en" />
+                </div>
+              </section>
+
+              <section className="settings-card wide">
+                <div className="eyebrow">Context</div>
+                <h4>Role &amp; communication</h4>
+                <SelectField label="Role" value={role} onChange={(v) => { setRole(v); setGoals([]); setRoleField1(""); setRoleField2(""); setRoleField3(""); }}
+                  options={[["Parent","Parent"],["Educator","Educator"],["Professional","Professional"],["Entrepreneur","Entrepreneur"],["Student","Student"],["Other","Other"]]}
+                />
+                <div className="field-group">
+                  <label className="field-label">Communication style</label>
+                  <div className="seg">
+                    {[["Brief","Brief — short answers, bullets"],["Conversational","Conversational — friendly, natural"],["Structured","Structured — headers, organised"]].map(([k,l]) => (
+                      <button key={k} className={commStyle === k ? "on" : ""} onClick={() => setCommStyle(k)}>{l}</button>
+                    ))}
+                  </div>
+                </div>
+                {roleExtras() && (
+                  <div className="role-extras">
+                    <div className="eyebrow">Role details</div>
+                    {roleExtras()}
+                  </div>
+                )}
+              </section>
+
+              <section className="settings-card wide">
+                <div className="eyebrow">Primary goals</div>
+                <h4>What you want help with</h4>
+                <p className="settings-hint">Choose as many as apply. Options tuned to your role.</p>
+                <div className="goals-grid">
+                  {(ROLE_GOALS[role] || ROLE_GOALS.Other).map((g) => (
+                    <button key={g} className={`goal-chip ${goals.includes(g) ? "on" : ""}`} onClick={() => toggleGoal(g)}>
+                      {g}
+                    </button>
+                  ))}
+                </div>
+                <p className="settings-hint save-line">Saved to <span className="mono">{foundationRoot.replace(/\/$/,"")}/profiles/user-profile.md</span></p>
+              </section>
+            </>
+          )}
+
+          {section === "assistant" && (
+            <section className="settings-card wide">
+              <div className="eyebrow">Assistant</div>
+              <h4>Who's helping you</h4>
+              <Field label="Assistant name" value={assistantName} onChange={setAssistantName} />
+              <div className="field-group">
+                <label className="field-label">Personality</label>
+                <div className="personality-grid">
+                  {PERSONALITIES.map((p) => (
+                    <button
+                      key={p.key}
+                      className={`pers-card ${personality === p.key ? "on" : ""}`}
+                      onClick={() => setPersonality(p.key)}
+                    >
+                      <div className="pers-name">{p.key}</div>
+                      <div className="pers-blurb">{p.blurb}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="settings-hint save-line">Saved to <span className="mono">{foundationRoot.replace(/\/$/,"")}/profiles/phaibel-profile.md</span></p>
+            </section>
+          )}
+
+          {section === "search" && (
+            <>
+              <section className="settings-card wide">
+                <div className="eyebrow">Search</div>
+                <h4>BM25 full-text <span className="pill-always">Always active</span></h4>
+                <p className="settings-hint">Field weights used when ranking results:</p>
+                <ul className="weights-list">
+                  <li><span>Title</span><span className="mono dim">5\u00d7</span></li>
+                  <li><span>Tags</span><span className="mono dim">3\u00d7</span></li>
+                  <li><span>Summary</span><span className="mono dim">2\u00d7</span></li>
+                  <li><span>Custom fields</span><span className="mono dim">1.5\u00d7</span></li>
+                  <li><span>Body</span><span className="mono dim">1\u00d7</span></li>
+                </ul>
+              </section>
+
+              <section className="settings-card wide">
+                <div className="eyebrow">Semantic / embedding</div>
+                <h4>Optional vector search</h4>
+                <label className="check">
+                  <input type="checkbox" checked={semanticOn} onChange={(e) => setSemanticOn(e.target.checked)} />
+                  <span>Enable semantic search <span className="dim">— requires an embedding provider connected by the host</span></span>
+                </label>
+                <ul className="kv-list">
+                  <li><span>Model</span><span className="mono">text-embedding-3-small (OpenAI)</span><span className="dim mono">fixed</span></li>
+                  <li><span>Dimensions</span><span className="mono">256</span><span className="dim mono">fixed</span></li>
+                  <li><span>Similarity threshold</span><span className="mono">0.5 min cosine</span><span className="dim mono">inclusion cutoff</span></li>
+                  <li><span>Query cache</span><span className="mono">5 min in-memory</span><span className="dim mono">per session</span></li>
+                </ul>
+                <p className="settings-hint save-line">Saved to <span className="mono">{foundationRoot.replace(/\/$/,"")}/.phaibel/embeddings.json</span></p>
+              </section>
+            </>
+          )}
+
+          {section === "models" && (
+            <section className="settings-card wide">
+              <div className="eyebrow">Models in Use</div>
+              <h4>What runs where</h4>
+              <ul className="models-list">
+                <li>
+                  <div className="m-head"><span className="m-name">Semantic embedding</span><span className="pill-fixed">Hardcoded</span></div>
+                  <div className="m-model mono">text-embedding-3-small</div>
+                  <div className="m-note">OpenAI · 256 dimensions. Used by CxMS semantic search.</div>
+                </li>
+                <li>
+                  <div className="m-head"><span className="m-name">Search — Phase 2 relevance</span><span className="pill-host">Host-configured</span></div>
+                  <div className="m-model mono">claude-haiku-4-5</div>
+                  <div className="m-note">Filters BM25 candidates for relevance. Recommended model; configured by Phaibel.</div>
+                </li>
+                <li>
+                  <div className="m-head"><span className="m-name">Search — Phase 3 synthesis</span><span className="pill-host">Host-configured</span></div>
+                  <div className="m-model mono">claude-sonnet-4-6</div>
+                  <div className="m-note">Composes the synthesized response from retrieved context.</div>
+                </li>
+                <li>
+                  <div className="m-head"><span className="m-name">General reasoning</span><span className="pill-host">Host-configured</span></div>
+                  <div className="m-model mono">— configurable</div>
+                  <div className="m-note">CxMS is model-agnostic for reasoning; it stores and retrieves context only.</div>
+                </li>
+              </ul>
+            </section>
+          )}
+
+          {section === "foundation" && (
+            <section className="settings-card wide">
+              <div className="eyebrow">Foundation Info</div>
+              <h4>Read-only structure</h4>
+              <p className="settings-hint">Sourced from <span className="mono">GET /cx/analytics</span>.</p>
+              <ul className="fs-list">
+                <li><span className="fs-name mono">context-types/</span><span className="fs-val">12 types installed \u00b7 3,481 nodes</span></li>
+                <li><span className="fs-name mono">collections/</span><span className="fs-val">4 key-value stores</span></li>
+                <li><span className="fs-name mono">logs/</span><span className="fs-val">access.log, error.log</span></li>
+                <li><span className="fs-name mono">.phaibel/</span><span className="fs-val">entity schema \u00b7 embeddings cache</span></li>
+                <li><span className="fs-name mono">profiles/</span><span className="fs-val">user-profile.md \u00b7 phaibel-profile.md</span></li>
+                <li><span className="fs-name mono">.trash/</span><span className="fs-val">18 soft-deleted \u00b7 2.4 MB</span></li>
+              </ul>
+            </section>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, value, onChange, type, placeholder, mono, hint, required }) {
+  return (
+    <div className="field-group">
+      <label className="field-label">{label}{required && <span className="req">*</span>}</label>
+      <input
+        type={type || "text"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={`field-input ${mono ? "mono" : ""}`}
+      />
+      {hint && <div className="field-hint">{hint}</div>}
+    </div>
+  );
+}
+function SelectField({ label, value, onChange, options }) {
+  return (
+    <div className="field-group">
+      <label className="field-label">{label}</label>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className="field-input">
+        {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function DayDivider({ label }) {
+  return (
+    <div className="day-divider">
+      <span className="line" />
+      <span className="label mono">{label}</span>
+      <span className="line" />
+    </div>
+  );
+}
+
+function Message({ m, onPin, pinned }) {
+  const isUser = m.role === "user";
+  const isProactive = m.kind === "proactive";
+  const isPinned = pinned && pinned.has(m.id);
+  return (
+    <div className={`msg-row ${isUser ? "me" : "ai"}`}>
+      {!isUser && (
+        <div className="avatar-ai" aria-hidden>
+          <svg viewBox="0 0 24 24" width="18" height="18">
+            <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M8 15 L12 8 L16 15" fill="none" stroke="currentColor" strokeWidth="1.4"/>
+            <path d="M9.8 12.5 L14.2 12.5" stroke="currentColor" strokeWidth="1.4"/>
+          </svg>
+        </div>
+      )}
+      <div className="msg-col">
+        {isProactive && !isUser && (
+          <div className="proactive-tag">
+            <span className="pulse" />
+            Proactive · Phaibel pushed this
+          </div>
+        )}
+        <div className={`bubble ${isUser ? "user" : "ai"} ${isProactive ? "proactive" : ""}`}>
+          <div className="bubble-body">
+            {m.text.split("\n").map((line, i) => <p key={i}>{line}</p>)}
+          </div>
+          {m.sources && (
+            <div className="sources">
+              {m.sources.map((s) => <span key={s} className="source-chip mono">{s}</span>)}
+            </div>
+          )}
+          {m.actions && (
+            <div className="actions">
+              {m.actions.map((a) => <span key={a} className="action-chip">✓ {a}</span>)}
+            </div>
+          )}
+        </div>
+        {!isUser && (
+          <div className="pin-action-row">
+            <button
+              className={`pin-action ${isPinned ? "pinned" : ""}`}
+              onClick={() => !isPinned && onPin(m)}
+              disabled={isPinned}
+              title={isPinned ? "Pinned to your board" : "Pin to pinboard"}
+            >
+              <span className="pin-emoji" aria-hidden>📌</span>
+              <span>{isPinned ? "Pinned" : "Pin to board"}</span>
+            </button>
+            <button className="pin-action ghost" title="Copy">
+              <span className="pin-emoji" aria-hidden>⧉</span>
+              <span>Copy</span>
+            </button>
+          </div>
+        )}
+        {!isUser && (
+          <div className="meta-ai mono">
+            <span>{m.at}</span>
+            <span className="dim">·</span>
+            <span>{m.id}</span>
+            {m.tokens && <>
+              <span className="dim">·</span>
+              <span>{m.tokens} tokens</span>
+            </>}
+          </div>
+        )}
+        {isUser && (
+          <div className="meta-user mono">{m.at}</div>
+        )}
+      </div>
+      {isUser && <div className="avatar-me" aria-hidden>EM</div>}
+    </div>
+  );
+}
+
+function Thinking() {
+  return (
+    <div className="msg-row ai">
+      <div className="avatar-ai" aria-hidden>
+        <svg viewBox="0 0 24 24" width="18" height="18">
+          <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4"/>
+          <path d="M8 15 L12 8 L16 15" fill="none" stroke="currentColor" strokeWidth="1.4"/>
+        </svg>
+      </div>
+      <div className="msg-col">
+        <div className="bubble ai thinking">
+          <span className="dot-a" /><span className="dot-a" /><span className="dot-a" />
+          <span className="thinking-label">thinking…</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Composer({ input, setInput, onSend, micActive, onMic }) {
+  const taRef = useRef(null);
+
+  useEffect(() => {
+    const ta = taRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = Math.min(160, ta.scrollHeight) + "px";
+  }, [input]);
+
+  return (
+    <footer className="composer">
+      <button
+        className={`mic ${micActive ? "on" : ""}`}
+        onClick={onMic}
+        aria-label={micActive ? "Stop listening" : "Start voice"}
+        title={micActive ? "Listening — click to stop" : "Voice command"}
+      >
+        {micActive ? (
+          <Waveform />
+        ) : (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+            <rect x="9" y="3" width="6" height="12" rx="3"/>
+            <path d="M5 11 a7 7 0 0 0 14 0"/>
+            <path d="M12 18 V22"/>
+            <path d="M9 22 H15"/>
+          </svg>
+        )}
+      </button>
+
+      <div className="field">
+        <textarea
+          ref={taRef}
+          rows={1}
+          placeholder={micActive ? "Listening…" : "Message Phaibel — or press ⌘K for commands"}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              onSend();
+            }
+          }}
+        />
+        <div className="field-tools">
+          <button className="tool-btn" title="Attach">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M21 12 L12 21 a5 5 0 0 1-7-7 L14 5 a3.5 3.5 0 0 1 5 5 L10 19"/></svg>
+          </button>
+          <button className="tool-btn" title="Context">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9 H21"/></svg>
+          </button>
+          <span className="flex-1" />
+          <span className="kbd mono">↵</span>
+          <button className="send" onClick={onSend} disabled={!input.trim()} aria-label="Send">
+            Send
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M2 6 H10 M7 3 L10 6 L7 9"/></svg>
+          </button>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+function Waveform() {
+  return (
+    <span className="wave" aria-hidden>
+      {[0,1,2,3,4].map((i) => <i key={i} style={{animationDelay: `${i * 0.11}s`}} />)}
+    </span>
+  );
+}
+
+/* ============================================================
+   TWEAKS PANEL
+   ============================================================ */
+function TweaksPanel({ tweaks, update, onClose }) {
+  return (
+    <div className="tweaks-panel" role="dialog" aria-label="Tweaks">
+      <header>
+        <div className="eyebrow">Tweaks</div>
+        <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
+      </header>
+
+      <div className="tweak-grp">
+        <label>Theme</label>
+        <div className="seg">
+          {["navy","charcoal","forest"].map((t) => (
+            <button key={t} className={tweaks.theme === t ? "on" : ""} onClick={() => update("theme", t)}>
+              <span className={`swatch sw-${t}`} />{t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="tweak-grp">
+        <label>Density</label>
+        <div className="seg">
+          {["spacious","balanced","dense"].map((d) => (
+            <button key={d} className={tweaks.density === d ? "on" : ""} onClick={() => update("density", d)}>{d}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="tweak-grp">
+        <label>Corner radius <span className="mono">{tweaks.radius}px</span></label>
+        <input type="range" min="0" max="14" step="1" value={tweaks.radius} onChange={(e) => update("radius", +e.target.value)} />
+      </div>
+
+      <div className="tweak-grp">
+        <label>Typography</label>
+        <div className="seg col">
+          {[
+            ["serif-sans","Serif headers + sans body"],
+            ["all-sans","All sans (modern)"],
+            ["serif-serif","All serif (editorial)"],
+          ].map(([k, lbl]) => (
+            <button key={k} className={tweaks.typePair === k ? "on" : ""} onClick={() => update("typePair", k)}>{lbl}</button>
+          ))}
+        </div>
+      </div>
+
+      <div className="tweak-grp">
+        <label>Mic listening state</label>
+        <div className="seg">
+          <button className={!tweaks.micActive ? "on" : ""} onClick={() => update("micActive", false)}>Idle</button>
+          <button className={tweaks.micActive ? "on" : ""} onClick={() => update("micActive", true)}>Listening</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   LAYOUT + COMPONENT STYLES
+   ============================================================ */
+function GlobalStyle() {
+  return (
+    <style>{`
+      .app {
+        display: grid;
+        grid-template-columns: minmax(320px, 25%) 1fr;
+        height: 100vh;
+        position: relative;
+        z-index: 1;
+      }
+
+      /* ---------- LEFT ---------- */
+      .left {
+        background: var(--paper-2);
+        border-right: 1px solid var(--line);
+        padding: var(--pad);
+        display: flex;
+        flex-direction: column;
+        gap: var(--gap);
+        overflow-y: auto;
+        min-height: 0;
+      }
+      .brand { flex-shrink: 0; }
+      .left-foot { flex-shrink: 0; }
+      .brand {
+        display: flex; align-items: center; gap: 10px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand-mark {
+        width: 34px; height: 34px;
+        display: grid; place-items: center;
+        background: var(--ink);
+        color: var(--paper);
+        border-radius: var(--radius);
+      }
+      .brand-name {
+        font-family: var(--font-serif);
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        line-height: 1;
+      }
+      .brand-sub {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 3px;
+        letter-spacing: 0.02em;
+      }
+      .brand-status {
+        margin-left: auto;
+        font-size: 11px;
+        color: var(--muted);
+        display: flex; align-items: center; gap: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .dot {
+        width: 7px; height: 7px; border-radius: 50%;
+        background: var(--gold);
+        box-shadow: 0 0 0 3px color-mix(in oklab, var(--gold) 20%, transparent);
+      }
+      .dot.sage { background: var(--sage); box-shadow: 0 0 0 3px color-mix(in oklab, var(--sage) 20%, transparent); }
+
+      /* Cards */
+      .card {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 14px;
+        box-shadow: var(--shadow-sm);
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        flex-shrink: 0;
+      }
+      .calendar { flex: 0 0 auto; }
+      .card-head {
+        display: flex; align-items: flex-end; justify-content: space-between;
+        margin-bottom: 10px;
+      }
+      .card-head.flat { align-items: center; }
+      .eyebrow {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--muted);
+        font-weight: 500;
+      }
+      .month {
+        font-family: var(--font-serif);
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin-top: 3px;
+      }
+      .year { color: var(--muted); font-weight: 400; }
+      .month-nav { display: flex; gap: 2px; }
+      .month-nav button {
+        width: 22px; height: 22px;
+        border: 1px solid var(--line);
+        background: var(--paper);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        font-size: 14px;
+        line-height: 1;
+        color: var(--ink);
+      }
+      .month-nav button:hover { background: var(--paper-2); }
+
+      .dow {
+        display: grid; grid-template-columns: repeat(7, 1fr);
+        font-size: 10px;
+        color: var(--muted-2);
+        text-align: center;
+        padding: 4px 0;
+        font-family: var(--font-mono);
+      }
+      .days {
+        display: grid; grid-template-columns: repeat(7, 1fr);
+        gap: 2px;
+      }
+      .day {
+        aspect-ratio: 1.2 / 1;
+        display: grid;
+        place-items: center;
+        position: relative;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        color: var(--ink);
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+      }
+      .day:hover { background: var(--paper-2); }
+      .day.empty { opacity: 0; pointer-events: none; }
+      .day.weekend { color: var(--muted-2); }
+      .day.today {
+        background: var(--ink);
+        color: var(--paper);
+        font-weight: 600;
+      }
+      .day.today .day-dots i { background: var(--gold-soft); }
+      .day-dots {
+        position: absolute; bottom: 3px; left: 50%;
+        transform: translateX(-50%);
+        display: flex; gap: 2px;
+      }
+      .day-dots i { width: 3px; height: 3px; border-radius: 50%; background: var(--gold); display: block; }
+
+      /* Timeline */
+      .timeline { flex: 0 0 auto; }
+      .tl-body { display: flex; flex-direction: column; gap: 10px; }
+      .tl-group {
+        border-left: 2px solid var(--line);
+        padding-left: 10px;
+      }
+      .tl-group.alert { border-left-color: var(--oxblood); }
+      .tl-group.accent { border-left-color: var(--gold); }
+      .tl-head {
+        display: flex; align-items: baseline; justify-content: space-between;
+        margin-bottom: 4px;
+      }
+      .tl-label {
+        font-family: var(--font-serif);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+      }
+      .tl-group.alert .tl-label { color: var(--oxblood); }
+      .tl-sub {
+        font-size: 10px;
+        color: var(--muted);
+        font-family: var(--font-mono);
+      }
+      .tl-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+      .tl-item {
+        display: flex; gap: 8px;
+        padding: 5px 6px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+      }
+      .tl-item:hover { background: var(--paper-2); }
+      .tl-kind {
+        flex: 0 0 14px;
+        width: 14px; height: 14px;
+        display: grid; place-items: center;
+        color: var(--muted);
+        margin-top: 3px;
+      }
+      .tl-item.kind-delegated .tl-kind { color: var(--gold); }
+      .tl-item.kind-milestone .tl-kind { color: var(--oxblood); }
+      .tl-main { flex: 1; min-width: 0; }
+      .tl-t {
+        font-size: 12.5px;
+        color: var(--ink);
+        line-height: 1.3;
+      }
+      .tl-meta {
+        display: flex; gap: 8px;
+        font-size: 10.5px;
+        color: var(--muted);
+        margin-top: 2px;
+        font-family: var(--font-mono);
+      }
+      .tl-time {
+        color: var(--ink-3);
+        font-weight: 500;
+      }
+
+      /* Pinboard */
+      .pinboard {
+        flex: 1 1 auto;
+        min-height: 260px;
+      }
+      .pin-count {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 3px;
+        font-family: var(--font-mono);
+      }
+      .link {
+        background: none; border: 0; padding: 0;
+        color: var(--ink-3);
+        font-size: 11px;
+        cursor: pointer;
+        text-decoration: underline;
+        text-decoration-color: var(--line);
+        text-underline-offset: 3px;
+        font-family: inherit;
+      }
+      .link:hover { color: var(--ink); text-decoration-color: var(--gold); }
+      .pin-list {
+        flex: 1;
+        overflow-y: auto;
+        display: flex; flex-direction: column; gap: 8px;
+        margin: 0 -6px;
+        padding: 2px 6px 2px;
+      }
+      .pin {
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--gold);
+        background: var(--paper);
+        border-radius: var(--radius-sm);
+        padding: 10px 12px 10px 11px;
+        transition: transform .12s ease, box-shadow .12s ease;
+      }
+      .pin:hover { box-shadow: var(--shadow-md); }
+      .pin header {
+        display: flex; justify-content: space-between; align-items: center;
+        margin-bottom: 6px;
+      }
+      .pin-tag {
+        font-size: 9.5px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--gold);
+        font-weight: 600;
+      }
+      .pin-x {
+        background: none; border: 0; cursor: pointer;
+        color: var(--muted-2);
+        font-size: 16px; line-height: 1;
+        padding: 0 4px;
+      }
+      .pin-x:hover { color: var(--oxblood); }
+      .pin h4 {
+        font-family: var(--font-serif);
+        font-size: 13.5px;
+        font-weight: 600;
+        margin: 0 0 4px;
+        letter-spacing: -0.005em;
+        line-height: 1.3;
+      }
+      .pin p {
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--ink-3);
+        margin: 0;
+      }
+      .pin-foot {
+        display: flex; justify-content: space-between;
+        margin-top: 8px;
+        font-size: 10px;
+        font-family: var(--font-mono);
+        color: var(--muted);
+      }
+      .pin-empty {
+        text-align: center;
+        color: var(--muted);
+        font-size: 12px;
+        padding: 20px 10px;
+        border: 1px dashed var(--line);
+        border-radius: var(--radius-sm);
+      }
+
+      .left-foot {
+        display: flex; align-items: center; justify-content: space-between;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+      }
+      .who { display: flex; gap: 10px; align-items: center; }
+      .avatar-ex {
+        width: 30px; height: 30px;
+        background: var(--ink);
+        color: var(--paper);
+        border-radius: var(--radius-sm);
+        display: grid; place-items: center;
+        font-family: var(--font-serif);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+      .who-name { font-size: 12.5px; font-weight: 500; }
+      .who-role { font-size: 10.5px; color: var(--muted); font-family: var(--font-mono); }
+      .icon-btn {
+        width: 28px; height: 28px;
+        border: 1px solid transparent;
+        background: transparent;
+        border-radius: var(--radius-sm);
+        display: grid; place-items: center;
+        cursor: pointer;
+        color: var(--muted);
+      }
+      .icon-btn:hover { background: var(--paper); border-color: var(--line); color: var(--ink); }
+
+      /* ---------- RIGHT ---------- */
+      .right {
+        display: grid;
+        grid-template-rows: auto 1fr;
+        background: var(--paper);
+        min-height: 0;
+        overflow: hidden;
+      }
+      .chat-panel {
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      /* Tabs */
+      .tabs {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 20px;
+        border-bottom: 1px solid var(--line);
+        background: var(--paper-2);
+      }
+      .tabs-inner {
+        display: flex;
+        gap: 2px;
+      }
+      .tab {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 16px 11px;
+        background: transparent;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        margin-bottom: -1px;
+        font-family: inherit;
+        font-size: 13px;
+        color: var(--muted);
+        cursor: pointer;
+        letter-spacing: 0.005em;
+      }
+      .tab:hover { color: var(--ink); }
+      .tab.on {
+        color: var(--ink);
+        border-bottom-color: var(--gold);
+        font-weight: 500;
+      }
+      .tab-count {
+        font-size: 10px;
+        color: var(--muted-2);
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 1px 6px;
+        font-feature-settings: "tnum";
+      }
+      .tab.on .tab-count { color: var(--ink-3); border-color: var(--gold-soft); }
+      .tab-status {
+        font-size: 11px;
+        color: var(--muted);
+        display: inline-flex; align-items: center; gap: 6px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .sub-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 18px 28px 16px;
+        border-bottom: 1px solid var(--line);
+        background: var(--paper);
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+
+      /* People tab */
+      .people { display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+      .search {
+        display: inline-flex; align-items: center; gap: 8px;
+        border: 1px solid var(--line);
+        background: var(--paper-2);
+        border-radius: var(--radius);
+        padding: 6px 10px;
+        color: var(--muted);
+        min-width: 260px;
+      }
+      .search:focus-within { border-color: var(--gold); background: var(--paper); }
+      .search input {
+        border: 0; outline: none; background: transparent;
+        font-family: inherit; font-size: 13px; color: var(--ink);
+        flex: 1;
+      }
+      .search input::placeholder { color: var(--muted-2); }
+
+      .people-body {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) minmax(280px, 1fr);
+        min-height: 0;
+        overflow: hidden;
+      }
+      .people-list {
+        list-style: none; margin: 0; padding: 12px 12px 20px;
+        overflow-y: auto;
+        border-right: 1px solid var(--line);
+        display: flex; flex-direction: column; gap: 4px;
+      }
+      .person {
+        display: flex; gap: 12px;
+        padding: 10px 12px;
+        border-radius: var(--radius);
+        cursor: pointer;
+        border: 1px solid transparent;
+      }
+      .person:hover { background: var(--paper-2); }
+      .person.on { background: var(--paper-2); border-color: var(--line); }
+      .p-avatar {
+        width: 36px; height: 36px;
+        flex: 0 0 36px;
+        background: var(--ink);
+        color: var(--paper);
+        border-radius: var(--radius-sm);
+        display: grid; place-items: center;
+        font-family: var(--font-serif);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        position: relative;
+      }
+      .p-avatar::after {
+        content: "";
+        position: absolute;
+        right: -2px; bottom: -2px;
+        width: 9px; height: 9px;
+        border-radius: 50%;
+        border: 2px solid var(--paper-2);
+        background: var(--muted-2);
+      }
+      .status-online::after { background: var(--sage); }
+      .status-busy::after { background: var(--oxblood); }
+      .status-away::after { background: var(--gold); }
+
+      .person { position: relative; }
+      .p-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+      .p-row {
+        display: flex; justify-content: space-between; align-items: center;
+        gap: 8px;
+      }
+      .p-row .p-role { flex: 1; }
+      .p-name { font-size: 13.5px; font-weight: 500; color: var(--ink); }
+      .p-last {
+        font-size: 10.5px; color: var(--muted-2);
+        flex-shrink: 0;
+      }
+      .p-role { font-size: 11.5px; color: var(--muted); }
+      .p-badge {
+        font-size: 10px;
+        color: var(--oxblood);
+        background: color-mix(in oklab, var(--oxblood) 10%, var(--paper));
+        border: 1px solid color-mix(in oklab, var(--oxblood) 30%, var(--line));
+        border-radius: 999px;
+        padding: 1px 7px;
+        font-family: var(--font-mono);
+        flex-shrink: 0;
+        line-height: 1.3;
+        white-space: nowrap;
+      }
+      .p-ctx {
+        font-size: 11.5px; color: var(--ink-3);
+        line-height: 1.35;
+      }
+
+      .person-detail {
+        padding: 28px 28px 28px;
+        overflow-y: auto;
+        background: var(--paper);
+      }
+      .p-avatar-lg {
+        width: 60px; height: 60px;
+        background: var(--ink);
+        color: var(--paper);
+        border-radius: var(--radius);
+        display: grid; place-items: center;
+        font-family: var(--font-serif);
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        position: relative;
+        margin-bottom: 14px;
+      }
+      .p-avatar-lg::after {
+        content: "";
+        position: absolute;
+        right: -3px; bottom: -3px;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        border: 3px solid var(--paper);
+        background: var(--muted-2);
+      }
+      .person-detail h3 {
+        font-family: var(--font-serif);
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        margin: 0 0 2px;
+      }
+      .p-role-lg {
+        color: var(--muted); font-size: 12px;
+        font-family: var(--font-mono);
+        margin-bottom: 14px;
+      }
+      .p-ctx-lg {
+        font-size: 13.5px;
+        color: var(--ink-3);
+        line-height: 1.5;
+        padding: 12px 14px;
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--gold);
+        border-radius: var(--radius-sm);
+      }
+      .detail-section { margin-top: 22px; }
+      .detail-section .eyebrow { margin-bottom: 8px; }
+      .detail-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+      .detail-list li {
+        display: flex; align-items: center; gap: 8px;
+        padding: 7px 0;
+        border-bottom: 1px dashed var(--line);
+      }
+      .detail-list li:last-child { border-bottom: 0; }
+      .dot-s {
+        width: 7px; height: 7px; border-radius: 50%;
+        background: var(--gold); display: inline-block;
+      }
+      .dot-s.sage { background: var(--sage); }
+      .dim { color: var(--muted-2); }
+      .detail-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+      .btn {
+        padding: 7px 13px;
+        font-size: 12px;
+        border-radius: var(--radius);
+        border: 1px solid var(--ink);
+        background: var(--ink);
+        color: var(--paper);
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .btn.ghost {
+        background: var(--paper);
+        color: var(--ink);
+        border-color: var(--line);
+      }
+      .btn.ghost:hover { border-color: var(--gold); }
+      .btn.danger { color: var(--oxblood); border-color: color-mix(in oklab, var(--oxblood) 40%, var(--line)); }
+
+      /* Settings tab */
+      .settings { display: grid; grid-template-rows: auto 1fr; min-height: 0; }
+      .settings-layout {
+        display: grid;
+        grid-template-columns: 220px 1fr;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .settings-nav {
+        border-right: 1px solid var(--line);
+        background: var(--paper-2);
+        padding: 14px 10px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .set-nav-item {
+        text-align: left;
+        background: transparent;
+        border: 1px solid transparent;
+        border-radius: var(--radius);
+        padding: 9px 12px;
+        cursor: pointer;
+        font-family: inherit;
+        display: flex; flex-direction: column; gap: 2px;
+        color: var(--ink-3);
+      }
+      .set-nav-item:hover { background: var(--paper); }
+      .set-nav-item.on {
+        background: var(--paper);
+        border-color: var(--line);
+        border-left: 3px solid var(--gold);
+        padding-left: 10px;
+      }
+      .set-nav-label { font-size: 13px; font-weight: 500; color: var(--ink); }
+      .set-nav-sub { font-size: 10px; color: var(--muted); }
+
+      .settings-body-scroll {
+        overflow-y: auto;
+        padding: 20px 28px 32px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        align-content: start;
+      }
+      .settings-body {
+        overflow-y: auto;
+        padding: 20px 28px 32px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        align-content: start;
+      }
+      .settings-card {
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 16px 18px 18px;
+        box-shadow: var(--shadow-sm);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .settings-card > .eyebrow { margin-bottom: -6px; }
+      .settings-card.wide { grid-column: 1 / -1; }
+      .settings-card h4 {
+        font-family: var(--font-serif);
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+        margin: 0 0 4px;
+        line-height: 1.3;
+      }
+      .settings-hint {
+        font-size: 12px; color: var(--muted);
+        margin: 0; line-height: 1.5;
+      }
+      .slider-row {
+        display: flex; align-items: center; gap: 12px;
+        margin: 0;
+      }
+      .slider-row input[type=range] { flex: 1; }
+      .slider-val {
+        font-size: 11px; color: var(--ink-3);
+        min-width: 80px; text-align: right;
+      }
+      .check {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 12.5px; color: var(--ink-3);
+        padding: 5px 0;
+        cursor: pointer;
+      }
+      .check input { accent-color: var(--gold); }
+
+      .integ-list { list-style: none; margin: 0; padding: 0; }
+      .integ-list li {
+        display: grid;
+        grid-template-columns: minmax(160px, 1.1fr) minmax(0, 2fr) auto;
+        gap: 14px;
+        align-items: center;
+        padding: 10px 0;
+        border-bottom: 1px dashed var(--line);
+      }
+      .integ-list li:last-child { border-bottom: 0; }
+      .integ-name {
+        display: flex; align-items: center; gap: 8px;
+        font-size: 13px; color: var(--ink);
+      }
+      .integ-scope {
+        font-size: 12px; color: var(--muted);
+      }
+      .approval-list { list-style: none; margin: 0; padding: 0; }
+      .approval-list li {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px dashed var(--line);
+        font-size: 13px;
+      }
+      .approval-list li:last-child { border-bottom: 0; }
+
+      /* Form fields */
+      .field-group { display: flex; flex-direction: column; gap: 5px; }
+      .field-label {
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .req { color: var(--oxblood); margin-left: 3px; }
+      .field-input {
+        border: 1px solid var(--line);
+        background: var(--paper-2);
+        border-radius: var(--radius-sm);
+        padding: 8px 11px;
+        font-family: inherit;
+        font-size: 13px;
+        color: var(--ink);
+        outline: none;
+        width: 100%;
+      }
+      .field-input:focus { border-color: var(--gold); background: var(--paper); }
+      select.field-input { cursor: pointer; }
+      .field-hint { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+      .grid-2 {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+      .token-row { display: flex; gap: 8px; align-items: center; }
+      .token-row .field-input { flex: 1; }
+      .save-line { margin-top: 4px; padding-top: 10px; border-top: 1px dashed var(--line); }
+
+      .role-extras {
+        margin-top: 4px;
+        padding: 12px 14px;
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        border-left: 3px solid var(--gold);
+        border-radius: var(--radius-sm);
+        display: flex; flex-direction: column; gap: 10px;
+      }
+      .role-extras .eyebrow { margin-bottom: 0; }
+
+      .goals-grid {
+        display: flex; flex-wrap: wrap; gap: 6px;
+        margin-top: 2px;
+      }
+      .goal-chip {
+        border: 1px solid var(--line);
+        background: var(--paper);
+        color: var(--ink-3);
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .goal-chip:hover { border-color: var(--gold-soft); }
+      .goal-chip.on {
+        background: var(--ink);
+        color: var(--paper);
+        border-color: var(--ink);
+      }
+
+      .personality-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 8px;
+      }
+      .pers-card {
+        text-align: left;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        cursor: pointer;
+        font-family: inherit;
+        color: var(--ink);
+        display: flex; flex-direction: column; gap: 4px;
+      }
+      .pers-card:hover { border-color: var(--gold-soft); }
+      .pers-card.on {
+        border-color: var(--gold);
+        background: color-mix(in oklab, var(--gold-soft) 15%, var(--paper));
+      }
+      .pers-name {
+        font-family: var(--font-serif);
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.005em;
+      }
+      .pers-blurb { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+
+      .pill-always, .pill-fixed, .pill-host {
+        display: inline-block;
+        margin-left: 8px;
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        font-weight: 400;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 2px 7px;
+        border-radius: 999px;
+        vertical-align: middle;
+      }
+      .pill-always {
+        background: color-mix(in oklab, var(--sage) 14%, var(--paper));
+        color: var(--sage);
+        border: 1px solid color-mix(in oklab, var(--sage) 30%, var(--line));
+      }
+      .pill-fixed {
+        background: var(--paper-2);
+        color: var(--muted);
+        border: 1px solid var(--line);
+      }
+      .pill-host {
+        background: color-mix(in oklab, var(--gold-soft) 25%, var(--paper));
+        color: var(--gold);
+        border: 1px solid color-mix(in oklab, var(--gold) 40%, var(--line));
+      }
+
+      .weights-list, .kv-list, .fs-list {
+        list-style: none; margin: 0; padding: 0;
+      }
+      .weights-list li, .fs-list li {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 7px 0;
+        border-bottom: 1px dashed var(--line);
+        font-size: 13px;
+      }
+      .weights-list li:last-child, .fs-list li:last-child { border-bottom: 0; }
+      .kv-list li {
+        display: grid;
+        grid-template-columns: 1fr 1.6fr auto;
+        gap: 10px;
+        padding: 7px 0;
+        border-bottom: 1px dashed var(--line);
+        font-size: 13px;
+        align-items: center;
+      }
+      .kv-list li:last-child { border-bottom: 0; }
+      .fs-name { color: var(--ink); font-size: 12.5px; }
+      .fs-val { color: var(--muted); font-size: 12.5px; }
+
+      .models-list {
+        list-style: none; margin: 0; padding: 0;
+        display: flex; flex-direction: column; gap: 10px;
+      }
+      .models-list li {
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 10px 14px;
+      }
+      .m-head {
+        display: flex; align-items: center;
+        margin-bottom: 4px;
+      }
+      .m-name { font-size: 13px; font-weight: 500; }
+      .m-model { font-size: 12.5px; color: var(--ink-3); margin-bottom: 3px; }
+      .m-note { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+
+      .people-list::-webkit-scrollbar, .person-detail::-webkit-scrollbar, .settings-body::-webkit-scrollbar { width: 8px; }
+      .people-list::-webkit-scrollbar-thumb, .person-detail::-webkit-scrollbar-thumb, .settings-body::-webkit-scrollbar-thumb {
+        background: color-mix(in oklab, var(--muted-2) 40%, transparent);
+        border-radius: 8px;
+      }
+      .chat-head {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 18px 28px 16px;
+        border-bottom: 1px solid var(--line);
+        background: var(--paper);
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .chat-head > div:first-child { min-width: 0; flex: 1 1 auto; }
+      .chat-title {
+        display: flex; align-items: baseline; gap: 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .chat-title .serif {
+        font-family: var(--font-serif);
+        font-size: 20px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .chat-sep { color: var(--line); }
+      .chat-tid {
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .chat-sub {
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 3px;
+        display: flex; align-items: center; gap: 6px;
+      }
+      .chat-tools { display: flex; align-items: center; gap: 6px; }
+      .chip {
+        border: 1px solid var(--line);
+        background: var(--paper-2);
+        padding: 5px 10px;
+        border-radius: 999px;
+        font-size: 11.5px;
+        color: var(--ink-3);
+        cursor: pointer;
+      }
+      .chip:hover { border-color: var(--gold); color: var(--ink); }
+
+      .thread-wrap {
+        min-height: 0;
+        overflow: hidden;
+        display: flex;
+        background:
+          linear-gradient(var(--paper), var(--paper));
+      }
+      .thread {
+        flex: 1;
+        overflow-y: auto;
+        padding: 24px 28px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .day-divider {
+        display: flex; align-items: center; gap: 10px;
+        margin: 4px 0 -4px;
+      }
+      .day-divider .line { flex: 1; height: 1px; background: var(--line); }
+      .day-divider .label { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+
+      .msg-row {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        max-width: 780px;
+      }
+      .msg-row.ai { align-self: flex-start; }
+      .msg-row.me { align-self: flex-end; flex-direction: row; }
+      .msg-col { display: flex; flex-direction: column; gap: 5px; max-width: 620px; }
+      .msg-row.me .msg-col { align-items: flex-end; }
+
+      .avatar-ai, .avatar-me {
+        width: 30px; height: 30px;
+        flex: 0 0 30px;
+        border-radius: var(--radius-sm);
+        display: grid; place-items: center;
+        margin-top: 2px;
+      }
+      .avatar-ai {
+        background: var(--ink);
+        color: var(--paper);
+      }
+      .avatar-me {
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        color: var(--ink);
+        font-family: var(--font-serif);
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+
+      .proactive-tag {
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--gold);
+        font-weight: 600;
+        display: flex; align-items: center; gap: 6px;
+        margin-bottom: 2px;
+      }
+      .pulse {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: var(--gold);
+        box-shadow: 0 0 0 0 var(--gold);
+        animation: pulse 1.6s infinite;
+      }
+      @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--gold) 55%, transparent); }
+        70% { box-shadow: 0 0 0 8px color-mix(in oklab, var(--gold) 0%, transparent); }
+        100% { box-shadow: 0 0 0 0 transparent; }
+      }
+
+      .bubble {
+        border-radius: var(--radius);
+        padding: 12px 14px;
+        font-size: 14px;
+        line-height: 1.55;
+        max-width: 620px;
+      }
+      .bubble p { margin: 0; }
+      .bubble p + p { margin-top: 6px; }
+      .bubble.ai {
+        background: var(--paper-2);
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-top-left-radius: 2px;
+      }
+      .bubble.ai.proactive {
+        background: color-mix(in oklab, var(--gold-soft) 20%, var(--paper));
+        border-color: color-mix(in oklab, var(--gold) 40%, var(--line));
+      }
+      .bubble.user {
+        background: var(--ink);
+        color: var(--paper);
+        border: 1px solid var(--ink-2);
+        border-top-right-radius: 2px;
+      }
+      .bubble.thinking {
+        display: flex; align-items: center; gap: 6px;
+        padding: 10px 14px;
+      }
+      .dot-a {
+        width: 5px; height: 5px; border-radius: 50%;
+        background: var(--muted);
+        animation: bounce 1.1s infinite;
+      }
+      .dot-a:nth-child(2) { animation-delay: .15s; }
+      .dot-a:nth-child(3) { animation-delay: .3s; }
+      @keyframes bounce {
+        0%,60%,100% { transform: translateY(0); opacity: .5; }
+        30% { transform: translateY(-3px); opacity: 1; }
+      }
+      .thinking-label {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        color: var(--muted);
+        margin-left: 4px;
+      }
+
+      .sources {
+        display: flex; flex-wrap: wrap; gap: 5px;
+        margin-top: 8px;
+        padding-top: 8px;
+        border-top: 1px dashed var(--line);
+      }
+      .source-chip {
+        font-size: 10.5px;
+        color: var(--muted);
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 2px 6px;
+      }
+      .actions {
+        display: flex; flex-wrap: wrap; gap: 5px;
+        margin-top: 8px;
+      }
+      .action-chip {
+        font-size: 11px;
+        color: var(--sage);
+        background: color-mix(in oklab, var(--sage) 12%, var(--paper));
+        border: 1px solid color-mix(in oklab, var(--sage) 30%, var(--line));
+        border-radius: var(--radius-sm);
+        padding: 3px 7px;
+      }
+
+      .meta-ai, .meta-user {
+        font-size: 10.5px;
+        color: var(--muted-2);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding-left: 2px;
+      }
+      .meta-ai .dim { color: var(--paper-3); }
+      .meta-btn {
+        background: none; border: 0; padding: 0;
+        cursor: pointer;
+        color: var(--muted);
+        font-family: inherit;
+        font-size: inherit;
+        display: inline-flex; align-items: center; gap: 3px;
+      }
+      .meta-btn:hover { color: var(--gold); }
+
+      .pin-action-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 2px;
+      }
+      .pin-action {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px 4px 8px;
+        border: 1px solid var(--line);
+        background: var(--paper);
+        border-radius: 999px;
+        font-family: inherit;
+        font-size: 11.5px;
+        color: var(--ink-3);
+        cursor: pointer;
+        transition: border-color .12s ease, background .12s ease, color .12s ease;
+      }
+      .pin-action:hover:not(:disabled) {
+        border-color: var(--gold);
+        color: var(--ink);
+        background: color-mix(in oklab, var(--gold-soft) 18%, var(--paper));
+      }
+      .pin-action.pinned {
+        border-color: color-mix(in oklab, var(--gold) 45%, var(--line));
+        background: color-mix(in oklab, var(--gold-soft) 25%, var(--paper));
+        color: var(--ink);
+        cursor: default;
+      }
+      .pin-action.ghost { color: var(--muted); }
+      .pin-action:disabled { opacity: 0.9; }
+      .pin-emoji {
+        font-size: 12px;
+        line-height: 1;
+        display: inline-block;
+        transform: translateY(-0.5px);
+      }
+
+      /* Composer */
+      .composer {
+        display: flex;
+        gap: 10px;
+        padding: 14px 28px 20px;
+        border-top: 1px solid var(--line);
+        background: var(--paper);
+        align-items: flex-end;
+      }
+      .mic {
+        flex: 0 0 42px;
+        width: 42px;
+        min-height: 42px;
+        border-radius: var(--radius);
+        background: var(--paper-2);
+        border: 1px solid var(--line);
+        color: var(--ink);
+        cursor: pointer;
+        display: grid; place-items: center;
+        transition: background .15s ease, border-color .15s ease;
+        align-self: flex-end;
+      }
+      .mic:hover { background: var(--paper); border-color: var(--gold-soft); }
+      .mic.on {
+        background: var(--oxblood);
+        border-color: var(--oxblood);
+        color: var(--paper);
+      }
+      .wave {
+        display: inline-flex; gap: 2px; align-items: center; height: 16px;
+      }
+      .wave i {
+        width: 2px; display: block;
+        background: currentColor;
+        border-radius: 1px;
+        animation: wave 1s infinite ease-in-out;
+      }
+      @keyframes wave {
+        0%, 100% { height: 3px; }
+        50% { height: 14px; }
+      }
+      .wave i:nth-child(1) { height: 5px; }
+      .wave i:nth-child(2) { height: 10px; }
+      .wave i:nth-child(3) { height: 14px; }
+      .wave i:nth-child(4) { height: 8px; }
+      .wave i:nth-child(5) { height: 6px; }
+
+      .field {
+        flex: 1;
+        border: 1px solid var(--line);
+        background: var(--paper-2);
+        border-radius: var(--radius);
+        display: flex;
+        flex-direction: column;
+        transition: border-color .15s ease, background .15s ease;
+      }
+      .field:focus-within {
+        border-color: var(--gold);
+        background: var(--paper);
+      }
+      .field textarea {
+        border: 0; background: transparent;
+        font-family: inherit;
+        font-size: 14px;
+        line-height: 1.5;
+        color: var(--ink);
+        padding: 11px 14px 6px;
+        resize: none;
+        outline: none;
+        min-height: 24px;
+      }
+      .field textarea::placeholder { color: var(--muted-2); }
+      .field-tools {
+        display: flex; align-items: center; gap: 6px;
+        padding: 4px 8px 8px;
+      }
+      .tool-btn {
+        width: 24px; height: 24px;
+        border: 0; background: transparent;
+        cursor: pointer; color: var(--muted);
+        border-radius: var(--radius-sm);
+        display: grid; place-items: center;
+      }
+      .tool-btn:hover { color: var(--ink); background: var(--paper-3); }
+      .flex-1 { flex: 1; }
+      .kbd {
+        font-size: 10px;
+        color: var(--muted);
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        padding: 1px 5px;
+        background: var(--paper);
+      }
+      .send {
+        display: inline-flex; align-items: center; gap: 6px;
+        padding: 7px 14px;
+        background: var(--ink);
+        color: var(--paper);
+        border: 1px solid var(--ink);
+        border-radius: var(--radius);
+        cursor: pointer;
+        font-size: 12.5px;
+        font-weight: 500;
+      }
+      .send:disabled { opacity: 0.4; cursor: not-allowed; }
+      .send:not(:disabled):hover { background: var(--ink-2); }
+
+      /* Tweaks panel */
+      .tweaks-panel {
+        position: fixed;
+        right: 20px; bottom: 20px;
+        width: 280px;
+        background: var(--paper);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-md);
+        padding: 14px;
+        z-index: 50;
+        display: flex; flex-direction: column; gap: 14px;
+      }
+      .tweaks-panel header {
+        display: flex; justify-content: space-between; align-items: center;
+      }
+      .tweak-grp { display: flex; flex-direction: column; gap: 6px; }
+      .tweak-grp label {
+        font-size: 11px;
+        color: var(--muted);
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .seg {
+        display: flex; gap: 2px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-sm);
+        padding: 2px;
+        background: var(--paper-2);
+      }
+      .seg.col { flex-direction: column; }
+      .seg button {
+        flex: 1;
+        border: 0; background: transparent;
+        padding: 6px 10px;
+        font-size: 11.5px;
+        color: var(--ink-3);
+        cursor: pointer;
+        border-radius: var(--radius-sm);
+        display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        text-transform: capitalize;
+        font-family: inherit;
+      }
+      .seg button.on {
+        background: var(--ink);
+        color: var(--paper);
+      }
+      .swatch {
+        width: 10px; height: 10px;
+        border-radius: 50%;
+        border: 1px solid rgba(0,0,0,.15);
+      }
+      .sw-navy { background: #0E1B2C; }
+      .sw-charcoal { background: #1C1E22; }
+      .sw-forest { background: #15291E; }
+      input[type=range] {
+        accent-color: var(--gold);
+      }
+
+      /* Scrollbars */
+      .thread::-webkit-scrollbar, .pin-list::-webkit-scrollbar { width: 8px; }
+      .thread::-webkit-scrollbar-thumb, .pin-list::-webkit-scrollbar-thumb {
+        background: color-mix(in oklab, var(--muted-2) 40%, transparent);
+        border-radius: 8px;
+      }
+      .thread::-webkit-scrollbar-track, .pin-list::-webkit-scrollbar-track { background: transparent; }
+
+      .mono { font-family: var(--font-mono); font-feature-settings: "tnum"; }
+
+      @media (max-width: 1100px) {
+        .app { grid-template-columns: minmax(280px, 30%) 1fr; }
+      }
+    `}</style>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
+</body>
+</html>

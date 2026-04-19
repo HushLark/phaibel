@@ -53,3 +53,8 @@ export async function getEnabledSources(): Promise<SourceConfig[]> {
     const reg = await loadSourceRegistry();
     return reg.sources.filter(s => s.enabled);
 }
+
+export async function getReadWriteSources(): Promise<SourceConfig[]> {
+    const reg = await loadSourceRegistry();
+    return reg.sources.filter(s => s.enabled && s.mode === 'readwrite');
+}

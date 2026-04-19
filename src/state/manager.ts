@@ -4,13 +4,21 @@ import { getResponse } from '../responses.js';
 import { getPersonality } from '../personalities.js';
 import { debug } from '../utils/debug.js';
 import { autoMigrateV4ToV5 } from '../cxms/auto-migrate.js';
+import { setFoundationRoot as setCxmsFoundationRoot } from '@phaibel/cxms';
 import chalk from 'chalk';
 
-const FOUNDATION_FILE = '.phaibel.md';
-const VAULT_FILE = '.vault.md'; // v4 legacy fallback
+const CXMS_FILE = '.cxms.md';
+const FOUNDATION_FILE = '.phaibel.md'; // v4.5 legacy
+const VAULT_FILE = '.vault.md'; // v4 legacy
 const STATE_FILE = '.state.json';
 
 let cachedFoundationRoot: string | null = null;
+
+/** Internal helper: cache the root and sync it to @phaibel/cxms */
+function cacheRoot(root: string): void {
+    cachedFoundationRoot = root;
+    setCxmsFoundationRoot(root);
+}
 
 /**
  * Reset the foundation root cache.  Used by integration tests that create
@@ -25,7 +33,7 @@ export function resetFoundationCache(): void {
  * Used by the Expo app where there's no cwd-based discovery.
  */
 export function setFoundationRoot(path: string): void {
-    cachedFoundationRoot = path;
+    cacheRoot(path);
 }
 
 /** @deprecated Use resetFoundationCache() */
@@ -46,20 +54,20 @@ export async function findFoundationRoot(): Promise<string | null> {
 
     const envVault = process.env.PHAIBEL_VAULT;
     if (envVault) {
-        // Try v5 marker first
+        // Try .cxms.md (v5) first
         try {
-            await storage.access(paths.join(envVault, FOUNDATION_FILE));
-            cachedFoundationRoot = envVault;
+            await storage.access(paths.join(envVault, CXMS_FILE));
+            cacheRoot(envVault);
             return envVault;
         } catch {
-            // Try v4 fallback — auto-migrate if found
-            try {
-                await storage.access(paths.join(envVault, VAULT_FILE));
-                await autoMigrateV4ToV5(envVault);
-                cachedFoundationRoot = envVault;
-                return envVault;
-            } catch {
-                // Not a foundation
+            // Try .phaibel.md (v4.5) or .vault.md (v4) — auto-migrate if found
+            for (const legacyFile of [FOUNDATION_FILE, VAULT_FILE]) {
+                try {
+                    await storage.access(paths.join(envVault, legacyFile));
+                    await autoMigrateV4ToV5(envVault);
+                    cacheRoot(envVault);
+                    return envVault;
+                } catch { /* try next */ }
             }
         }
     }
@@ -73,20 +81,20 @@ export async function findFoundationRoot(): Promise<string | null> {
             currentDir = paths.dirname(currentDir);
             continue;
         }
-        // Try v5 marker first
+        // Try .cxms.md (v5) first
         try {
-            await storage.access(paths.join(currentDir, FOUNDATION_FILE));
-            cachedFoundationRoot = currentDir;
+            await storage.access(paths.join(currentDir, CXMS_FILE));
+            cacheRoot(currentDir);
             return currentDir;
         } catch {
-            // Try v4 fallback — auto-migrate if found
-            try {
-                await storage.access(paths.join(currentDir, VAULT_FILE));
-                await autoMigrateV4ToV5(currentDir);
-                cachedFoundationRoot = currentDir;
-                return currentDir;
-            } catch {
-                // Not a foundation
+            // Try legacy markers — auto-migrate if found
+            for (const legacyFile of [FOUNDATION_FILE, VAULT_FILE]) {
+                try {
+                    await storage.access(paths.join(currentDir, legacyFile));
+                    await autoMigrateV4ToV5(currentDir);
+                    cacheRoot(currentDir);
+                    return currentDir;
+                } catch { /* try next */ }
             }
         }
         currentDir = paths.dirname(currentDir);

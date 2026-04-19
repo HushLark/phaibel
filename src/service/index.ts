@@ -275,6 +275,9 @@ async function main(): Promise<void> {
     try {
         await webServer.start(3737);
         console.log('Web client at http://localhost:3737');
+        console.log('  Mobile:    http://localhost:3737/mobile');
+        console.log('  Productve: http://localhost:3737/productve');
+        console.log('  Assistant: http://localhost:3737/assistant');
     } catch (err) {
         console.error('Failed to start web server:', err);
     }

@@ -62,7 +62,9 @@ fcpCommand
         console.log(chalk.cyan('\n  Configured FCP sources:\n'));
         for (const s of reg.sources) {
             const status = s.enabled ? chalk.green('enabled') : chalk.gray('disabled');
-            console.log(`    ${chalk.bold(s.id)} ${chalk.gray(`[${s.trust}]`)} ${status}`);
+            const modeTag = s.mode === 'readwrite' ? chalk.yellow('rw') : chalk.gray('ro');
+            console.log(`    ${chalk.bold(s.id)} ${chalk.gray(`[${s.trust}]`)} ${modeTag} ${status}`);
+            if (s.description) console.log(`      ${s.description}`);
             console.log(chalk.gray(`      url:   ${s.url}`));
             console.log(chalk.gray(`      auth:  ${s.auth.type}${s.auth.token_ref ? ` (token_ref=${s.auth.token_ref})` : ''}`));
             if (s.scopes.length > 0) console.log(chalk.gray(`      scopes: ${s.scopes.join(', ')}`));
@@ -76,14 +78,21 @@ fcpCommand
     .command('add <id>')
     .description('Add an FCP source')
     .requiredOption('--url <url>', 'Base URL of the FCP source (e.g. https://example.com/fcp)')
+    .option('--description <text>', 'What this source contains (e.g. "Employee directory")')
+    .option('--mode <mode>', 'Access mode: read | readwrite', 'read')
     .option('--trust <tier>', 'Trust tier: own | team | peer | public', 'peer')
     .option('--auth <type>', 'Auth type: bearer | signed | none', 'none')
     .option('--token-ref <ref>', 'Secrets provider name holding the bearer token')
     .option('--scopes <types...>', 'Entity types to probe (empty = all)')
-    .action(exitAfter(async (id: string, opts: { url: string; trust: string; auth: string; tokenRef?: string; scopes?: string[] }) => {
+    .action(exitAfter(async (id: string, opts: { url: string; description?: string; mode: string; trust: string; auth: string; tokenRef?: string; scopes?: string[] }) => {
         const trust = opts.trust as SourceConfig['trust'];
         if (!['own', 'team', 'peer', 'public'].includes(trust)) {
             console.log(chalk.red(`\n  Invalid trust tier "${opts.trust}". Use one of: own, team, peer, public.\n`));
+            return;
+        }
+        const mode = opts.mode as SourceConfig['mode'];
+        if (!['read', 'readwrite'].includes(mode)) {
+            console.log(chalk.red(`\n  Invalid mode "${opts.mode}". Use one of: read, readwrite.\n`));
             return;
         }
         const authType = opts.auth as SourceConfig['auth']['type'];
@@ -98,6 +107,8 @@ fcpCommand
         const source: SourceConfig = {
             id,
             url: opts.url.replace(/\/$/, ''),
+            description: opts.description,
+            mode,
             trust,
             auth: { type: authType, token_ref: opts.tokenRef },
             scopes: opts.scopes ?? [],

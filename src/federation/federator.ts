@@ -13,6 +13,8 @@ import { debug } from '../utils/debug.js';
 
 export interface FederatedSourceResult {
     source: string;
+    description?: string;
+    mode: 'read' | 'readwrite';
     trust: 'own' | 'team' | 'peer' | 'public';
     matches: ProbeMatch[];
     error?: string;
@@ -65,6 +67,8 @@ export async function probeAll(
             });
             return {
                 source: source.id,
+                description: source.description,
+                mode: source.mode ?? 'read',
                 trust: source.trust,
                 matches: resp.matches,
                 latencyMs: Date.now() - t0,
@@ -74,6 +78,8 @@ export async function probeAll(
             debug('fcp', `probe ${source.id} failed: ${msg}`);
             return {
                 source: source.id,
+                description: source.description,
+                mode: source.mode ?? 'read',
                 trust: source.trust,
                 matches: [],
                 error: msg,
@@ -139,7 +145,9 @@ function formatHint(results: FederatedSourceResult[]): string {
     const lines: string[] = [];
     for (const r of nonEmpty) {
         const parts = r.matches.map(m => `${m.type}:${m.count}`);
-        lines.push(`[${r.source} · ${r.trust}] ${parts.join(', ')}`);
+        const modeTag = r.mode === 'readwrite' ? 'rw' : 'ro';
+        const desc = r.description ? ` — ${r.description}` : '';
+        lines.push(`[${r.source} · ${r.trust} · ${modeTag}${desc}] ${parts.join(', ')}`);
         for (const m of r.matches) {
             for (const s of m.samples) {
                 lines.push(`  ${m.type}:${s.id} "${s.title}" (${s.score.toFixed(2)})`);

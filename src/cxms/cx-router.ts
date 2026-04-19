@@ -361,7 +361,7 @@ async function handleTypeDetails(res: http.ServerResponse, typeName: string): Pr
     let examples: string | null = null;
     const root = await findFoundationRoot();
     if (root) {
-        const examplesPath = path.join(root, 'context-types', typeName, '.phaibel-examples.md');
+        const examplesPath = path.join(root, 'context-types', typeName, '.cxms-examples.md');
         try {
             examples = await fs.readFile(examplesPath, 'utf-8');
         } catch {
@@ -720,23 +720,29 @@ function extractBodyFields(body: Record<string, unknown>, typeConfig: EntityType
     return fields;
 }
 
-/** Build ancestor context for a node: type .phaibel.md + root .phaibel.md */
+/** Build ancestor context chain: root .cxms.md → type .cxms.md (with legacy fallback) */
 async function buildAncestorContext(typeName: string): Promise<string[]> {
     const context: string[] = [];
     const root = await findFoundationRoot();
     if (!root) return context;
 
-    // Root .phaibel.md
-    try {
-        const rootMd = await fs.readFile(path.join(root, '.phaibel.md'), 'utf-8');
-        context.push(rootMd);
-    } catch { /* no root context */ }
+    // Read root context file (.cxms.md → .phaibel.md → .vault.md)
+    for (const marker of ['.cxms.md', '.phaibel.md', '.vault.md']) {
+        try {
+            const rootMd = await fs.readFile(path.join(root, marker), 'utf-8');
+            context.push(rootMd);
+            break;
+        } catch { /* try next */ }
+    }
 
-    // Type .phaibel.md
-    try {
-        const typeMd = await fs.readFile(path.join(root, 'context-types', typeName, '.phaibel.md'), 'utf-8');
-        context.push(typeMd);
-    } catch { /* no type context */ }
+    // Read type context file
+    for (const marker of ['.cxms.md', '.phaibel.md']) {
+        try {
+            const typeMd = await fs.readFile(path.join(root, 'context-types', typeName, marker), 'utf-8');
+            context.push(typeMd);
+            break;
+        } catch { /* try next */ }
+    }
 
     return context;
 }

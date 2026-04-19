@@ -25,7 +25,7 @@ export const initCommand = new Command('init')
             return;
         }
 
-        const foundationPath = path.join(cwd, '.phaibel.md');
+        const foundationPath = path.join(cwd, '.cxms.md');
 
         // Check if already a foundation
         const existingRoot = await findFoundationRoot();
@@ -40,10 +40,10 @@ export const initCommand = new Command('init')
             return;
         }
 
-        // Check if .phaibel.md already exists
+        // Check if .cxms.md already exists
         try {
             await fs.access(foundationPath);
-            console.log(chalk.yellow('.phaibel.md already exists. This is already a Foundation.'));
+            console.log(chalk.yellow('.cxms.md already exists. This is already a Foundation.'));
             return;
         } catch {
             // Good, doesn't exist
@@ -54,7 +54,7 @@ export const initCommand = new Command('init')
         const today = new Date().toISOString().split('T')[0];
         const foundationName = path.basename(cwd);
 
-        // Create root .phaibel.md
+        // Create root .cxms.md
         const rootFile = `---
 title: "${foundationName}"
 created: ${today}
@@ -136,7 +136,7 @@ logs/
 
         console.log(chalk.green('\n✓ Foundation created!'));
         console.log(chalk.gray(`\nCreated:`));
-        console.log(chalk.gray(`  .phaibel.md          - Root context`));
+        console.log(chalk.gray(`  .cxms.md             - Root context`));
         console.log(chalk.gray(`  profiles/            - User & agent profiles`));
         console.log(chalk.gray(`  context-types/       - Context type schemas`));
         for (const t of contextTypes) {

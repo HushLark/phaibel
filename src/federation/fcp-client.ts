@@ -134,3 +134,83 @@ export async function getManifest(source: SourceConfig, timeoutMs = 2000): Promi
     const raw = await get(`${source.url}/manifest`, headers, timeoutMs);
     return ManifestSchema.parse(raw);
 }
+
+// ── CxMS Write Operations (readwrite sources only) ────────────────────────
+
+/**
+ * Derive the CxMS REST base URL from the FCP URL.
+ * FCP URL: http://host:port/fcp → CxMS: http://host:port/cx
+ */
+function cxBaseUrl(source: SourceConfig): string {
+    return source.url.replace(/\/fcp\/?$/, '/cx');
+}
+
+function assertWritable(source: SourceConfig): void {
+    if (source.mode !== 'readwrite') {
+        throw new FcpError(`Source "${source.id}" is read-only`, source.id);
+    }
+}
+
+export async function listRemoteTypes(
+    source: SourceConfig,
+    timeoutMs = 3000,
+): Promise<{ name: string; plural: string; description?: string; fields: unknown[] }[]> {
+    const headers = await authHeader(source);
+    const raw = await get(`${cxBaseUrl(source)}/context-types`, headers, timeoutMs) as Record<string, unknown>;
+    return (raw.types as { name: string; plural: string; description?: string; fields: unknown[] }[]) ?? [];
+}
+
+export async function createRemoteNode(
+    source: SourceConfig,
+    typeName: string,
+    data: { title: string; tags?: string[]; content?: string; [key: string]: unknown },
+    timeoutMs = 5000,
+): Promise<{ id: string; title: string; type: string }> {
+    assertWritable(source);
+    const headers = await authHeader(source);
+    return await post(`${cxBaseUrl(source)}/context-types/${encodeURIComponent(typeName)}`, data, headers, timeoutMs) as { id: string; title: string; type: string };
+}
+
+export async function updateRemoteNode(
+    source: SourceConfig,
+    typeName: string,
+    nodeId: string,
+    data: Record<string, unknown>,
+    timeoutMs = 5000,
+): Promise<unknown> {
+    assertWritable(source);
+    const headers = await authHeader(source);
+    return await httpRequest('PUT', `${cxBaseUrl(source)}/context-types/${encodeURIComponent(typeName)}/${encodeURIComponent(nodeId)}`, data, headers, timeoutMs);
+}
+
+export async function deleteRemoteNode(
+    source: SourceConfig,
+    typeName: string,
+    nodeId: string,
+    timeoutMs = 5000,
+): Promise<unknown> {
+    assertWritable(source);
+    const headers = await authHeader(source);
+    return await httpRequest('DELETE', `${cxBaseUrl(source)}/context-types/${encodeURIComponent(typeName)}/${encodeURIComponent(nodeId)}`, null, headers, timeoutMs);
+}
+
+async function httpRequest(method: string, url: string, body: unknown, headers: Record<string, string>, timeoutMs: number): Promise<unknown> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+        const opts: RequestInit = {
+            method,
+            headers: { 'Content-Type': 'application/json', ...headers },
+            signal: ctrl.signal,
+        };
+        if (body !== null) opts.body = JSON.stringify(body);
+        const res = await fetch(url, opts);
+        if (!res.ok) {
+            throw new FcpError(`${res.status} ${res.statusText}`, url, res.status);
+        }
+        const text = await res.text();
+        return text ? JSON.parse(text) : null;
+    } finally {
+        clearTimeout(timer);
+    }
+}

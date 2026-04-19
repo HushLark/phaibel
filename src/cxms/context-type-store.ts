@@ -50,9 +50,16 @@ export async function loadContextTypesFromStore(): Promise<EntityTypeConfig[] | 
                 if (!st.isDirectory) continue;
             } catch { continue; }
 
-            const phaibelMd = paths.join(ctDir, entry, '.phaibel.md');
+            // Try .cxms.md first, fall back to .phaibel.md
+            let raw: string | null = null;
+            for (const marker of ['.cxms.md', '.phaibel.md']) {
+                try {
+                    raw = await storage.readFile(paths.join(ctDir, entry, marker));
+                    break;
+                } catch { /* try next */ }
+            }
             try {
-                const raw = await storage.readFile(phaibelMd);
+                if (!raw) throw new Error('no context file');
                 const { data } = matter(raw);
                 const config = data as EntityTypeConfig;
                 // Ensure directory is set correctly
@@ -130,10 +137,10 @@ ${completionNote}
     if (config.calendarDateField) meta.calendarDateField = config.calendarDateField;
 
     const phaibelMd = matter.stringify(body, meta);
-    await storage.writeFile(paths.join(typeDir, '.phaibel.md'), phaibelMd);
+    await storage.writeFile(paths.join(typeDir, '.cxms.md'), phaibelMd);
 
     // Write .phaibel-examples.md if it doesn't exist
-    const examplesPath = paths.join(typeDir, '.phaibel-examples.md');
+    const examplesPath = paths.join(typeDir, '.cxms-examples.md');
     try {
         await storage.access(examplesPath);
     } catch {

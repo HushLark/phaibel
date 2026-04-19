@@ -38,6 +38,7 @@ export class WebServer {
     private htmlContent: string = '';
     private mobileHtmlContent: string = '';
     private productveHtmlContent: string = '';
+    private assistantHtmlContent: string = '';
 
     async start(port: number): Promise<void> {
         // Load HTML at startup
@@ -57,6 +58,12 @@ export class WebServer {
                 'utf-8',
             );
         } catch { /* productve client optional */ }
+        try {
+            this.assistantHtmlContent = await fs.readFile(
+                path.join(__dirname, 'Assistant.html'),
+                'utf-8',
+            );
+        } catch { /* assistant client optional */ }
 
         this.server = http.createServer(async (req, res) => {
             const startTime = Date.now();
@@ -159,6 +166,17 @@ export class WebServer {
             } else {
                 res.writeHead(404);
                 res.end('Productve client not available');
+            }
+            return;
+        }
+
+        if (req.method === 'GET' && (url.pathname === '/Assistant.html' || url.pathname === '/assistant')) {
+            if (this.assistantHtmlContent) {
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(this.assistantHtmlContent);
+            } else {
+                res.writeHead(404);
+                res.end('Assistant client not available');
             }
             return;
         }
