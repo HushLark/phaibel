@@ -88,104 +88,69 @@ const TWEAKS = /*EDITMODE-BEGIN*/{
 }/*EDITMODE-END*/;
 
 /* ============================================================
-   DATA — realistic tech-CEO content
+   DATA — loaded live from the service
    ============================================================ */
-const TODAY = new Date(2026, 3, 18); // Apr 18, 2026 (Sat -> shift mentally but fine)
+const PIN_STORAGE_KEY = 'assistant_pinboard';
 
-const CAL_EVENTS = {
-  overdue: [
-    { t: "Sign Q1 board minutes", who: "Legal · Priya", kind: "todo" },
-    { t: "Review Series D term sheet redlines", who: "CFO · Daniel", kind: "delegated" },
-  ],
-  today: [
-    { t: "Exec staff weekly", time: "09:00", kind: "meeting" },
-    { t: "Product review — Atlas 3.0 GA", time: "11:30", kind: "meeting" },
-    { t: "1:1 Head of Eng", time: "14:00", kind: "meeting" },
-    { t: "Draft all-hands narrative", kind: "todo" },
-    { t: "Approve comp bands — L7+", who: "CPO · Maya", kind: "delegated" },
-  ],
-  tomorrow: [
-    { t: "Board pre-read circulates", time: "08:00", kind: "todo" },
-    { t: "Analyst briefing — Morgan Stanley", time: "13:00", kind: "meeting" },
-    { t: "Reforecast FY26 — review", who: "CFO · Daniel", kind: "delegated" },
-  ],
-  plus2: [
-    { t: "Q2 Board meeting", time: "09:00–13:00", kind: "meeting" },
-    { t: "Press embargo lifts — Atlas GA", time: "06:00", kind: "milestone" },
-    { t: "Exec dinner, Quince", time: "19:30", kind: "meeting" },
-  ],
-};
+function loadStoredPins() {
+  try { return JSON.parse(localStorage.getItem(PIN_STORAGE_KEY) || '[]'); } catch { return []; }
+}
+function saveStoredPins(pins) {
+  try { localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pins)); } catch {}
+}
 
-const PINBOARD_INIT = [
-  {
-    id: "pin-4a2f",
-    title: "Atlas 3.0 GA — launch readiness",
-    body: "P0s: 0 open. P1s: 3 (all on track for cut). Docs 94%. Revenue readiness sign-off outstanding from Maya.",
-    tag: "Product",
-    when: "Pinned 2h ago",
-  },
-  {
-    id: "pin-81c3",
-    title: "Board narrative — 3 takeaways",
-    body: "1) NRR inflected to 129%  2) Enterprise ACV +41% YoY  3) Infra margin recovered 380 bps post-migration.",
-    tag: "Board",
-    when: "Pinned yesterday",
-  },
-  {
-    id: "pin-0f7e",
-    title: "Headcount plan delta",
-    body: "Eng +14, GTM +9, G&A flat. Net burn trajectory unchanged. Daniel to confirm by Fri.",
-    tag: "People",
-    when: "Pinned Wed",
-  },
-];
+function ymd(d) {
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+function fmtTime(iso) {
+  try { return new Date(iso).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); } catch { return ''; }
+}
+function fmtHHMM(d) {
+  return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+}
 
-const INITIAL_MESSAGES = [
-  {
-    id: "m-9c21-0001",
-    role: "assistant",
-    kind: "proactive",
-    text: "Morning. Your exec staff starts in 38 minutes. I've pre-read the weekly — three items want a decision from you: Atlas 3.0 launch gate, Daniel's reforecast, and the L7+ comp bands from Maya.",
-    at: "08:22",
-    tokens: 312,
-  },
-  {
-    id: "m-9c21-0002",
-    role: "user",
-    text: "Give me the summary of Daniel's reforecast. What changed from last month?",
-    at: "08:24",
-  },
-  {
-    id: "m-9c21-0003",
-    role: "assistant",
-    text: "Top-line FY26 tightened by $14M (3.1%) — almost entirely expansion pacing in mid-market. Pipeline coverage for H2 slipped from 3.4× to 3.1×. He's compensating by pulling forward two enterprise deals and holding S&M hiring through Q2. Net: plan still lands within the 15% guidance range, but cushion is thinner.",
-    at: "08:24",
-    tokens: 486,
-    sources: ["reforecast_v7.xlsx", "pipeline_snapshot_0417.csv"],
-  },
-  {
-    id: "m-9c21-0004",
-    role: "user",
-    text: "Pin that. And draft a two-line note to Daniel — I want to understand the enterprise pull-forward assumptions before I sign off.",
-    at: "08:25",
-  },
-  {
-    id: "m-9c21-0005",
-    role: "assistant",
-    text: "Pinned. Draft ready — sending to your review in Outlook:\n\n“Daniel — want to dig in on the enterprise pull-forward before I green-light the reforecast. Specifically: which two deals, what's the confidence, and what does it cost us if either slips? 15 min after staff?”",
-    at: "08:25",
-    tokens: 221,
-    actions: ["Drafted email", "Held for your approval"],
-  },
-  {
-    id: "m-9c21-0006",
-    role: "assistant",
-    kind: "proactive",
-    text: "Heads up — Priya flagged the Series D redlines as blocking for Monday. I moved it to Overdue on your board. Want me to set a 20-minute block at 16:30 today with Legal?",
-    at: "08:41",
-    tokens: 178,
-  },
-];
+function buildTimelineGroups(calItems) {
+  const today = new Date();
+  const dates = [0,1,2].map(i => ymd(addDays(today, i)));
+  const todayStr = dates[0];
+  const overdue = [], buckets = { [dates[0]]:[], [dates[1]]:[], [dates[2]]:[] };
+
+  for (const ci of calItems) {
+    const date = (ci.date || '').slice(0, 10);
+    const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
+    if (ci.entityType === 'task') {
+      if (ci.meta && (ci.meta.status === 'done' || ci.meta.status === 'completed')) continue;
+      const item = { t: ci.title, kind: 'todo', time: ci.meta?.startDate ? fmtTime(ci.meta.startDate) : null };
+      if (!isValidDate || date === todayStr) { buckets[dates[0]].push(item); }
+      else if (date < todayStr) { overdue.push(item); }
+      else if (buckets[date]) { buckets[date].push(item); }
+    } else if (ci.entityType === 'event') {
+      if (!isValidDate) continue;
+      const item = { t: ci.title, kind: 'meeting', time: ci.meta?.startDate ? fmtTime(ci.meta.startDate) : null };
+      if (date < todayStr) { overdue.push(item); }
+      else if (buckets[date]) { buckets[date].push(item); }
+    } else {
+      if (!isValidDate) continue;
+      const item = { t: ci.title, kind: 'milestone' };
+      if (date < todayStr) { overdue.push(item); }
+      else if (buckets[date]) { buckets[date].push(item); }
+    }
+  }
+
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const fmt = (d) => {
+    const dt = new Date(d + 'T12:00:00');
+    return dt.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
+  };
+  const groups = [];
+  if (overdue.length) groups.push({ key:'overdue', label:'Overdue', sub:`${overdue.length} item${overdue.length===1?'':'s'}`, tone:'alert', items: overdue });
+  groups.push({ key:'today',    label:'Today',    sub: fmt(dates[0]), tone:'accent', items: buckets[dates[0]] });
+  groups.push({ key:'day1',     label: DAY_NAMES[addDays(today,1).getDay()], sub: fmt(dates[1]), tone:'', items: buckets[dates[1]] });
+  groups.push({ key:'day2',     label: DAY_NAMES[addDays(today,2).getDay()], sub: fmt(dates[2]), tone:'', items: buckets[dates[2]] });
+  return groups;
+}
 
 /* ============================================================
    ROOT
@@ -195,13 +160,19 @@ const { useState, useEffect, useRef, useMemo } = React;
 function App() {
   const [tweaks, setTweaks] = useState(TWEAKS);
   const [tweaksOpen, setTweaksOpen] = useState(false);
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
-  const [pinboard, setPinboard] = useState(PINBOARD_INIT);
+  const [messages, setMessages] = useState([]);
+  const [pinboard, setPinboard] = useState(loadStoredPins);
   const [input, setInput] = useState("");
   const [micActive, setMicActive] = useState(tweaks.micActive);
   const [thinking, setThinking] = useState(false);
+  const [thinkingStatus, setThinkingStatus] = useState("Thinking…");
   const [activeTab, setActiveTab] = useState("chat");
+  const [calItems, setCalItems] = useState([]);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [agentName, setAgentName] = useState("Phaibel");
+  const [userName, setUserName] = useState("");
   const threadRef = useRef(null);
+  const wsRef = useRef(null);
 
   // Edit-mode wiring
   useEffect(() => {
@@ -213,6 +184,56 @@ function App() {
     window.addEventListener("message", onMsg);
     window.parent.postMessage({ type: "__edit_mode_available" }, "*");
     return () => window.removeEventListener("message", onMsg);
+  }, []);
+
+  // Fetch calendar data and agent status
+  useEffect(() => {
+    fetch('/api/calendar').then(r => r.json()).then(setCalItems).catch(() => {});
+    fetch('/api/status').then(r => r.json()).then(d => {
+      if (d.agentName) setAgentName(d.agentName);
+      if (d.userName) setUserName(d.userName);
+    }).catch(() => {});
+  }, []);
+
+  // Persist pins
+  useEffect(() => { saveStoredPins(pinboard); }, [pinboard]);
+
+  // WebSocket
+  useEffect(() => {
+    let ws, reconnectTimer;
+    function connect() {
+      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(proto + '//' + location.host);
+      wsRef.current = ws;
+      ws.onopen = () => setWsConnected(true);
+      ws.onclose = () => { setWsConnected(false); reconnectTimer = setTimeout(connect, 3000); };
+      ws.onmessage = (ev) => {
+        let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+        const now = fmtHHMM(new Date());
+        switch (msg.type) {
+          case 'chat.thinking':
+            setThinkingStatus(msg.status || 'Thinking…');
+            setThinking(true);
+            break;
+          case 'chat.response':
+            setThinking(false);
+            setMessages(m => [...m, { id: `m-${randId()}`, role:'assistant', text: msg.message||'', at: now, tokens: msg.totalTokens||0 }]);
+            break;
+          case 'chat.error':
+            setThinking(false);
+            setMessages(m => [...m, { id: `m-${randId()}`, role:'assistant', text: msg.error||'Error', at: now }]);
+            break;
+          case 'chat.proactive':
+            setMessages(m => [...m, { id: `m-${randId()}`, role:'assistant', kind:'proactive', text: msg.message||'', at: now }]);
+            break;
+          case 'refresh':
+            fetch('/api/calendar').then(r => r.json()).then(setCalItems).catch(() => {});
+            break;
+        }
+      };
+    }
+    connect();
+    return () => { clearTimeout(reconnectTimer); ws && ws.close(); };
   }, []);
 
   const updateTweak = (k, v) => {
@@ -286,27 +307,13 @@ function App() {
 
   const handleSend = () => {
     const text = input.trim();
-    if (!text) return;
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, "0");
-    const mm = String(now.getMinutes()).padStart(2, "0");
-    const userMsg = {
-      id: `m-${randId()}`, role: "user", text, at: `${hh}:${mm}`,
-    };
-    setMessages((m) => [...m, userMsg]);
+    if (!text || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    const now = fmtHHMM(new Date());
+    setMessages((m) => [...m, { id: `m-${randId()}`, role: "user", text, at: now }]);
     setInput("");
     setThinking(true);
-    setTimeout(() => {
-      setThinking(false);
-      const reply = {
-        id: `m-${randId()}`,
-        role: "assistant",
-        text: composeReply(text),
-        at: `${hh}:${mm}`,
-        tokens: 180 + Math.floor(Math.random() * 400),
-      };
-      setMessages((m) => [...m, reply]);
-    }, 1200);
+    setThinkingStatus("Thinking…");
+    wsRef.current.send(JSON.stringify({ type: 'chat', message: text }));
   };
 
   const handlePinMessage = (msg) => {
@@ -331,7 +338,7 @@ function App() {
 
   return (
     <div className="app">
-      <LeftPanel pinboard={pinboard} onRemovePin={handleRemovePin} />
+      <LeftPanel pinboard={pinboard} onRemovePin={handleRemovePin} calItems={calItems} agentName={agentName} userName={userName} />
       <RightPanel
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -341,9 +348,11 @@ function App() {
         setInput={setInput}
         onSend={handleSend}
         thinking={thinking}
+        thinkingStatus={thinkingStatus}
         micActive={micActive}
         onMic={handleMic}
         onPin={handlePinMessage}
+        wsConnected={wsConnected}
       />
       {tweaksOpen && (
         <TweaksPanel tweaks={tweaks} update={updateTweak} onClose={() => setTweaksOpen(false)} />
@@ -357,19 +366,11 @@ function randId() {
   return Math.random().toString(16).slice(2, 6) + "-" + Math.random().toString(16).slice(2, 6);
 }
 
-function composeReply(text) {
-  const t = text.toLowerCase();
-  if (t.includes("board")) return "Board pre-read is 78% drafted. Outstanding: CFO section (Daniel committed EOD) and the ‘strategic bets' appendix. I can assemble a v1 PDF at 17:00 for your review tonight.";
-  if (t.includes("draft") || t.includes("email")) return "Drafted. Held in your review queue — tone is direct, 3 sentences, no pleasantries. Send when ready.";
-  if (t.includes("pin")) return "Pinned to your board. It'll stay visible until you remove it.";
-  if (t.includes("cancel") || t.includes("move")) return "Done. I've offered two alternate slots and flagged the conflict owner. Will confirm once both sides accept.";
-  return "Noted. I've logged this against today's context and will surface a follow-up at your next free moment. Anything else you want me to prep before staff?";
-}
-
 /* ============================================================
    LEFT PANEL — calendar + timeline + pinboard
    ============================================================ */
-function LeftPanel({ pinboard, onRemovePin }) {
+function LeftPanel({ pinboard, onRemovePin, calItems, agentName, userName }) {
+  const initials = (n) => n ? n.split(" ").map(s => s[0]).slice(0,2).join("").toUpperCase() : "?";
   return (
     <aside className="left">
       <header className="brand">
@@ -381,24 +382,23 @@ function LeftPanel({ pinboard, onRemovePin }) {
           </svg>
         </div>
         <div>
-          <div className="brand-name">Phaibel</div>
-          <div className="brand-sub">Executive agent</div>
+          <div className="brand-name">{agentName}</div>
+          <div className="brand-sub">Personal agent</div>
         </div>
         <div className="brand-status">
           <span className="dot" /> Online
         </div>
       </header>
 
-      <MiniCalendar />
-      <Timeline />
+      <MiniCalendar calItems={calItems} />
+      <Timeline calItems={calItems} />
       <Pinboard pins={pinboard} onRemove={onRemovePin} />
 
       <footer className="left-foot">
         <div className="who">
-          <div className="avatar-ex">EM</div>
+          <div className="avatar-ex">{initials(userName)}</div>
           <div>
-            <div className="who-name">Evelyn Marsh</div>
-            <div className="who-role">CEO · Halcyon Labs</div>
+            <div className="who-name">{userName || "You"}</div>
           </div>
         </div>
         <button className="icon-btn" title="Settings" aria-label="Settings">
@@ -409,30 +409,46 @@ function LeftPanel({ pinboard, onRemovePin }) {
   );
 }
 
-function MiniCalendar() {
-  // Build a month grid around Apr 2026
-  const year = 2026, month = 3; // April
-  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+function MiniCalendar({ calItems }) {
+  const [viewDate, setViewDate] = useState(() => { const d = new Date(); d.setDate(1); return d; });
+  const now = new Date();
+  const year = viewDate.getFullYear(), month = viewDate.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const today = 18;
+  const todayDay = (now.getFullYear() === year && now.getMonth() === month) ? now.getDate() : -1;
+  const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+  // Build set of days that have events this month
+  const eventDays = new Set();
+  for (const ci of (calItems || [])) {
+    const d = (ci.date || '').slice(0, 10);
+    if (d.startsWith(`${year}-${String(month+1).padStart(2,'0')}`)) {
+      eventDays.add(parseInt(d.slice(8), 10));
+    }
+  }
+
   const cells = [];
   const lead = (firstDay + 6) % 7; // Mon-start
   for (let i = 0; i < lead; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const hasEvent = { 17: 2, 18: 5, 19: 3, 20: 3, 22: 2, 24: 1, 27: 4, 29: 2 };
+  const WEEKENDS = new Set();
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dow = new Date(year, month, d).getDay();
+    if (dow === 0 || dow === 6) WEEKENDS.add(d);
+  }
 
   return (
     <div className="card calendar">
       <div className="card-head">
         <div>
           <div className="eyebrow">Calendar</div>
-          <div className="month">April <span className="year">2026</span></div>
+          <div className="month">{MONTH_NAMES[month]} <span className="year">{year}</span></div>
         </div>
         <div className="month-nav">
-          <button aria-label="Previous">‹</button>
-          <button aria-label="Next">›</button>
+          <button aria-label="Previous" onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth()-1, 1))}>‹</button>
+          <button aria-label="Next" onClick={() => setViewDate(d => new Date(d.getFullYear(), d.getMonth()+1, 1))}>›</button>
         </div>
       </div>
       <div className="dow">
@@ -441,17 +457,12 @@ function MiniCalendar() {
       <div className="days">
         {cells.map((d, i) => {
           if (d === null) return <span key={i} className="day empty" />;
-          const cls = [
-            "day",
-            d === today ? "today" : "",
-            [4,5,11,12,18,19,25,26].includes(d) ? "weekend" : "",
-          ].join(" ");
+          const cls = ["day", d === todayDay ? "today" : "", WEEKENDS.has(d) ? "weekend" : ""].join(" ");
+          const n = eventDays.has(d) ? 1 : 0;
           return (
             <span key={i} className={cls}>
               {d}
-              {hasEvent[d] ? <span className="day-dots" data-n={Math.min(3, hasEvent[d])}>
-                {Array.from({length: Math.min(3, hasEvent[d])}).map((_,j) => <i key={j}/>)}
-              </span> : null}
+              {n > 0 ? <span className="day-dots" data-n="1"><i/></span> : null}
             </span>
           );
         })}
@@ -460,18 +471,12 @@ function MiniCalendar() {
   );
 }
 
-function Timeline() {
-  const groups = [
-    { key: "overdue",  label: "Overdue",   sub: "2 items",      tone: "alert",  items: CAL_EVENTS.overdue },
-    { key: "today",    label: "Today",     sub: "Sat · Apr 18", tone: "accent", items: CAL_EVENTS.today },
-    { key: "tomorrow", label: "Tomorrow",  sub: "Sun · Apr 19", tone: "",       items: CAL_EVENTS.tomorrow },
-    { key: "plus2",    label: "Monday",    sub: "Apr 20",       tone: "",       items: CAL_EVENTS.plus2 },
-  ];
+function Timeline({ calItems }) {
+  const groups = buildTimelineGroups(calItems || []);
   return (
     <div className="card timeline">
       <div className="card-head flat">
         <div className="eyebrow">Timeline</div>
-        <button className="link">Open week</button>
       </div>
       <div className="tl-body">
         {groups.map((g) => (
@@ -481,25 +486,22 @@ function Timeline() {
               <span className="tl-sub">{g.sub}</span>
             </div>
             <ul className="tl-items">
-              {g.items.map((it, i) => (
-                <li key={i} className={`tl-item kind-${it.kind}`}>
-                  <span className="tl-kind" aria-hidden>
-                    {it.kind === "meeting" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="2" width="8" height="7" fill="none" stroke="currentColor" strokeWidth="1"/><path d="M1 4 H9" stroke="currentColor" strokeWidth="1"/></svg>}
-                    {it.kind === "todo" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}
-                    {it.kind === "delegated" && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5 L8 5 M5 2 L8 5 L5 8" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}
-                    {it.kind === "milestone" && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1 L9 5 L5 9 L1 5 Z" fill="currentColor"/></svg>}
-                  </span>
-                  <div className="tl-main">
-                    <div className="tl-t">{it.t}</div>
-                    {(it.who || it.time) && (
-                      <div className="tl-meta">
-                        {it.time && <span className="tl-time">{it.time}</span>}
-                        {it.who && <span className="tl-who">{it.who}</span>}
-                      </div>
-                    )}
-                  </div>
-                </li>
-              ))}
+              {g.items.length === 0
+                ? <li className="tl-item kind-empty"><div className="tl-main"><div className="tl-t" style={{opacity:0.4}}>Nothing scheduled</div></div></li>
+                : g.items.map((it, i) => (
+                  <li key={i} className={`tl-item kind-${it.kind}`}>
+                    <span className="tl-kind" aria-hidden>
+                      {it.kind === "meeting" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="2" width="8" height="7" fill="none" stroke="currentColor" strokeWidth="1"/><path d="M1 4 H9" stroke="currentColor" strokeWidth="1"/></svg>}
+                      {it.kind === "todo" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}
+                      {it.kind === "milestone" && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1 L9 5 L5 9 L1 5 Z" fill="currentColor"/></svg>}
+                    </span>
+                    <div className="tl-main">
+                      <div className="tl-t">{it.t}</div>
+                      {it.time && <div className="tl-meta"><span className="tl-time">{it.time}</span></div>}
+                    </div>
+                  </li>
+                ))
+              }
             </ul>
           </section>
         ))}
@@ -542,10 +544,10 @@ function Pinboard({ pins, onRemove }) {
 /* ============================================================
    RIGHT PANEL — chat
    ============================================================ */
-function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInput, onSend, thinking, micActive, onMic, onPin }) {
+function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInput, onSend, thinking, thinkingStatus, micActive, onMic, onPin, wsConnected }) {
   const tabs = [
-    { key: "chat",     label: "Chat",     count: messages.length },
-    { key: "people",   label: "People",   count: 6 },
+    { key: "chat",     label: "Chat",     count: messages.length || null },
+    { key: "people",   label: "People",   count: null },
     { key: "settings", label: "Settings", count: null },
   ];
   return (
@@ -566,14 +568,14 @@ function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInp
           ))}
         </div>
         <div className="tabs-right">
-          <span className="tab-status"><span className="dot sage" /> Connected</span>
+          <span className="tab-status"><span className={`dot ${wsConnected ? "sage" : "oxblood"}`} /> {wsConnected ? "Connected" : "Connecting…"}</span>
         </div>
       </nav>
 
       {activeTab === "chat" && (
         <ChatTab
           messages={messages} pinboard={pinboard} input={input} setInput={setInput}
-          onSend={onSend} thinking={thinking}
+          onSend={onSend} thinking={thinking} thinkingStatus={thinkingStatus}
           micActive={micActive} onMic={onMic} onPin={onPin}
         />
       )}
@@ -583,17 +585,18 @@ function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInp
   );
 }
 
-function ChatTab({ messages, pinboard, input, setInput, onSend, thinking, micActive, onMic, onPin }) {
+function ChatTab({ messages, pinboard, input, setInput, onSend, thinking, thinkingStatus, micActive, onMic, onPin }) {
   const pinned = new Set((pinboard || []).map((p) => p.sourceId).filter(Boolean));
+  const todayLabel = new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric' });
   return (
     <div className="chat-panel">
       <section className="thread-wrap">
         <div className="thread" id="thread">
-          <DayDivider label="Today · Apr 18" />
+          <DayDivider label={`Today · ${todayLabel}`} />
           {messages.map((m) => (
             <Message key={m.id} m={m} onPin={onPin} pinned={pinned} />
           ))}
-          {thinking && <Thinking />}
+          {thinking && <Thinking status={thinkingStatus} />}
         </div>
       </section>
 
@@ -1102,12 +1105,12 @@ function Message({ m, onPin, pinned }) {
           <div className="meta-user mono">{m.at}</div>
         )}
       </div>
-      {isUser && <div className="avatar-me" aria-hidden>EM</div>}
+      {isUser && <div className="avatar-me" aria-hidden>Me</div>}
     </div>
   );
 }
 
-function Thinking() {
+function Thinking({ status }) {
   return (
     <div className="msg-row ai">
       <div className="avatar-ai" aria-hidden>
@@ -1119,7 +1122,7 @@ function Thinking() {
       <div className="msg-col">
         <div className="bubble ai thinking">
           <span className="dot-a" /><span className="dot-a" /><span className="dot-a" />
-          <span className="thinking-label">thinking…</span>
+          <span className="thinking-label">{status || "thinking…"}</span>
         </div>
       </div>
     </div>
