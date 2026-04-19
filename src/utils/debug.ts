@@ -21,9 +21,10 @@ export function debug(tag: string, err: unknown): void {
 
     // In normal mode, show just the one-line message
     if (err instanceof Error) {
-        // Suppress expected ENOENT errors (missing config/dir on first run)
-        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-            return; // Silently ignore — these are expected
+        const code = (err as NodeJS.ErrnoException).code;
+        // Suppress expected errors: ENOENT = missing file, ESRCH = no such process
+        if (code === 'ENOENT' || code === 'ESRCH') {
+            return;
         }
         console.debug(`[${tag}] ${err.message}`);
     } else {

@@ -24,7 +24,10 @@ serviceCommand
                 console.log(chalk.green('✓ Phaibel service is running'));
                 console.log(chalk.dim(`  PID: ${status.pid}`));
                 console.log(chalk.dim(`  Socket: ${status.socketPath}`));
-                console.log(chalk.dim(`  Web: http://localhost:3737`));
+                console.log(chalk.dim(`  Web:       http://localhost:3737`));
+                console.log(chalk.dim(`  Mobile:    http://localhost:3737/mobile`));
+                console.log(chalk.dim(`  Productve: http://localhost:3737/productve`));
+                console.log(chalk.dim(`  Assistant: http://localhost:3737/assistant`));
             } else {
                 console.log(chalk.red('✗ Failed to start service'));
             }
@@ -76,7 +79,10 @@ serviceCommand
                 console.log(chalk.green('✓ Phaibel service is running'));
                 console.log(chalk.dim(`  PID: ${newStatus.pid}`));
                 console.log(chalk.dim(`  Socket: ${newStatus.socketPath}`));
-                console.log(chalk.dim(`  Web: http://localhost:3737`));
+                console.log(chalk.dim(`  Web:       http://localhost:3737`));
+                console.log(chalk.dim(`  Mobile:    http://localhost:3737/mobile`));
+                console.log(chalk.dim(`  Productve: http://localhost:3737/productve`));
+                console.log(chalk.dim(`  Assistant: http://localhost:3737/assistant`));
             } else {
                 console.log(chalk.red('✗ Failed to start service'));
             }
