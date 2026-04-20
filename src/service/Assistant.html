@@ -452,7 +452,7 @@ function MiniCalendar({ calItems }) {
   }
 
   const cells = [];
-  const lead = (firstDay + 6) % 7; // Mon-start
+  const lead = firstDay; // Sun-start (getDay() returns 0=Sun)
   for (let i = 0; i < lead; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
@@ -476,7 +476,7 @@ function MiniCalendar({ calItems }) {
         </div>
       </div>
       <div className="dow">
-        {["M","T","W","T","F","S","S"].map((d, i) => <span key={i}>{d}</span>)}
+        {["S","M","T","W","T","F","S"].map((d, i) => <span key={i}>{d}</span>)}
       </div>
       <div className="days">
         {cells.map((d, i) => {
