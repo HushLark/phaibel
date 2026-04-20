@@ -620,13 +620,13 @@ function ChatTab({ messages, pinboard, input, setInput, onSend, thinking, thinki
 function PeopleTab({ sendMessage }) {
   const [people, setPeople] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState(“”);
+  const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
   const [noteOpen, setNoteOpen] = useState(null); // person id with open note box
-  const [noteText, setNoteText] = useState(“”);
+  const [noteText, setNoteText] = useState("");
 
   useEffect(() => {
-    fetch(“/api/entities/person”)
+    fetch("/api/entities/person")
       .then((r) => r.json())
       .then((data) => {
         const items = Array.isArray(data) ? data : (data.entities || data.items || []);
@@ -637,20 +637,20 @@ function PeopleTab({ sendMessage }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const getName = (p) => p.meta?.title || [p.meta?.firstName, p.meta?.lastName].filter(Boolean).join(“ “) || p.id || “Unknown”;
+  const getName = (p) => p.meta?.title || [p.meta?.firstName, p.meta?.lastName].filter(Boolean).join(" ") || p.id || "Unknown";
   const getType = (p) => p.meta?.type || null;
 
   const filtered = people.filter((p) => {
     const name = getName(p);
-    const type = getType(p) || “”;
+    const type = getType(p) || "";
     return (name + type).toLowerCase().includes(q.toLowerCase());
   });
 
   const handleAddNote = (p) => {
     const id = p.id || getName(p);
-    if (noteOpen === id) { setNoteOpen(null); setNoteText(“”); return; }
+    if (noteOpen === id) { setNoteOpen(null); setNoteText(""); return; }
     setNoteOpen(id);
-    setNoteText(“”);
+    setNoteText("");
   };
 
   const submitNote = (p) => {
@@ -659,28 +659,28 @@ function PeopleTab({ sendMessage }) {
     const name = getName(p);
     sendMessage(`add note to person ${name}: ${note}`);
     setNoteOpen(null);
-    setNoteText(“”);
+    setNoteText("");
   };
 
   return (
-    <div className=”people”>
-      <header className=”sub-head”>
+    <div className="people">
+      <header className="sub-head">
         <div>
-          <div className=”chat-title”>
-            <span className=”serif”>People</span>
-            <span className=”chat-sep”>·</span>
-            <span className=”mono chat-tid”>{loading ? “loading…” : `${people.length} people`}</span>
+          <div className="chat-title">
+            <span className="serif">People</span>
+            <span className="chat-sep">·</span>
+            <span className="mono chat-tid">{loading ? "loading…" : `${people.length} people`}</span>
           </div>
-          <div className=”chat-sub”>Agent has context on each person.</div>
+          <div className="chat-sub">Agent has context on each person.</div>
         </div>
-        <div className=”search”>
-          <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” strokeWidth=”1.6”><circle cx=”11” cy=”11” r=”7”/><path d=”M20 20 L16 16”/></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder=”Search people…” />
+        <div className="search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16 16"/></svg>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people…" />
         </div>
       </header>
-      <div className=”people-body”>
-        <ul className=”people-list”>
-          {loading && <li className=”pin-empty”>Loading…</li>}
+      <div className="people-body">
+        <ul className="people-list">
+          {loading && <li className="pin-empty">Loading…</li>}
           {!loading && filtered.map((p) => {
             const name = getName(p);
             const type = getType(p);
@@ -689,36 +689,36 @@ function PeopleTab({ sendMessage }) {
             return (
               <li
                 key={id}
-                className={`person ${sel?.id === p.id ? “on” : “”}`}
+                className={`person ${sel?.id === p.id ? "on" : ""}`}
                 onClick={() => setSel(p)}
               >
-                <div className=”p-avatar”>{initials(name)}</div>
-                <div className=”p-main”>
-                  <div className=”p-row”>
-                    <span className=”p-name”>{name}</span>
+                <div className="p-avatar">{initials(name)}</div>
+                <div className="p-main">
+                  <div className="p-row">
+                    <span className="p-name">{name}</span>
                     <button
-                      className=”btn ghost”
-                      style={{ fontSize: “10px”, padding: “1px 6px”, marginLeft: “auto” }}
+                      className="btn ghost"
+                      style={{ fontSize: "10px", padding: "1px 6px", marginLeft: "auto" }}
                       onClick={(e) => { e.stopPropagation(); handleAddNote(p); }}
                     >
-                      {isNoteOpen ? “Cancel” : “Add Note”}
+                      {isNoteOpen ? "Cancel" : "Add Note"}
                     </button>
                   </div>
-                  {type && <div className=”p-row”><span className=”p-role”>{type}</span></div>}
+                  {type && <div className="p-row"><span className="p-role">{type}</span></div>}
                   {isNoteOpen && (
-                    <div style={{ marginTop: “6px” }} onClick={(e) => e.stopPropagation()}>
+                    <div style={{ marginTop: "6px" }} onClick={(e) => e.stopPropagation()}>
                       <textarea
                         autoFocus
                         value={noteText}
                         onChange={(e) => setNoteText(e.target.value)}
                         placeholder={`Note about ${name}…`}
                         rows={3}
-                        style={{ width: “100%”, fontSize: “11px”, resize: “vertical”, boxSizing: “border-box” }}
-                        onKeyDown={(e) => { if (e.key === “Enter” && (e.metaKey || e.ctrlKey)) submitNote(p); }}
+                        style={{ width: "100%", fontSize: "11px", resize: "vertical", boxSizing: "border-box" }}
+                        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitNote(p); }}
                       />
                       <button
-                        className=”btn”
-                        style={{ fontSize: “10px”, padding: “2px 8px”, marginTop: “4px” }}
+                        className="btn"
+                        style={{ fontSize: "10px", padding: "2px 8px", marginTop: "4px" }}
                         onClick={() => submitNote(p)}
                       >
                         Send
@@ -729,36 +729,36 @@ function PeopleTab({ sendMessage }) {
               </li>
             );
           })}
-          {!loading && filtered.length === 0 && people.length > 0 && <li className=”pin-empty”>No one matches “{q}”.</li>}
-          {!loading && people.length === 0 && <li className=”pin-empty”>No people found.</li>}
+          {!loading && filtered.length === 0 && people.length > 0 && <li className="pin-empty">No one matches "{q}".</li>}
+          {!loading && people.length === 0 && <li className="pin-empty">No people found.</li>}
         </ul>
-        <aside className=”person-detail”>
+        <aside className="person-detail">
           {sel && (() => {
             const name = getName(sel);
             const type = getType(sel);
             const extraFields = Object.entries(sel.meta || {}).filter(
-              ([k]) => ![“title”, “type”, “firstName”, “lastName”, “createdAt”, “updatedAt”].includes(k)
+              ([k]) => !["title", "type", "firstName", "lastName", "createdAt", "updatedAt"].includes(k)
             );
             return (
               <>
-                <div className=”p-avatar-lg”>{initials(name)}</div>
+                <div className="p-avatar-lg">{initials(name)}</div>
                 <h3>{name}</h3>
-                {type && <div className=”p-role-lg”>{type}</div>}
+                {type && <div className="p-role-lg">{type}</div>}
                 {extraFields.length > 0 && (
-                  <div className=”detail-section”>
-                    <div className=”eyebrow”>Details</div>
-                    <ul className=”detail-list”>
+                  <div className="detail-section">
+                    <div className="eyebrow">Details</div>
+                    <ul className="detail-list">
                       {extraFields.map(([k, v]) => (
-                        <li key={k}><span className=”mono dim”>{k}:</span> {String(v)}</li>
+                        <li key={k}><span className="mono dim">{k}:</span> {String(v)}</li>
                       ))}
                     </ul>
                   </div>
                 )}
-                <div className=”detail-section”>
-                  <div className=”eyebrow”>Agent actions</div>
-                  <div className=”detail-btns”>
-                    <button className=”btn” onClick={() => sendMessage(`brief me on ${name}`)}>Brief me</button>
-                    <button className=”btn ghost” onClick={() => { setNoteOpen(sel.id || name); setNoteText(“”); }}>Add Note</button>
+                <div className="detail-section">
+                  <div className="eyebrow">Agent actions</div>
+                  <div className="detail-btns">
+                    <button className="btn" onClick={() => sendMessage(`brief me on ${name}`)}>Brief me</button>
+                    <button className="btn ghost" onClick={() => { setNoteOpen(sel.id || name); setNoteText(""); }}>Add Note</button>
                   </div>
                 </div>
               </>
