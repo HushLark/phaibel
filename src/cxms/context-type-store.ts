@@ -211,12 +211,16 @@ function generateExamples(config: EntityTypeConfig): string {
             'status: open', 'priority: medium', 'dueDate: 2026-04-10', '```', '');
     } else if (config.name === 'event') {
         lines.push('## Example: Team Meeting', '', '```yaml', 'title: Team Meeting',
-            'startDate: 2026-04-10T14:00:00Z', 'endDate: 2026-04-10T15:00:00Z',
+            'startDate: 2026-04-10T14:00:00', 'duration: 1h',
             'location: Conference Room A', '```', '');
     } else if (config.name === 'note') {
         lines.push('## Example: Project Ideas', '', '```yaml', 'title: Project Ideas',
             'tags: [ideas, brainstorm]', '```', '',
             'Body content goes here in Markdown.', '');
+    } else if (config.name === 'person') {
+        lines.push('## Example: Jane Smith', '', '```yaml', 'title: Jane Smith',
+            'lastName: Smith', 'type: colleague', '```', '',
+            '## Example: Cher', '', '```yaml', 'title: Cher', '```', '');
     } else {
         lines.push(`_Add examples of ${config.plural} here._`, '');
     }

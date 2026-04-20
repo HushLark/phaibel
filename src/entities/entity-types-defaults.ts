@@ -42,11 +42,22 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         description: 'Calendar events and appointments',
         defaultTags: ['event'],
         fields: [
-            { key: 'startDate', type: 'datetime', label: 'Start', required: true },
-            { key: 'endDate',   type: 'datetime', label: 'End',   required: true },
-            { key: 'location',  type: 'string',   label: 'Location', required: false },
+            { key: 'startDate', type: 'datetime', label: 'Start Time', required: true },
+            { key: 'duration',  type: 'duration', label: 'Duration',   required: false },
+            { key: 'location',  type: 'string',   label: 'Location',   required: false },
         ],
         calendarDateField: 'startDate',
+    },
+    {
+        name: 'person',
+        plural: 'people',
+        directory: 'people',
+        description: 'People — contacts, colleagues, family, friends',
+        defaultTags: ['person'],
+        fields: [
+            { key: 'lastName', type: 'string', label: 'Last Name', required: false },
+            { key: 'type',     type: 'string', label: 'Type',      required: false },
+        ],
     },
     {
         name: 'todont',
@@ -61,4 +72,4 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
 ];
 
 /** Names of built-in types that cannot be removed. */
-export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'todont']);
+export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'person', 'todont']);

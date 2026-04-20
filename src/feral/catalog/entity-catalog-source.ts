@@ -306,7 +306,7 @@ For each item, return a FLAT JSON object (no nesting) with these fields:
 
 Plus type-specific fields AT THE TOP LEVEL:
 - task: priority (low/medium/high), dueDate (YYYY-MM-DD), status ("open")
-- event: startDate (ISO datetime), endDate (ISO datetime), location (string)
+- event: startDate (ISO datetime), duration (e.g. "1h", "30m"), location (string)
 - research: status ("active"), sources (array of strings)
 - goal: status ("active"), priority (low/medium/high), smart (object with specific/measurable/achievable/relevant/timeBound), milestones (array)
 - person: company (string), group (string), phone (string), email (string), handle (string)
