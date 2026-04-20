@@ -12,7 +12,9 @@ import { listEntities, writeEntity, parseEntity, getEntityDir } from '../entitie
 import { feralChatHeadless, type ChatHistoryEntry, type ChatResult } from '../commands/chat.js';
 import { getQueueManager } from './queue/manager.js';
 import { getEntityIndex } from '../entities/entity-index.js';
-import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, saveProfile } from '../state/manager.js';
+import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, saveProfile, loadState } from '../state/manager.js';
+import { getEffectiveConfig } from '../config.js';
+import { LLM_CAPABILITIES } from '../schemas/index.js';
 import { getCronScheduler, loadCronConfig, saveCronConfig } from './cron/scheduler.js';
 import { loadCalConfig, saveCalConfig } from '../commands/cal.js';
 import { handleApiRoute } from './api-router.js';
@@ -353,6 +355,65 @@ export class WebServer {
             } else {
                 res.writeHead(404, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: result.error }));
+            }
+            return;
+        }
+
+        // GET /api/profile — current user/agent profile from state
+        if (req.method === 'GET' && url.pathname === '/api/profile') {
+            try {
+                const state = await loadState();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({
+                    userName: state.userName,
+                    agentName: state.agentName,
+                    personality: state.personality,
+                    gender: state.gender,
+                    honorific: state.honorific,
+                }));
+            } catch (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+            }
+            return;
+        }
+
+        // PATCH /api/profile — update user/agent profile fields
+        if (req.method === 'PATCH' && url.pathname === '/api/profile') {
+            try {
+                const body = JSON.parse(await this.readBody(req));
+                const state = await loadState();
+                const updated = {
+                    userName: body.userName ?? state.userName ?? '',
+                    agentName: body.agentName ?? state.agentName,
+                    personality: body.personality ?? state.personality,
+                    honorific: body.honorific ?? state.honorific,
+                    gender: body.gender ?? state.gender,
+                };
+                await saveProfile(updated);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, ...updated }));
+            } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+            }
+            return;
+        }
+
+        // GET /api/models — effective LLM model per capability
+        if (req.method === 'GET' && url.pathname === '/api/models') {
+            try {
+                const effective = await getEffectiveConfig();
+                const models = LLM_CAPABILITIES.map(cap => ({
+                    capability: cap,
+                    provider: effective[cap]?.provider ?? null,
+                    model: effective[cap]?.model ?? null,
+                }));
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(models));
+            } catch (err) {
+                res.writeHead(500, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
             }
             return;
         }

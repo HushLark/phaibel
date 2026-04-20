@@ -771,90 +771,85 @@ function PeopleTab({ sendMessage }) {
 }
 function initials(n) { return n.split(" ").map(s => s[0]).slice(0,2).join(""); }
 
-const ROLE_GOALS = {
-  Parent: ["School logistics", "Kids' activities", "Family planning", "Home management", "Health & wellness", "Finances", "Travel"],
-  Educator: ["Lesson planning", "Student progress", "Parent comms", "Team/class management", "Practice plans", "Admin tasks", "Research"],
-  Professional: ["Meeting prep", "Email triage", "Project tracking", "Team 1:1s", "Strategic planning", "Research", "Travel logistics"],
-  Entrepreneur: ["Fundraising", "Investor updates", "Product strategy", "Hiring", "Go-to-market", "Board prep", "Operations"],
-  Student: ["Coursework", "Research & papers", "Study schedules", "Applications", "Internships", "Note-taking", "Exam prep"],
-  Other: ["Scheduling", "Communications", "Research", "Note-taking", "Planning", "Reminders", "Learning"],
+const CAP_LABELS = {
+  reason: "Reasoning", summarize: "Summarize", categorize: "Categorize",
+  format: "Format", chat: "Chat", embed: "Embedding",
 };
 
-const PERSONALITIES = [
-  { key: "Butler",               blurb: "Formal, proper. \u201cVery good, ma'am.\u201d" },
-  { key: "Friend",               blurb: "Warm, casual, encouraging." },
-  { key: "Executive",            blurb: "Sharp, professional, results-focused." },
-  { key: "Rockstar",             blurb: "High-energy, fun, enthusiastic." },
-  { key: "European Male Model",  blurb: "Effortlessly charming, smouldering, impossibly stylish." },
-  { key: "Pip",                  blurb: "Devoted house helper, speaks in third person, overcome with joy to assist." },
-];
-
 function SettingsTab() {
-  const [section, setSection] = useState("server");
+  const [section, setSection] = useState("profile");
 
-  // Server
-  const [foundationRoot, setFoundationRoot] = useState("/Users/evelyn/Foundation");
-  const [port, setPort] = useState(3800);
-  const [instanceName, setInstanceName] = useState("Main");
-  const [instanceDesc, setInstanceDesc] = useState("The main Context Management System");
-  const [authEnabled, setAuthEnabled] = useState(true);
-  const tokenMasked = "cxms_\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022h47q";
+  // Profile state
+  const [userName, setUserName] = useState("");
+  const [gender, setGender] = useState("other");
+  const [profileSaved, setProfileSaved] = useState(false);
 
-  // User Profile
-  const [userName, setUserName] = useState("Evelyn Marsh");
-  const [honorific, setHonorific] = useState("Female");
-  const [tz, setTz] = useState("America/Los_Angeles");
-  const [lang, setLang] = useState("en");
-  const [role, setRole] = useState("Entrepreneur");
-  const [commStyle, setCommStyle] = useState("Brief");
-  const [goals, setGoals] = useState(["Board prep", "Investor updates", "Product strategy"]);
-  const [roleField1, setRoleField1] = useState("Halcyon Labs");
-  const [roleField2, setRoleField2] = useState("");
-  const [roleField3, setRoleField3] = useState("");
+  // Assistant state
+  const [agentName, setAgentName] = useState("");
+  const [personality, setPersonality] = useState("");
+  const [personalities, setPersonalities] = useState([]);
+  const [assistantSaved, setAssistantSaved] = useState(false);
 
-  // Assistant
-  const [assistantName, setAssistantName] = useState("Phaibel");
-  const [personality, setPersonality] = useState("Executive");
+  // Scheduler state
+  const [schedulerJobs, setSchedulerJobs] = useState([]);
 
-  // Search
-  const [semanticOn, setSemanticOn] = useState(true);
+  // Models state
+  const [models, setModels] = useState([]);
+
+  // Status state
+  const [status, setStatus] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/profile").then(r => r.json()).then(d => {
+      setUserName(d.userName || "");
+      setGender(d.gender || "other");
+      setAgentName(d.agentName || "");
+      setPersonality(d.personality || "");
+    }).catch(() => {});
+    fetch("/api/personalities").then(r => r.json()).then(setPersonalities).catch(() => {});
+    fetch("/api/scheduler").then(r => r.json()).then(d => setSchedulerJobs(d.jobs || [])).catch(() => {});
+    fetch("/api/models").then(r => r.json()).then(setModels).catch(() => {});
+    fetch("/api/status").then(r => r.json()).then(setStatus).catch(() => {});
+  }, []);
+
+  const saveProfile = async () => {
+    await fetch("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userName, gender }),
+    });
+    setProfileSaved(true);
+    setTimeout(() => setProfileSaved(false), 2000);
+  };
+
+  const saveAssistant = async () => {
+    await fetch("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentName, personality }),
+    });
+    setAssistantSaved(true);
+    setTimeout(() => setAssistantSaved(false), 2000);
+  };
+
+  const toggleJob = async (jobName) => {
+    const res = await fetch(`/api/scheduler/${encodeURIComponent(jobName)}/toggle`, { method: "POST" });
+    const data = await res.json();
+    setSchedulerJobs(data.jobs || []);
+  };
+
+  const runJob = async (jobName) => {
+    await fetch(`/api/scheduler/${encodeURIComponent(jobName)}/run`, { method: "POST" });
+    fetch("/api/scheduler").then(r => r.json()).then(d => setSchedulerJobs(d.jobs || [])).catch(() => {});
+  };
 
   const sections = [
-    { key: "server",     label: "Server",           sub: "~/.cxms/config.json" },
-    { key: "profile",    label: "User Profile",      sub: "profiles/user-profile.md" },
-    { key: "assistant",  label: "Assistant",         sub: "profiles/phaibel-profile.md" },
-    { key: "search",     label: "Search",            sub: "BM25 + optional semantic" },
-    { key: "models",     label: "Models in Use",     sub: "OpenAI \u00b7 Anthropic" },
-    { key: "foundation", label: "Foundation Info",   sub: "Read-only" },
+    { key: "profile",   label: "Profile",    sub: "Your name and preferences" },
+    { key: "assistant", label: "Assistant",  sub: "Name and personality" },
+    { key: "scheduler", label: "Scheduler",  sub: "Background jobs" },
+    { key: "models",    label: "Models",     sub: "LLM configuration" },
+    { key: "foundation",label: "Foundation", sub: "Read-only info" },
   ];
-
-  const toggleGoal = (g) => setGoals((gs) => gs.includes(g) ? gs.filter(x => x !== g) : [...gs, g]);
-
-  const roleExtras = () => {
-    if (role === "Parent") return (
-      <>
-        <Field label="Kids' ages" value={roleField1} onChange={setRoleField1} placeholder="e.g. 7, 10, 13" />
-        <Field label="Family situation" value={roleField2} onChange={setRoleField2} placeholder="e.g. two working parents" />
-      </>
-    );
-    if (role === "Educator") return (
-      <>
-        <Field label="Sport or subject" value={roleField1} onChange={setRoleField1} placeholder="e.g. football, math" />
-        <Field label="Team or class size" value={roleField2} onChange={setRoleField2} placeholder="number" type="number" />
-      </>
-    );
-    if (role === "Professional") return (
-      <>
-        <Field label="Employer / company" value={roleField1} onChange={setRoleField1} />
-        <Field label="Job title" value={roleField2} onChange={setRoleField2} />
-        <Field label="Team size" value={roleField3} onChange={setRoleField3} type="number" />
-      </>
-    );
-    if (role === "Entrepreneur") return (
-      <Field label="Employer / company" value={roleField1} onChange={setRoleField1} />
-    );
-    return null;
-  };
 
   return (
     <div className="settings">
@@ -862,21 +857,15 @@ function SettingsTab() {
         <div>
           <div className="chat-title">
             <span className="serif">Settings</span>
-            <span className="chat-sep">·</span>
-            <span className="mono chat-tid">{assistantName.toLowerCase()}@halcyonlabs.ai</span>
           </div>
-          <div className="chat-sub">How {assistantName} is configured on your Foundation.</div>
+          <div className="chat-sub">How {agentName || "your agent"} is configured on your Foundation.</div>
         </div>
       </header>
 
       <div className="settings-layout">
         <nav className="settings-nav">
           {sections.map((s) => (
-            <button
-              key={s.key}
-              className={`set-nav-item ${section === s.key ? "on" : ""}`}
-              onClick={() => setSection(s.key)}
-            >
+            <button key={s.key} className={`set-nav-item ${section === s.key ? "on" : ""}`} onClick={() => setSection(s.key)}>
               <span className="set-nav-label">{s.label}</span>
               <span className="set-nav-sub mono">{s.sub}</span>
             </button>
@@ -884,190 +873,109 @@ function SettingsTab() {
         </nav>
 
         <div className="settings-body settings-body-scroll">
-          {section === "server" && (
-            <>
-              <section className="settings-card wide">
-                <div className="eyebrow">Server</div>
-                <h4>CxMS instance</h4>
-                <Field label="Foundation root" value={foundationRoot} onChange={setFoundationRoot} mono hint="Absolute path to the Foundation directory (contains .cxms.md). Required to start." />
-                <div className="grid-2">
-                  <Field label="Port" value={port} onChange={(v) => setPort(+v || 0)} type="number" mono hint="HTTP port for the REST API and MCP server." />
-                  <Field label="Instance name" value={instanceName} onChange={setInstanceName} hint="Shown on startup and health endpoint." />
-                </div>
-                <Field label="Instance description" value={instanceDesc} onChange={setInstanceDesc} hint="Short description of this instance's purpose." />
-              </section>
-
-              <section className="settings-card wide">
-                <div className="eyebrow">Authentication</div>
-                <h4>Bearer token</h4>
-                <label className="check">
-                  <input type="checkbox" checked={authEnabled} onChange={(e) => setAuthEnabled(e.target.checked)} />
-                  <span>Enable bearer token auth <span className="dim">— when disabled, all API requests are accepted without a token</span></span>
-                </label>
-                <div className="token-row">
-                  <input className="field-input mono" value={tokenMasked} readOnly />
-                  <button className="btn ghost">Regenerate</button>
-                </div>
-                <p className="settings-hint">Token is auto-generated and stored at <span className="mono">~/.cxms/token</span>. Never displayed in full.</p>
-                <p className="settings-hint save-line">Saved to <span className="mono">~/.cxms/config.json</span></p>
-              </section>
-            </>
-          )}
-
           {section === "profile" && (
-            <>
-              <section className="settings-card wide">
-                <div className="eyebrow">User Profile</div>
-                <h4>How {assistantName} knows you</h4>
-                <div className="grid-2">
-                  <Field label="Name" value={userName} onChange={setUserName} required />
-                  <SelectField label="Gender / Honorific" value={honorific} onChange={setHonorific}
-                    options={[["Male","Male (Sir)"],["Female","Female (Ma'am)"],["Other","Other (neutral)"]]}
-                  />
-                </div>
-                <div className="grid-2">
-                  <Field label="Timezone" value={tz} onChange={setTz} mono placeholder="America/Chicago" />
-                  <Field label="Language" value={lang} onChange={setLang} mono placeholder="en" />
-                </div>
-              </section>
-
-              <section className="settings-card wide">
-                <div className="eyebrow">Context</div>
-                <h4>Role &amp; communication</h4>
-                <SelectField label="Role" value={role} onChange={(v) => { setRole(v); setGoals([]); setRoleField1(""); setRoleField2(""); setRoleField3(""); }}
-                  options={[["Parent","Parent"],["Educator","Educator"],["Professional","Professional"],["Entrepreneur","Entrepreneur"],["Student","Student"],["Other","Other"]]}
-                />
-                <div className="field-group">
-                  <label className="field-label">Communication style</label>
-                  <div className="seg">
-                    {[["Brief","Brief — short answers, bullets"],["Conversational","Conversational — friendly, natural"],["Structured","Structured — headers, organised"]].map(([k,l]) => (
-                      <button key={k} className={commStyle === k ? "on" : ""} onClick={() => setCommStyle(k)}>{l}</button>
-                    ))}
-                  </div>
-                </div>
-                {roleExtras() && (
-                  <div className="role-extras">
-                    <div className="eyebrow">Role details</div>
-                    {roleExtras()}
-                  </div>
-                )}
-              </section>
-
-              <section className="settings-card wide">
-                <div className="eyebrow">Primary goals</div>
-                <h4>What you want help with</h4>
-                <p className="settings-hint">Choose as many as apply. Options tuned to your role.</p>
-                <div className="goals-grid">
-                  {(ROLE_GOALS[role] || ROLE_GOALS.Other).map((g) => (
-                    <button key={g} className={`goal-chip ${goals.includes(g) ? "on" : ""}`} onClick={() => toggleGoal(g)}>
-                      {g}
-                    </button>
-                  ))}
-                </div>
-                <p className="settings-hint save-line">Saved to <span className="mono">{foundationRoot.replace(/\/$/,"")}/profiles/user-profile.md</span></p>
-              </section>
-            </>
+            <section className="settings-card wide">
+              <div className="eyebrow">User Profile</div>
+              <h4>How {agentName || "your agent"} knows you</h4>
+              <Field label="Your name" value={userName} onChange={setUserName} required />
+              <SelectField label="Gender" value={gender} onChange={setGender}
+                options={[["male","Male"],["female","Female"],["other","Other / neutral"]]}
+              />
+              <div style={{ marginTop: "12px" }}>
+                <button className="btn" onClick={saveProfile}>{profileSaved ? "Saved ✓" : "Save"}</button>
+              </div>
+            </section>
           )}
 
           {section === "assistant" && (
             <section className="settings-card wide">
               <div className="eyebrow">Assistant</div>
               <h4>Who's helping you</h4>
-              <Field label="Assistant name" value={assistantName} onChange={setAssistantName} />
-              <div className="field-group">
-                <label className="field-label">Personality</label>
-                <div className="personality-grid">
-                  {PERSONALITIES.map((p) => (
-                    <button
-                      key={p.key}
-                      className={`pers-card ${personality === p.key ? "on" : ""}`}
-                      onClick={() => setPersonality(p.key)}
-                    >
-                      <div className="pers-name">{p.key}</div>
-                      <div className="pers-blurb">{p.blurb}</div>
-                    </button>
-                  ))}
+              <Field label="Assistant name" value={agentName} onChange={setAgentName} />
+              {personalities.length > 0 && (
+                <div className="field-group">
+                  <label className="field-label">Personality</label>
+                  <div className="personality-grid">
+                    {personalities.map((p) => (
+                      <button key={p.id} className={`pers-card ${personality === p.id ? "on" : ""}`} onClick={() => setPersonality(p.id)}>
+                        <div className="pers-name">{p.label}</div>
+                        <div className="pers-blurb">{p.description}</div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+              )}
+              <div style={{ marginTop: "12px" }}>
+                <button className="btn" onClick={saveAssistant}>{assistantSaved ? "Saved ✓" : "Save"}</button>
               </div>
-              <p className="settings-hint save-line">Saved to <span className="mono">{foundationRoot.replace(/\/$/,"")}/profiles/phaibel-profile.md</span></p>
             </section>
           )}
 
-          {section === "search" && (
-            <>
-              <section className="settings-card wide">
-                <div className="eyebrow">Search</div>
-                <h4>BM25 full-text <span className="pill-always">Always active</span></h4>
-                <p className="settings-hint">Field weights used when ranking results:</p>
-                <ul className="weights-list">
-                  <li><span>Title</span><span className="mono dim">5\u00d7</span></li>
-                  <li><span>Tags</span><span className="mono dim">3\u00d7</span></li>
-                  <li><span>Summary</span><span className="mono dim">2\u00d7</span></li>
-                  <li><span>Custom fields</span><span className="mono dim">1.5\u00d7</span></li>
-                  <li><span>Body</span><span className="mono dim">1\u00d7</span></li>
-                </ul>
-              </section>
-
-              <section className="settings-card wide">
-                <div className="eyebrow">Semantic / embedding</div>
-                <h4>Optional vector search</h4>
-                <label className="check">
-                  <input type="checkbox" checked={semanticOn} onChange={(e) => setSemanticOn(e.target.checked)} />
-                  <span>Enable semantic search <span className="dim">— requires an embedding provider connected by the host</span></span>
-                </label>
-                <ul className="kv-list">
-                  <li><span>Model</span><span className="mono">text-embedding-3-small (OpenAI)</span><span className="dim mono">fixed</span></li>
-                  <li><span>Dimensions</span><span className="mono">256</span><span className="dim mono">fixed</span></li>
-                  <li><span>Similarity threshold</span><span className="mono">0.5 min cosine</span><span className="dim mono">inclusion cutoff</span></li>
-                  <li><span>Query cache</span><span className="mono">5 min in-memory</span><span className="dim mono">per session</span></li>
-                </ul>
-                <p className="settings-hint save-line">Saved to <span className="mono">{foundationRoot.replace(/\/$/,"")}/.phaibel/embeddings.json</span></p>
-              </section>
-            </>
+          {section === "scheduler" && (
+            <section className="settings-card wide">
+              <div className="eyebrow">Scheduler</div>
+              <h4>Background jobs</h4>
+              {schedulerJobs.length === 0 && <p className="settings-hint">No jobs found.</p>}
+              <ul className="models-list">
+                {schedulerJobs.map((job) => (
+                  <li key={job.name}>
+                    <div className="m-head">
+                      <span className="m-name mono">{job.name}</span>
+                      <span className={`pill-${job.enabled ? "always" : "fixed"}`}>{job.enabled ? "enabled" : "disabled"}</span>
+                    </div>
+                    <div className="m-note">
+                      {job.intervalMinutes != null && <span>Every {job.intervalMinutes}m · </span>}
+                      {job.lastRunAt ? <span>Last: {new Date(job.lastRunAt).toLocaleTimeString()}</span> : <span className="dim">Never run</span>}
+                    </div>
+                    <div className="detail-btns" style={{ marginTop: "6px" }}>
+                      <button className="btn ghost" style={{ fontSize: "10px", padding: "2px 8px" }} onClick={() => toggleJob(job.name)}>
+                        {job.enabled ? "Disable" : "Enable"}
+                      </button>
+                      <button className="btn ghost" style={{ fontSize: "10px", padding: "2px 8px" }} onClick={() => runJob(job.name)}>
+                        Run now
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
           )}
 
           {section === "models" && (
             <section className="settings-card wide">
               <div className="eyebrow">Models in Use</div>
-              <h4>What runs where</h4>
+              <h4>LLM per capability</h4>
+              {models.length === 0 && <p className="settings-hint dim">Loading…</p>}
               <ul className="models-list">
-                <li>
-                  <div className="m-head"><span className="m-name">Semantic embedding</span><span className="pill-fixed">Hardcoded</span></div>
-                  <div className="m-model mono">text-embedding-3-small</div>
-                  <div className="m-note">OpenAI · 256 dimensions. Used by CxMS semantic search.</div>
-                </li>
-                <li>
-                  <div className="m-head"><span className="m-name">Search — Phase 2 relevance</span><span className="pill-host">Host-configured</span></div>
-                  <div className="m-model mono">claude-haiku-4-5</div>
-                  <div className="m-note">Filters BM25 candidates for relevance. Recommended model; configured by Phaibel.</div>
-                </li>
-                <li>
-                  <div className="m-head"><span className="m-name">Search — Phase 3 synthesis</span><span className="pill-host">Host-configured</span></div>
-                  <div className="m-model mono">claude-sonnet-4-6</div>
-                  <div className="m-note">Composes the synthesized response from retrieved context.</div>
-                </li>
-                <li>
-                  <div className="m-head"><span className="m-name">General reasoning</span><span className="pill-host">Host-configured</span></div>
-                  <div className="m-model mono">— configurable</div>
-                  <div className="m-note">CxMS is model-agnostic for reasoning; it stores and retrieves context only.</div>
-                </li>
+                {models.map((m) => (
+                  <li key={m.capability}>
+                    <div className="m-head">
+                      <span className="m-name">{CAP_LABELS[m.capability] || m.capability}</span>
+                      {m.provider && <span className="pill-host">{m.provider}</span>}
+                    </div>
+                    <div className="m-model mono">{m.model || <span className="dim">— not configured</span>}</div>
+                  </li>
+                ))}
               </ul>
+              <p className="settings-hint">Models are configured via <span className="mono">~/.phaibel/secrets.json</span> and the CLI.</p>
             </section>
           )}
 
           {section === "foundation" && (
             <section className="settings-card wide">
-              <div className="eyebrow">Foundation Info</div>
-              <h4>Read-only structure</h4>
-              <p className="settings-hint">Sourced from <span className="mono">GET /cx/analytics</span>.</p>
-              <ul className="fs-list">
-                <li><span className="fs-name mono">context-types/</span><span className="fs-val">12 types installed \u00b7 3,481 nodes</span></li>
-                <li><span className="fs-name mono">collections/</span><span className="fs-val">4 key-value stores</span></li>
-                <li><span className="fs-name mono">logs/</span><span className="fs-val">access.log, error.log</span></li>
-                <li><span className="fs-name mono">.phaibel/</span><span className="fs-val">entity schema \u00b7 embeddings cache</span></li>
-                <li><span className="fs-name mono">profiles/</span><span className="fs-val">user-profile.md \u00b7 phaibel-profile.md</span></li>
-                <li><span className="fs-name mono">.trash/</span><span className="fs-val">18 soft-deleted \u00b7 2.4 MB</span></li>
-              </ul>
+              <div className="eyebrow">Foundation</div>
+              <h4>Read-only</h4>
+              {status ? (
+                <ul className="kv-list">
+                  <li><span>Root</span><span className="mono">{status.vaultRoot || "—"}</span></li>
+                  <li><span>Version</span><span className="mono">{status.version}</span></li>
+                  <li><span>Uptime</span><span className="mono">{Math.floor((status.uptime || 0) / 60)}m {(status.uptime || 0) % 60}s</span></li>
+                  <li><span>Graph nodes</span><span className="mono">{status.graph?.nodes ?? "—"}</span></li>
+                  <li><span>Graph edges</span><span className="mono">{status.graph?.edges ?? "—"}</span></li>
+                  <li><span>Queue size</span><span className="mono">{status.queueSize ?? "—"}</span></li>
+                  <li><span>Memory (RSS)</span><span className="mono">{status.memory?.rss ?? "—"} MB</span></li>
+                </ul>
+              ) : <p className="settings-hint dim">Loading…</p>}
             </section>
           )}
         </div>
