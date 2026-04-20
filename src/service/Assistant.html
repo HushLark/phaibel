@@ -353,6 +353,15 @@ function App() {
         onMic={handleMic}
         onPin={handlePinMessage}
         wsConnected={wsConnected}
+        sendMessage={(text) => {
+          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+          const now = fmtHHMM(new Date());
+          setMessages((m) => [...m, { id: `m-${randId()}`, role: "user", text, at: now }]);
+          setThinking(true);
+          setThinkingStatus("Thinking…");
+          setActiveTab("chat");
+          wsRef.current.send(JSON.stringify({ type: 'chat', message: text }));
+        }}
       />
       {tweaksOpen && (
         <TweaksPanel tweaks={tweaks} update={updateTweak} onClose={() => setTweaksOpen(false)} />
@@ -544,7 +553,7 @@ function Pinboard({ pins, onRemove }) {
 /* ============================================================
    RIGHT PANEL — chat
    ============================================================ */
-function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInput, onSend, thinking, thinkingStatus, micActive, onMic, onPin, wsConnected }) {
+function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInput, onSend, thinking, thinkingStatus, micActive, onMic, onPin, wsConnected, sendMessage }) {
   const tabs = [
     { key: "chat",     label: "Chat",     count: messages.length || null },
     { key: "people",   label: "People",   count: null },
@@ -579,7 +588,7 @@ function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInp
           micActive={micActive} onMic={onMic} onPin={onPin}
         />
       )}
-      {activeTab === "people" && <PeopleTab />}
+      {activeTab === "people" && <PeopleTab sendMessage={sendMessage} />}
       {activeTab === "settings" && <SettingsTab />}
     </main>
   );
@@ -608,86 +617,153 @@ function ChatTab({ messages, pinboard, input, setInput, onSend, thinking, thinki
   );
 }
 
-const PEOPLE = [
-  { name: "Daniel Okafor",   role: "CFO",                   team: "Finance",  status: "busy",   ctx: "Reforecast review — expects 15 min after staff", last: "08:25", pending: 2 },
-  { name: "Maya Sundaram",   role: "CPO",                   team: "Product",  status: "online", ctx: "Atlas 3.0 launch gate owner · holds L7+ comp bands", last: "07:58", pending: 1 },
-  { name: "Jonas Bergström", role: "Head of Engineering",   team: "Eng",      status: "online", ctx: "1:1 at 14:00 · driving infra margin recovery", last: "Yesterday", pending: 0 },
-  { name: "Priya Shah",      role: "General Counsel",       team: "Legal",    status: "away",   ctx: "Series D redlines blocking for Monday", last: "07:12", pending: 1 },
-  { name: "Anton Reyes",     role: "Chief of Staff",        team: "CEO Office",status: "online",ctx: "Board pre-read coordinator · press embargo owner", last: "08:40", pending: 0 },
-  { name: "Lena Voss",       role: "VP, Communications",    team: "Comms",    status: "online", ctx: "Analyst briefing prep · Morgan Stanley tomorrow", last: "Yesterday", pending: 0 },
-];
+function PeopleTab({ sendMessage }) {
+  const [people, setPeople] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState(“”);
+  const [sel, setSel] = useState(null);
+  const [noteOpen, setNoteOpen] = useState(null); // person id with open note box
+  const [noteText, setNoteText] = useState(“”);
 
-function PeopleTab() {
-  const [q, setQ] = useState("");
-  const [sel, setSel] = useState(PEOPLE[0]);
-  const filtered = PEOPLE.filter((p) =>
-    (p.name + p.role + p.team).toLowerCase().includes(q.toLowerCase())
-  );
+  useEffect(() => {
+    fetch(“/api/entities/person”)
+      .then((r) => r.json())
+      .then((data) => {
+        const items = Array.isArray(data) ? data : (data.entities || data.items || []);
+        setPeople(items);
+        if (items.length > 0) setSel(items[0]);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const getName = (p) => p.meta?.title || [p.meta?.firstName, p.meta?.lastName].filter(Boolean).join(“ “) || p.id || “Unknown”;
+  const getType = (p) => p.meta?.type || null;
+
+  const filtered = people.filter((p) => {
+    const name = getName(p);
+    const type = getType(p) || “”;
+    return (name + type).toLowerCase().includes(q.toLowerCase());
+  });
+
+  const handleAddNote = (p) => {
+    const id = p.id || getName(p);
+    if (noteOpen === id) { setNoteOpen(null); setNoteText(“”); return; }
+    setNoteOpen(id);
+    setNoteText(“”);
+  };
+
+  const submitNote = (p) => {
+    const note = noteText.trim();
+    if (!note) return;
+    const name = getName(p);
+    sendMessage(`add note to person ${name}: ${note}`);
+    setNoteOpen(null);
+    setNoteText(“”);
+  };
+
   return (
-    <div className="people">
-      <header className="sub-head">
+    <div className=”people”>
+      <header className=”sub-head”>
         <div>
-          <div className="chat-title">
-            <span className="serif">People</span>
-            <span className="chat-sep">·</span>
-            <span className="mono chat-tid">exec team · 6</span>
+          <div className=”chat-title”>
+            <span className=”serif”>People</span>
+            <span className=”chat-sep”>·</span>
+            <span className=”mono chat-tid”>{loading ? “loading…” : `${people.length} people`}</span>
           </div>
-          <div className="chat-sub">Agent has context on each person and their open threads.</div>
+          <div className=”chat-sub”>Agent has context on each person.</div>
         </div>
-        <div className="search">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16 16"/></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people, teams, context…" />
+        <div className=”search”>
+          <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” strokeWidth=”1.6”><circle cx=”11” cy=”11” r=”7”/><path d=”M20 20 L16 16”/></svg>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder=”Search people…” />
         </div>
       </header>
-      <div className="people-body">
-        <ul className="people-list">
-          {filtered.map((p) => (
-            <li
-              key={p.name}
-              className={`person ${sel?.name === p.name ? "on" : ""}`}
-              onClick={() => setSel(p)}
-            >
-              <div className={`p-avatar status-${p.status}`}>{initials(p.name)}</div>
-              <div className="p-main">
-                <div className="p-row">
-                  <span className="p-name">{p.name}</span>
-                  <span className="p-last mono">{p.last}</span>
+      <div className=”people-body”>
+        <ul className=”people-list”>
+          {loading && <li className=”pin-empty”>Loading…</li>}
+          {!loading && filtered.map((p) => {
+            const name = getName(p);
+            const type = getType(p);
+            const id = p.id || name;
+            const isNoteOpen = noteOpen === id;
+            return (
+              <li
+                key={id}
+                className={`person ${sel?.id === p.id ? “on” : “”}`}
+                onClick={() => setSel(p)}
+              >
+                <div className=”p-avatar”>{initials(name)}</div>
+                <div className=”p-main”>
+                  <div className=”p-row”>
+                    <span className=”p-name”>{name}</span>
+                    <button
+                      className=”btn ghost”
+                      style={{ fontSize: “10px”, padding: “1px 6px”, marginLeft: “auto” }}
+                      onClick={(e) => { e.stopPropagation(); handleAddNote(p); }}
+                    >
+                      {isNoteOpen ? “Cancel” : “Add Note”}
+                    </button>
+                  </div>
+                  {type && <div className=”p-row”><span className=”p-role”>{type}</span></div>}
+                  {isNoteOpen && (
+                    <div style={{ marginTop: “6px” }} onClick={(e) => e.stopPropagation()}>
+                      <textarea
+                        autoFocus
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                        placeholder={`Note about ${name}…`}
+                        rows={3}
+                        style={{ width: “100%”, fontSize: “11px”, resize: “vertical”, boxSizing: “border-box” }}
+                        onKeyDown={(e) => { if (e.key === “Enter” && (e.metaKey || e.ctrlKey)) submitNote(p); }}
+                      />
+                      <button
+                        className=”btn”
+                        style={{ fontSize: “10px”, padding: “2px 8px”, marginTop: “4px” }}
+                        onClick={() => submitNote(p)}
+                      >
+                        Send
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div className="p-row">
-                  <span className="p-role">{p.role}</span>
-                  {p.pending > 0 && <span className="p-badge">{p.pending} open</span>}
-                </div>
-                <div className="p-ctx">{p.ctx}</div>
-              </div>
-            </li>
-          ))}
-          {filtered.length === 0 && <li className="pin-empty">No one matches “{q}”.</li>}
+              </li>
+            );
+          })}
+          {!loading && filtered.length === 0 && people.length > 0 && <li className=”pin-empty”>No one matches “{q}”.</li>}
+          {!loading && people.length === 0 && <li className=”pin-empty”>No people found.</li>}
         </ul>
-        <aside className="person-detail">
-          {sel && (
-            <>
-              <div className={`p-avatar-lg status-${sel.status}`}>{initials(sel.name)}</div>
-              <h3>{sel.name}</h3>
-              <div className="p-role-lg">{sel.role} · {sel.team}</div>
-              <div className="p-ctx-lg">{sel.ctx}</div>
-
-              <div className="detail-section">
-                <div className="eyebrow">Open threads</div>
-                <ul className="detail-list">
-                  <li><span className="dot-s"/> Reforecast assumptions <span className="mono dim">waiting on you</span></li>
-                  <li><span className="dot-s sage"/> Atlas launch readiness <span className="mono dim">on track</span></li>
-                </ul>
-              </div>
-              <div className="detail-section">
-                <div className="eyebrow">Agent actions</div>
-                <div className="detail-btns">
-                  <button className="btn">Draft message</button>
-                  <button className="btn ghost">Schedule 15 min</button>
-                  <button className="btn ghost">Brief me</button>
+        <aside className=”person-detail”>
+          {sel && (() => {
+            const name = getName(sel);
+            const type = getType(sel);
+            const extraFields = Object.entries(sel.meta || {}).filter(
+              ([k]) => ![“title”, “type”, “firstName”, “lastName”, “createdAt”, “updatedAt”].includes(k)
+            );
+            return (
+              <>
+                <div className=”p-avatar-lg”>{initials(name)}</div>
+                <h3>{name}</h3>
+                {type && <div className=”p-role-lg”>{type}</div>}
+                {extraFields.length > 0 && (
+                  <div className=”detail-section”>
+                    <div className=”eyebrow”>Details</div>
+                    <ul className=”detail-list”>
+                      {extraFields.map(([k, v]) => (
+                        <li key={k}><span className=”mono dim”>{k}:</span> {String(v)}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className=”detail-section”>
+                  <div className=”eyebrow”>Agent actions</div>
+                  <div className=”detail-btns”>
+                    <button className=”btn” onClick={() => sendMessage(`brief me on ${name}`)}>Brief me</button>
+                    <button className=”btn ghost” onClick={() => { setNoteOpen(sel.id || name); setNoteText(“”); }}>Add Note</button>
+                  </div>
                 </div>
-              </div>
-            </>
-          )}
+              </>
+            );
+          })()}
         </aside>
       </div>
     </div>
