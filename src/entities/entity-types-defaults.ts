@@ -55,8 +55,30 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         description: 'People — contacts, colleagues, family, friends',
         defaultTags: ['person'],
         fields: [
-            { key: 'lastName', type: 'string', label: 'Last Name', required: false },
-            { key: 'type',     type: 'string', label: 'Type',      required: false },
+            { key: 'lastName',     type: 'string',     label: 'Last Name',        required: false },
+            { key: 'type',         type: 'string',     label: 'Relationship Type', required: false },
+            { key: 'email',        type: 'string',     label: 'Email',            required: false },
+            { key: 'phone',        type: 'string',     label: 'Phone',            required: false },
+            { key: 'handle',       type: 'string',     label: 'Handle',           required: false },
+            { key: 'company',      type: 'reference',  label: 'Company',          targetType: 'company', required: false },
+            { key: 'birthday',     type: 'date-fixed', label: 'Birthday',         required: false },
+        ],
+    },
+    {
+        name: 'company',
+        plural: 'companies',
+        directory: 'companies',
+        description: 'Companies and organizations',
+        defaultTags: ['company'],
+        fields: [
+            { key: 'website',        type: 'string',    label: 'Website',         required: false },
+            { key: 'industry',       type: 'string',    label: 'Industry',        required: false },
+            { key: 'size',           type: 'enum',      label: 'Size',
+              values: ['micro', 'small', 'medium', 'large', 'enterprise'],         required: false },
+            { key: 'phone',          type: 'string',    label: 'Phone',           required: false },
+            { key: 'email',          type: 'string',    label: 'Email',           required: false },
+            { key: 'location',       type: 'string',    label: 'Location',        required: false },
+            { key: 'primaryContact', type: 'reference', label: 'Primary Contact', targetType: 'person', required: false },
         ],
     },
     {
@@ -72,4 +94,4 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
 ];
 
 /** Names of built-in types that cannot be removed. */
-export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'person', 'todont']);
+export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'person', 'company', 'todont']);

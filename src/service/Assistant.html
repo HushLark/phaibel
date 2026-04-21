@@ -117,8 +117,23 @@ function buildTimelineGroups(calItems) {
   const dates = [0,1,2].map(i => ymd(addDays(today, i)));
   const todayStr = dates[0];
   const overdue = [], buckets = { [dates[0]]:[], [dates[1]]:[], [dates[2]]:[] };
+  const periods = [], annualItems = [];
 
   for (const ci of calItems) {
+    // Annual recurring dates — collect separately
+    if (ci.recurrence) {
+      annualItems.push({ t: ci.title, kind: 'annual', date: ci.date, daysAway: ci.daysAway ?? 0, rule: ci.rule });
+      continue;
+    }
+
+    // Period items — show as active spans (today's bucket, once)
+    if (ci.type === 'period' && ci.date && ci.endDate) {
+      if (ci.date <= todayStr && (ci.endDate >= todayStr)) {
+        periods.push({ t: ci.title, kind: 'period', startDate: ci.date, endDate: ci.endDate });
+      }
+      continue;
+    }
+
     const date = (ci.date || '').slice(0, 10);
     const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
     if (ci.entityType === 'task') {
@@ -146,10 +161,15 @@ function buildTimelineGroups(calItems) {
     return dt.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
   };
   const groups = [];
+  if (periods.length) groups.push({ key:'periods', label:'Active', sub:'ongoing', tone:'muted', items: periods });
   if (overdue.length) groups.push({ key:'overdue', label:'Overdue', sub:`${overdue.length} item${overdue.length===1?'':'s'}`, tone:'alert', items: overdue });
   groups.push({ key:'today',    label:'Today',    sub: fmt(dates[0]), tone:'accent', items: buckets[dates[0]] });
   groups.push({ key:'day1',     label: DAY_NAMES[addDays(today,1).getDay()], sub: fmt(dates[1]), tone:'', items: buckets[dates[1]] });
   groups.push({ key:'day2',     label: DAY_NAMES[addDays(today,2).getDay()], sub: fmt(dates[2]), tone:'', items: buckets[dates[2]] });
+  if (annualItems.length) {
+    const upcoming30 = annualItems.filter(a => a.daysAway <= 30).sort((a, b) => a.daysAway - b.daysAway);
+    if (upcoming30.length) groups.push({ key:'annual', label:'Upcoming', sub:'recurring dates', tone:'annual', items: upcoming30 });
+  }
   return groups;
 }
 
@@ -513,13 +533,17 @@ function Timeline({ calItems, onSendMessage }) {
                 : g.items.map((it, i) => (
                   <li key={i} className={`tl-item kind-${it.kind}`} onClick={() => onSendMessage && onSendMessage(`Tell me about "${it.t}"`)}>
                     <span className="tl-kind" aria-hidden>
-                      {it.kind === "meeting" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="2" width="8" height="7" fill="none" stroke="currentColor" strokeWidth="1"/><path d="M1 4 H9" stroke="currentColor" strokeWidth="1"/></svg>}
-                      {it.kind === "todo" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}
+                      {it.kind === "meeting"   && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="2" width="8" height="7" fill="none" stroke="currentColor" strokeWidth="1"/><path d="M1 4 H9" stroke="currentColor" strokeWidth="1"/></svg>}
+                      {it.kind === "todo"      && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}
                       {it.kind === "milestone" && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1 L9 5 L5 9 L1 5 Z" fill="currentColor"/></svg>}
+                      {it.kind === "period"    && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="3.5" width="9" height="3" rx="1" fill="currentColor" opacity="0.5"/></svg>}
+                      {it.kind === "annual"    && <span style={{fontSize:"10px",lineHeight:1}}>↻</span>}
                     </span>
                     <div className="tl-main">
                       <div className="tl-t">{it.t}</div>
                       {it.time && <div className="tl-meta"><span className="tl-time">{it.time}</span></div>}
+                      {it.kind === "period" && it.endDate && <div className="tl-meta"><span className="tl-time">until {it.endDate}</span></div>}
+                      {it.kind === "annual" && <div className="tl-meta"><span className="tl-time">{it.daysAway === 0 ? "today" : it.daysAway === 1 ? "tomorrow" : `in ${it.daysAway} days`}</span></div>}
                     </div>
                   </li>
                 ))
@@ -568,9 +592,10 @@ function Pinboard({ pins, onRemove }) {
    ============================================================ */
 function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInput, onSend, thinking, thinkingStatus, micActive, setMicActive, onPin, wsConnected, sendMessage }) {
   const tabs = [
-    { key: "chat",     label: "Chat",     count: messages.length || null },
-    { key: "people",   label: "People",   count: null },
-    { key: "settings", label: "Settings", count: null },
+    { key: "chat",      label: "Chat",      count: messages.length || null },
+    { key: "people",    label: "People",    count: null },
+    { key: "companies", label: "Companies", count: null },
+    { key: "settings",  label: "Settings",  count: null },
   ];
   return (
     <main className="right">
@@ -602,6 +627,7 @@ function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInp
         />
       )}
       {activeTab === "people" && <PeopleTab sendMessage={sendMessage} />}
+      {activeTab === "companies" && <CompaniesTab sendMessage={sendMessage} />}
       {activeTab === "settings" && <SettingsTab />}
     </main>
   );
@@ -637,6 +663,8 @@ const RELATIONSHIP_OPTIONS = [
 
 function PeopleTab({ sendMessage }) {
   const [people, setPeople] = useState([]);
+  const [companies, setCompanies] = useState([]);
+  const [calItems, setCalItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
@@ -647,16 +675,36 @@ function PeopleTab({ sendMessage }) {
   const [addRel, setAddRel] = useState("colleague");
 
   useEffect(() => {
-    fetch("/api/entities/person")
-      .then((r) => r.json())
-      .then((data) => {
-        const items = Array.isArray(data) ? data : (data.entities || data.items || []);
-        setPeople(items);
-        if (items.length > 0) setSel(items[0]);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetch("/api/entities/person").then(r => r.json()).catch(() => []),
+      fetch("/api/entities/company").then(r => r.json()).catch(() => []),
+      fetch("/api/calendar").then(r => r.json()).catch(() => []),
+    ]).then(([pData, cData, calData]) => {
+      const items = Array.isArray(pData) ? pData : (pData.entities || pData.items || []);
+      const cItems = Array.isArray(cData) ? cData : (cData.entities || cData.items || []);
+      setPeople(items);
+      setCompanies(cItems);
+      setCalItems(Array.isArray(calData) ? calData : []);
+      if (items.length > 0) setSel(items[0]);
+    }).finally(() => setLoading(false));
   }, []);
+
+  const companyMap = React.useMemo(() => {
+    const m = new Map();
+    for (const c of companies) m.set(c.id, c.meta?.title || c.id);
+    return m;
+  }, [companies]);
+
+  // Upcoming annual dates per entity id
+  const upcomingByEntity = React.useMemo(() => {
+    const m = new Map();
+    for (const ci of calItems) {
+      if (!ci.recurrence || !ci.id) continue;
+      if (!m.has(ci.id)) m.set(ci.id, []);
+      m.get(ci.id).push(ci);
+    }
+    return m;
+  }, [calItems]);
 
   const getName = (p) => p.meta?.title || [p.meta?.firstName, p.meta?.lastName].filter(Boolean).join(" ") || p.id || "Unknown";
   const getType = (p) => p.meta?.type || null;
@@ -740,6 +788,9 @@ function PeopleTab({ sendMessage }) {
             const type = getType(p);
             const id = p.id || name;
             const isNoteOpen = noteOpen === id;
+            const companyName = p.meta?.company ? companyMap.get(p.meta.company) : null;
+            const upcoming = upcomingByEntity.get(p.id) || [];
+            const soonest = upcoming.filter(u => u.daysAway <= 30).sort((a,b) => a.daysAway - b.daysAway)[0];
             return (
               <li
                 key={id}
@@ -750,6 +801,7 @@ function PeopleTab({ sendMessage }) {
                 <div className="p-main">
                   <div className="p-row">
                     <span className="p-name">{name}</span>
+                    {soonest && <span className="p-badge" title={soonest.title}>↻ {soonest.daysAway === 0 ? "today" : soonest.daysAway === 1 ? "tmrw" : `${soonest.daysAway}d`}</span>}
                     <button
                       className="btn ghost"
                       style={{ fontSize: "10px", padding: "1px 6px", marginLeft: "auto" }}
@@ -759,6 +811,7 @@ function PeopleTab({ sendMessage }) {
                     </button>
                   </div>
                   {type && <div className="p-row"><span className="p-role">{type}</span></div>}
+                  {companyName && <div className="p-row"><span className="p-company">{companyName}</span></div>}
                   {isNoteOpen && (
                     <div style={{ marginTop: "6px" }} onClick={(e) => e.stopPropagation()}>
                       <textarea
@@ -790,14 +843,32 @@ function PeopleTab({ sendMessage }) {
           {sel && (() => {
             const name = getName(sel);
             const type = getType(sel);
+            const companyName = sel.meta?.company ? companyMap.get(sel.meta.company) : null;
+            const personUpcoming = (upcomingByEntity.get(sel.id) || []).sort((a,b) => a.daysAway - b.daysAway);
             const extraFields = Object.entries(sel.meta || {}).filter(
-              ([k]) => !["title", "type", "firstName", "lastName", "createdAt", "updatedAt"].includes(k)
+              ([k]) => !["title", "type", "firstName", "lastName", "company", "createdAt", "updatedAt", "created", "updated", "id", "entityType", "tags", "summary"].includes(k)
             );
             return (
               <>
                 <div className="p-avatar-lg">{initials(name)}</div>
                 <h3>{name}</h3>
                 {type && <div className="p-role-lg">{type}</div>}
+                {companyName && (
+                  <div className="detail-section">
+                    <div className="eyebrow">Company</div>
+                    <div className="p-company-link">{companyName}</div>
+                  </div>
+                )}
+                {personUpcoming.length > 0 && (
+                  <div className="detail-section">
+                    <div className="eyebrow">Upcoming Dates</div>
+                    <ul className="detail-list">
+                      {personUpcoming.map((u, i) => (
+                        <li key={i}><span className="mono dim">↻</span> {u.title.split(' — ')[1] || u.title} · <span className="dim">{u.date}{u.daysAway === 0 ? " (today)" : u.daysAway === 1 ? " (tomorrow)" : ` (${u.daysAway}d)`}</span></li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {extraFields.length > 0 && (
                   <div className="detail-section">
                     <div className="eyebrow">Details</div>
@@ -824,6 +895,126 @@ function PeopleTab({ sendMessage }) {
   );
 }
 function initials(n) { return n.split(" ").map(s => s[0]).slice(0,2).join(""); }
+
+function CompaniesTab({ sendMessage }) {
+  const [companies, setCompanies] = useState([]);
+  const [people, setPeople] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/entities/company").then(r => r.json()).catch(() => []),
+      fetch("/api/entities/person").then(r => r.json()).catch(() => []),
+    ]).then(([cData, pData]) => {
+      const cItems = Array.isArray(cData) ? cData : (cData.entities || cData.items || []);
+      const pItems = Array.isArray(pData) ? pData : (pData.entities || pData.items || []);
+      setCompanies(cItems);
+      setPeople(pItems);
+      if (cItems.length > 0) setSel(cItems[0]);
+    }).finally(() => setLoading(false));
+  }, []);
+
+  // People grouped by their company reference
+  const peopleByCompany = React.useMemo(() => {
+    const m = new Map();
+    for (const p of people) {
+      const cid = p.meta?.company;
+      if (!cid) continue;
+      if (!m.has(cid)) m.set(cid, []);
+      m.get(cid).push(p);
+    }
+    return m;
+  }, [people]);
+
+  const getName = (e) => e.meta?.title || e.id || "Unknown";
+  const filtered = companies.filter(c => getName(c).toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div className="people">
+      <header className="sub-head">
+        <div>
+          <div className="chat-title">
+            <span className="serif">Companies</span>
+            <span className="chat-sep">·</span>
+            <span className="mono chat-tid">{loading ? "loading…" : `${companies.length} companies`}</span>
+          </div>
+          <div className="chat-sub">Organizations and their people.</div>
+        </div>
+        <div className="search">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16 16"/></svg>
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search companies…" />
+        </div>
+      </header>
+      <div className="people-body">
+        <ul className="people-list">
+          {loading && <li className="pin-empty">Loading…</li>}
+          {!loading && filtered.map((c) => {
+            const name = getName(c);
+            const id = c.id || name;
+            const personCount = (peopleByCompany.get(c.id) || []).length;
+            return (
+              <li key={id} className={`person ${sel?.id === c.id ? "on" : ""}`} onClick={() => setSel(c)}>
+                <div className="p-avatar">{name.slice(0,2).toUpperCase()}</div>
+                <div className="p-main">
+                  <div className="p-row">
+                    <span className="p-name">{name}</span>
+                    {personCount > 0 && <span className="p-badge">{personCount} {personCount === 1 ? "person" : "people"}</span>}
+                  </div>
+                  {c.meta?.industry && <div className="p-row"><span className="p-role">{c.meta.industry}{c.meta.size ? ` · ${c.meta.size}` : ""}</span></div>}
+                </div>
+              </li>
+            );
+          })}
+          {!loading && filtered.length === 0 && companies.length > 0 && <li className="pin-empty">No companies match "{q}".</li>}
+          {!loading && companies.length === 0 && <li className="pin-empty">No companies found. Ask the assistant to add one.</li>}
+        </ul>
+        <aside className="person-detail">
+          {sel && (() => {
+            const name = getName(sel);
+            const companyPeople = peopleByCompany.get(sel.id) || [];
+            const meta = sel.meta || {};
+            return (
+              <>
+                <div className="p-avatar-lg">{name.slice(0,2).toUpperCase()}</div>
+                <h3>{name}</h3>
+                {meta.industry && <div className="p-role-lg">{meta.industry}{meta.size ? ` · ${meta.size}` : ""}</div>}
+                {(meta.website || meta.location || meta.email || meta.phone) && (
+                  <div className="detail-section">
+                    <div className="eyebrow">Contact</div>
+                    <ul className="detail-list">
+                      {meta.website && <li><span className="mono dim">web:</span> {String(meta.website)}</li>}
+                      {meta.location && <li><span className="mono dim">loc:</span> {String(meta.location)}</li>}
+                      {meta.email && <li><span className="mono dim">email:</span> {String(meta.email)}</li>}
+                      {meta.phone && <li><span className="mono dim">phone:</span> {String(meta.phone)}</li>}
+                    </ul>
+                  </div>
+                )}
+                {companyPeople.length > 0 && (
+                  <div className="detail-section">
+                    <div className="eyebrow">People</div>
+                    <ul className="detail-list">
+                      {companyPeople.map(p => {
+                        const pname = p.meta?.title || p.id;
+                        const ptype = p.meta?.type || "";
+                        return <li key={p.id}><span>{pname}</span>{ptype ? <span className="dim"> · {ptype}</span> : null}</li>;
+                      })}
+                    </ul>
+                  </div>
+                )}
+                <div className="detail-actions" style={{ marginTop: "16px" }}>
+                  <button className="btn" onClick={() => sendMessage(`Tell me about ${name}`)}>Brief me</button>
+                </div>
+              </>
+            );
+          })()}
+          {!sel && <div className="pin-empty" style={{ padding: "24px 16px" }}>Select a company to view details.</div>}
+        </aside>
+      </div>
+    </div>
+  );
+}
 
 const CAP_LABELS = {
   reason: "Reasoning", summarize: "Summarize", categorize: "Categorize",
@@ -1576,8 +1767,14 @@ function GlobalStyle() {
         border-left: 2px solid var(--line);
         padding-left: 10px;
       }
-      .tl-group.alert { border-left-color: var(--oxblood); }
+      .tl-group.alert  { border-left-color: var(--oxblood); }
       .tl-group.accent { border-left-color: var(--gold); }
+      .tl-group.muted  { border-left-color: var(--muted-2); opacity: 0.8; }
+      .tl-group.annual { border-left-color: var(--sage); }
+      .tl-group.annual .tl-label { color: var(--sage); }
+      .tl-item.kind-period .tl-kind { color: var(--muted-2); }
+      .tl-item.kind-annual .tl-kind { color: var(--sage); }
+      .tl-item.kind-period .tl-t { color: var(--ink-3); font-style: italic; }
       .tl-head {
         display: flex; align-items: baseline; justify-content: space-between;
         margin-bottom: 4px;
@@ -1902,11 +2099,15 @@ function GlobalStyle() {
         flex-shrink: 0;
       }
       .p-role { font-size: 11.5px; color: var(--muted); }
+      .p-ctx {
+        font-size: 11.5px; color: var(--ink-3);
+        line-height: 1.35;
+      }
       .p-badge {
         font-size: 10px;
-        color: var(--oxblood);
-        background: color-mix(in oklab, var(--oxblood) 10%, var(--paper));
-        border: 1px solid color-mix(in oklab, var(--oxblood) 30%, var(--line));
+        color: var(--sage);
+        background: color-mix(in oklab, var(--sage) 12%, var(--paper));
+        border: 1px solid color-mix(in oklab, var(--sage) 30%, var(--line));
         border-radius: 999px;
         padding: 1px 7px;
         font-family: var(--font-mono);
@@ -1914,9 +2115,10 @@ function GlobalStyle() {
         line-height: 1.3;
         white-space: nowrap;
       }
-      .p-ctx {
-        font-size: 11.5px; color: var(--ink-3);
-        line-height: 1.35;
+      .p-company { font-size: 11px; color: var(--muted-2); font-family: var(--font-mono); }
+      .p-company-link {
+        font-size: 13px; color: var(--accent);
+        padding: 6px 0;
       }
 
       .person-detail {

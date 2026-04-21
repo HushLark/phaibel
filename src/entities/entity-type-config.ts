@@ -15,7 +15,12 @@ import { getVaultRoot } from '../state/manager.js';
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'duration' | 'enum' | 'array' | 'object';
+export type FieldType =
+    | 'string' | 'number' | 'boolean'
+    | 'date' | 'datetime' | 'duration' | 'time'
+    | 'date-fixed' | 'date-floating'
+    | 'reference'
+    | 'enum' | 'array' | 'object';
 
 export interface FieldDef {
     key: string;
@@ -24,6 +29,7 @@ export interface FieldDef {
     required?: boolean;
     default?: unknown;
     values?: string[];          // for enum fields
+    targetType?: string;        // for reference fields — which entity type to target
 }
 
 /** Maps a field from the template entity to the spawned child entity */
@@ -61,7 +67,9 @@ export interface EntityTypeConfig {
     completionField?: string;   // e.g. 'status'
     completionValue?: string;   // e.g. 'done'
     spawner?: SpawnerConfig;    // present only on entities that spawn children
-    calendarDateField?: string; // field key used for calendar placement (must be type 'date' or 'datetime')
+    calendarDateField?: string; // field key used for calendar start (date or datetime)
+    calendarEndField?: string;  // field key for period end (date or datetime)
+    calendarDurationField?: string; // field key for period duration (duration)
 }
 
 interface EntityTypesFile {
@@ -107,6 +115,14 @@ export async function loadEntityTypes(): Promise<EntityTypeConfig[]> {
             if (!builtin) continue;
             if (saved.calendarDateField === undefined && builtin.calendarDateField) {
                 saved.calendarDateField = builtin.calendarDateField;
+                dirty = true;
+            }
+            if (saved.calendarEndField === undefined && builtin.calendarEndField) {
+                saved.calendarEndField = builtin.calendarEndField;
+                dirty = true;
+            }
+            if (saved.calendarDurationField === undefined && builtin.calendarDurationField) {
+                saved.calendarDurationField = builtin.calendarDurationField;
                 dirty = true;
             }
             if (saved.completionField === undefined && builtin.completionField) {
@@ -224,8 +240,9 @@ export async function addEntityType(config: EntityTypeConfig): Promise<void> {
         if (!field) {
             throw new Error(`calendarDateField "${config.calendarDateField}" does not match any field in this entity type.`);
         }
-        if (field.type !== 'date' && field.type !== 'datetime') {
-            throw new Error(`calendarDateField "${config.calendarDateField}" must be a date or datetime field, got "${field.type}".`);
+        const calendarTypes: FieldType[] = ['date', 'datetime', 'date-fixed', 'date-floating'];
+        if (!calendarTypes.includes(field.type)) {
+            throw new Error(`calendarDateField "${config.calendarDateField}" must be a date, datetime, date-fixed, or date-floating field, got "${field.type}".`);
         }
     }
     types.push(config);

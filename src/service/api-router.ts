@@ -44,6 +44,7 @@ import { getEntityIndex } from '../entities/entity-index.js';
 import { validateEntity, formatValidationErrors } from '../entities/entity-validator.js';
 import { bootstrapFeral, type FeralRuntime } from '../feral/bootstrap.js';
 import { debug } from '../utils/debug.js';
+import { upcomingAnnualDates } from '../context/annual-date-resolver.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -101,37 +102,84 @@ export async function handleApiRoute(
 
     // ── Calendar ────────────────────────────────────────────────────
 
-    // GET /api/calendar — all entities with a calendarDateField, normalized for timeline display
+    // GET /api/calendar — all dated entities for timeline display
     if (method === 'GET' && pathname === '/api/calendar') {
         const types = await loadEntityTypes();
         const calendarTypes = types.filter(t => t.calendarDateField);
         const items: Record<string, unknown>[] = [];
 
+        // Build field map for annual date scanning
+        const typeFieldMap: Record<string, Array<{ key: string; label?: string; type: string }>> = {};
+        for (const t of types) {
+            typeFieldMap[t.name] = t.fields.map(f => ({ key: f.key, label: f.label, type: f.type }));
+        }
+
+        // Gather all entities for annual date scanning
+        const allEntitiesForAnnual: Array<{ id: string; type: string; title: string; meta: Record<string, unknown> }> = [];
+
         for (const t of calendarTypes) {
             try {
                 const entities = await listEntities(t.name, { metaOnly: true });
                 for (const e of entities) {
-                    // Skip completed entities
                     if (t.completionField && e.meta[t.completionField] === (t.completionValue ?? 'done')) continue;
+
+                    allEntitiesForAnnual.push({ id: String(e.meta.id ?? ''), type: t.name, title: String(e.meta.title ?? ''), meta: e.meta });
 
                     const rawDate = e.meta[t.calendarDateField!];
                     if (!rawDate || typeof rawDate !== 'string') continue;
-                    // Extract YYYY-MM-DD from date or datetime
                     const date = rawDate.slice(0, 10);
                     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
 
-                    items.push({
+                    const item: Record<string, unknown> = {
                         entityType: t.name,
                         id: e.meta.id,
                         title: e.meta.title,
                         date,
                         dateField: t.calendarDateField,
                         meta: e.meta,
-                    });
+                    };
+
+                    // Period item: has calendarEndField or calendarDurationField
+                    if (t.calendarEndField || t.calendarDurationField) {
+                        item.type = 'period';
+                        if (t.calendarEndField) item.endDate = (e.meta[t.calendarEndField] as string | undefined)?.slice(0, 10);
+                        if (t.calendarDurationField) item.duration = e.meta[t.calendarDurationField];
+                    }
+
+                    items.push(item);
                 }
             } catch {
                 // Entity dir may not exist yet — skip
             }
+        }
+
+        // Also scan all non-calendar types for annual date fields
+        for (const t of types.filter(t => !t.calendarDateField)) {
+            const hasAnnualFields = t.fields.some(f => f.type === 'date-fixed' || f.type === 'date-floating');
+            if (!hasAnnualFields) continue;
+            try {
+                const entities = await listEntities(t.name, { metaOnly: true });
+                for (const e of entities) {
+                    allEntitiesForAnnual.push({ id: String(e.meta.id ?? ''), type: t.name, title: String(e.meta.title ?? ''), meta: e.meta });
+                }
+            } catch { /* skip */ }
+        }
+
+        // Resolve upcoming annual dates (within 60 days)
+        const annualItems = upcomingAnnualDates(allEntitiesForAnnual, typeFieldMap, 60);
+        for (const a of annualItems) {
+            items.push({
+                type: a.recurrenceType,
+                entityType: a.entityType,
+                id: a.entityId,
+                title: `${a.title} — ${a.fieldLabel}`,
+                date: a.date,
+                daysAway: a.daysAway,
+                fieldKey: a.fieldKey,
+                rule: a.rule,
+                recurrence: true,
+                meta: {},
+            });
         }
 
         json(res, 200, items);

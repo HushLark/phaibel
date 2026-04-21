@@ -185,6 +185,25 @@ export class EntityIndex {
                                 });
                             }
                         }
+
+                        // reference-typed schema fields → typed graph edges
+                        const referenceFields = typeConfig.fields.filter(f => f.type === 'reference');
+                        for (const rf of referenceFields) {
+                            const refVal = meta[rf.key];
+                            if (typeof refVal === 'string' && refVal) {
+                                const targetKey = rf.targetType
+                                    ? EntityIndex.key(rf.targetType, refVal)
+                                    : refVal;
+                                if (this.nodes.has(targetKey)) {
+                                    this.edges.push({
+                                        source: sourceKey,
+                                        target: targetKey,
+                                        edgeType: 'link',
+                                        label: rf.key,
+                                    });
+                                }
+                            }
+                        }
                     } catch (err) {
                         debug('index', `Failed to extract refs from ${filepath}: ${err}`);
                     }
