@@ -161,7 +161,12 @@ const { useState, useEffect, useRef, useMemo } = React;
 function App() {
   const [tweaks, setTweaks] = useState(TWEAKS);
   const [tweaksOpen, setTweaksOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("phaibel_messages") || "[]"); } catch { return []; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("phaibel_messages", JSON.stringify(messages.slice(-20))); } catch {}
+  }, [messages]);
   const [pinboard, setPinboard] = useState(loadStoredPins);
   const [input, setInput] = useState("");
   const [micActive, setMicActive] = useState(tweaks.micActive);
@@ -411,17 +416,6 @@ function LeftPanel({ pinboard, onRemovePin, calItems, agentName, userName, onSen
       <Timeline calItems={calItems} onSendMessage={onSendMessage} />
       <Pinboard pins={pinboard} onRemove={onRemovePin} />
 
-      <footer className="left-foot">
-        <div className="who">
-          <div className="avatar-ex">{initials(userName)}</div>
-          <div>
-            <div className="who-name">{userName || "You"}</div>
-          </div>
-        </div>
-        <button className="icon-btn" title="Settings" aria-label="Settings">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
-        </button>
-      </footer>
     </aside>
   );
 }
@@ -636,13 +630,21 @@ function ChatTab({ messages, pinboard, input, setInput, onSend, thinking, thinki
   );
 }
 
+const RELATIONSHIP_OPTIONS = [
+  "colleague", "friend", "family", "manager", "direct report",
+  "client", "vendor", "mentor", "partner", "acquaintance", "other",
+];
+
 function PeopleTab({ sendMessage }) {
   const [people, setPeople] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(null);
-  const [noteOpen, setNoteOpen] = useState(null); // person id with open note box
+  const [noteOpen, setNoteOpen] = useState(null);
   const [noteText, setNoteText] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [addName, setAddName] = useState("");
+  const [addRel, setAddRel] = useState("colleague");
 
   useEffect(() => {
     fetch("/api/entities/person")
@@ -681,6 +683,15 @@ function PeopleTab({ sendMessage }) {
     setNoteText("");
   };
 
+  const submitAddPerson = () => {
+    const name = addName.trim();
+    if (!name) return;
+    sendMessage(`Add a new person called ${name}. Their relationship to me is ${addRel}.`);
+    setAddOpen(false);
+    setAddName("");
+    setAddRel("colleague");
+  };
+
   return (
     <div className="people">
       <header className="sub-head">
@@ -692,11 +703,35 @@ function PeopleTab({ sendMessage }) {
           </div>
           <div className="chat-sub">Agent has context on each person.</div>
         </div>
-        <div className="search">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16 16"/></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people…" />
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+          <div className="search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6"><circle cx="11" cy="11" r="7"/><path d="M20 20 L16 16"/></svg>
+            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search people…" />
+          </div>
+          <button className="btn" style={{ whiteSpace: "nowrap", fontSize: "11.5px" }} onClick={() => { setAddOpen(o => !o); setAddName(""); setAddRel("colleague"); }}>
+            {addOpen ? "Cancel" : "+ Add Person"}
+          </button>
         </div>
       </header>
+      {addOpen && (
+        <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)", display: "flex", flexDirection: "column", gap: "8px" }}>
+          <input
+            autoFocus
+            className="field-input"
+            value={addName}
+            onChange={(e) => setAddName(e.target.value)}
+            placeholder="Full name"
+            onKeyDown={(e) => { if (e.key === "Enter") submitAddPerson(); if (e.key === "Escape") setAddOpen(false); }}
+          />
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <label style={{ fontSize: "11.5px", color: "var(--muted)", whiteSpace: "nowrap" }}>Relationship</label>
+            <select className="field-input" value={addRel} onChange={(e) => setAddRel(e.target.value)} style={{ flex: 1 }}>
+              {RELATIONSHIP_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+            </select>
+            <button className="btn" onClick={submitAddPerson} disabled={!addName.trim()}>Add</button>
+          </div>
+        </div>
+      )}
       <div className="people-body">
         <ul className="people-list">
           {loading && <li className="pin-empty">Loading…</li>}
@@ -815,6 +850,13 @@ function SettingsTab() {
   // Models state
   const [models, setModels] = useState([]);
 
+  // Calendars state
+  const [calendars, setCalendars] = useState([]);
+  const [calName, setCalName] = useState("");
+  const [calUrl, setCalUrl] = useState("");
+  const [calSaving, setCalSaving] = useState(false);
+  const [calError, setCalError] = useState(null);
+
   // Status state
   const [status, setStatus] = useState(null);
 
@@ -829,6 +871,7 @@ function SettingsTab() {
     fetch("/api/scheduler").then(r => r.json()).then(d => setSchedulerJobs(d.jobs || [])).catch(() => {});
     fetch("/api/models").then(r => r.json()).then(setModels).catch(() => {});
     fetch("/api/status").then(r => r.json()).then(setStatus).catch(() => {});
+    fetch("/api/calendars").then(r => r.json()).then(setCalendars).catch(() => {});
   }, []);
 
   const saveProfile = async () => {
@@ -862,9 +905,39 @@ function SettingsTab() {
     fetch("/api/scheduler").then(r => r.json()).then(d => setSchedulerJobs(d.jobs || [])).catch(() => {});
   };
 
+  const addCalendar = async () => {
+    const name = calName.trim();
+    const url = calUrl.trim();
+    if (!name || !url) return;
+    setCalSaving(true);
+    setCalError(null);
+    try {
+      const r = await fetch("/api/calendars", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, url }),
+      });
+      const d = await r.json();
+      if (!r.ok) { setCalError(d.error || "Failed to save"); return; }
+      setCalendars(prev => [...prev, { id: d.id, name }]);
+      setCalName("");
+      setCalUrl("");
+    } catch (e) {
+      setCalError(String(e));
+    } finally {
+      setCalSaving(false);
+    }
+  };
+
+  const removeCalendar = async (id) => {
+    await fetch(`/api/calendars/${encodeURIComponent(id)}`, { method: "DELETE" });
+    setCalendars(prev => prev.filter(c => c.id !== id));
+  };
+
   const sections = [
     { key: "profile",   label: "Profile",    sub: "Your name and preferences" },
     { key: "assistant", label: "Assistant",  sub: "Name and personality" },
+    { key: "calendars", label: "Calendars",  sub: "ICS feed subscriptions" },
     { key: "scheduler", label: "Scheduler",  sub: "Background jobs" },
     { key: "models",    label: "Models",     sub: "LLM configuration" },
     { key: "foundation",label: "Foundation", sub: "Read-only info" },
@@ -927,6 +1000,53 @@ function SettingsTab() {
               <div style={{ marginTop: "12px" }}>
                 <button className="btn" onClick={saveAssistant}>{assistantSaved ? "Saved ✓" : "Save"}</button>
               </div>
+            </section>
+          )}
+
+          {section === "calendars" && (
+            <section className="settings-card wide">
+              <div className="eyebrow">Calendars</div>
+              <h4>ICS Feed Subscriptions</h4>
+              <p className="settings-hint">Add private read-only ICS links from Google Calendar or Outlook. Give each one a short name like <span className="mono">work</span> or <span className="mono">personal</span>.</p>
+
+              {calendars.length > 0 && (
+                <ul className="kv-list" style={{ marginBottom: "16px" }}>
+                  {calendars.map(c => (
+                    <li key={c.id}>
+                      <span className="mono">{c.name}</span>
+                      <button
+                        className="btn ghost"
+                        style={{ fontSize: "10px", padding: "2px 8px", marginLeft: "auto", color: "var(--muted)" }}
+                        onClick={() => removeCalendar(c.id)}
+                      >Remove</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {calendars.length === 0 && <p className="settings-hint dim" style={{ marginBottom: "16px" }}>No calendars added yet.</p>}
+
+              <div className="eyebrow" style={{ marginBottom: "8px" }}>Add calendar</div>
+              <Field
+                label="Name"
+                value={calName}
+                onChange={setCalName}
+                placeholder="e.g. work, personal, family"
+              />
+              <Field
+                label="Private ICS URL"
+                value={calUrl}
+                onChange={setCalUrl}
+                placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
+                mono
+                hint="Google: Settings > your calendar > Secret address in iCal format. Outlook: Settings > View all Outlook settings > Calendar > Shared calendars > Publish."
+              />
+              {calError && <p style={{ color: "var(--oxblood)", fontSize: "11.5px", margin: "4px 0" }}>{calError}</p>}
+              <button
+                className="btn"
+                onClick={addCalendar}
+                disabled={calSaving || !calName.trim() || !calUrl.trim()}
+                style={{ marginTop: "8px" }}
+              >{calSaving ? "Saving…" : "Add Calendar"}</button>
             </section>
           )}
 

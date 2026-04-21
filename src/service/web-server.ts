@@ -253,6 +253,36 @@ export class WebServer {
             return;
         }
 
+        if (req.method === 'POST' && url.pathname === '/api/calendars') {
+            try {
+                const body = JSON.parse(await this.readBody(req)) as { name?: string; url?: string };
+                if (!body.name || !body.url) { res.writeHead(400); res.end(JSON.stringify({ error: 'name and url required' })); return; }
+                const cfg = await loadCalConfig();
+                const id = body.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+                if (cfg.calendars.some(c => c.id === id)) { res.writeHead(409); res.end(JSON.stringify({ error: `Calendar "${body.name}" already exists` })); return; }
+                cfg.calendars.push({ id, name: body.name, url: body.url });
+                await saveCalConfig(cfg);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, id, name: body.name }));
+            } catch (err) { res.writeHead(400); res.end(JSON.stringify({ error: String(err) })); }
+            return;
+        }
+
+        const calDeleteMatch = url.pathname.match(/^\/api\/calendars\/([^/]+)$/);
+        if (req.method === 'DELETE' && calDeleteMatch) {
+            try {
+                const id = decodeURIComponent(calDeleteMatch[1]);
+                const cfg = await loadCalConfig();
+                const idx = cfg.calendars.findIndex(c => c.id === id);
+                if (idx === -1) { res.writeHead(404); res.end(JSON.stringify({ error: 'Not found' })); return; }
+                cfg.calendars.splice(idx, 1);
+                await saveCalConfig(cfg);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true }));
+            } catch (err) { res.writeHead(400); res.end(JSON.stringify({ error: String(err) })); }
+            return;
+        }
+
         if (req.method === 'GET' && url.pathname === '/api/today') {
             const tasks = await this.getTodayTasks();
             res.writeHead(200, { 'Content-Type': 'application/json' });
