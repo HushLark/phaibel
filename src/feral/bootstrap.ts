@@ -187,6 +187,9 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         { A2ASendTaskNodeCode },
         { FcpProbeNodeCode },
         { FcpFetchNodeCode },
+        { CxfDiscoverNodeCode },
+        { CxfPullNodeCode },
+        { CxfPushNodeCode },
     ] = await Promise.all([
         import('./node-code/data/read-file-node-code.js'),
         import('./node-code/genai/write-file-node-code.js'),
@@ -207,6 +210,9 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         import('./node-code/a2a/a2a-send-task-node-code.js'),
         import('./node-code/context/fcp-probe-node-code.js'),
         import('./node-code/context/fcp-fetch-node-code.js'),
+        import('./node-code/context/cxf-discover-node-code.js'),
+        import('./node-code/context/cxf-pull-node-code.js'),
+        import('./node-code/context/cxf-push-node-code.js'),
     ]);
 
     return [
@@ -229,6 +235,9 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         new A2ASendTaskNodeCode(),
         new FcpProbeNodeCode(),
         new FcpFetchNodeCode(),
+        new CxfDiscoverNodeCode(),
+        new CxfPullNodeCode(),
+        new CxfPushNodeCode(),
     ];
 }
 
@@ -246,6 +255,7 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         { McpCatalogSource },
         { A2ACatalogSource },
         { FcpCatalogSource },
+        { CxfCatalogSource },
     ] = await Promise.all([
         import('./catalog/slack-catalog-source.js'),
         import('./catalog/agent-catalog-source.js'),
@@ -256,6 +266,7 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         import('./catalog/mcp-catalog-source.js'),
         import('./catalog/a2a-catalog-source.js'),
         import('./catalog/fcp-catalog-source.js'),
+        import('./catalog/cxf-catalog-source.js'),
     ]);
 
     return [
@@ -268,6 +279,7 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         new McpCatalogSource(mcpTools as any),
         new A2ACatalogSource(a2aAgents as any),
         new FcpCatalogSource(),
+        new CxfCatalogSource(),
     ];
 }
 

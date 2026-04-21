@@ -18,6 +18,9 @@ import { getEffectiveConfig } from '../config.js';
 import { LLM_CAPABILITIES } from '../schemas/index.js';
 import { getCronScheduler, loadCronConfig, saveCronConfig } from './cron/scheduler.js';
 import { loadCalConfig, saveCalConfig } from '../commands/cal.js';
+import { serializeToCxf } from '../cxf/cxf-serializer.js';
+import { recordSync, shouldIncludeTombstone } from '../cxf/cxf-sync-state.js';
+import { loadSystems, addSystem, removeSystem } from '../cxf/cxf-systems.js';
 import { handleApiRoute } from './api-router.js';
 import { handleCxRoute } from '../cxms/cx-router.js';
 import { handlePiRoute } from '../introspection/pi-router.js';
@@ -280,6 +283,101 @@ export class WebServer {
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ ok: true }));
             } catch (err) { res.writeHead(400); res.end(JSON.stringify({ error: String(err) })); }
+            return;
+        }
+
+        // ── CXF export ────────────────────────────────────────────────
+
+        if (req.method === 'GET' && url.pathname === '/api/cxf') {
+            try {
+                const since = url.searchParams.get('since');
+                const consumer = url.searchParams.get('consumer');
+                const typesParam = url.searchParams.get('types');
+                const includeSchema = url.searchParams.get('include_schema') !== 'false';
+                const includeGraph = url.searchParams.get('include_graph') !== 'false';
+                const excludeArchived = url.searchParams.get('exclude_archived') === 'true';
+                const tagsParam = url.searchParams.get('tags');
+                const filterTags = tagsParam ? tagsParam.split(',').map(t => t.trim()).filter(Boolean) : [];
+                const filterTypes = typesParam ? typesParam.split(',').map(t => t.trim()).filter(Boolean) : [];
+                const sinceUnix = since ? parseInt(since, 10) : null;
+                const sinceIso = sinceUnix ? new Date(sinceUnix * 1000).toISOString() : null;
+
+                const idx = getEntityIndex();
+                if (!idx.isBuilt) await idx.build();
+                const [entityTypes, state] = await Promise.all([loadEntityTypes(), loadState()]);
+
+                let nodes = idx.getNodes();
+
+                if (filterTypes.length) nodes = nodes.filter(n => filterTypes.includes(n.type));
+                if (sinceIso) nodes = nodes.filter(n => {
+                    const upd = (n.meta.updated ?? n.meta.created) as string | undefined;
+                    return upd ? upd >= sinceIso : true;
+                });
+                if (filterTags.length) nodes = nodes.filter(n => filterTags.every(t => n.tags.includes(t)));
+
+                const exportTime = Math.floor(Date.now() / 1000);
+                const vaultId = `vault-${(state.userName ?? 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '-')}-01`;
+
+                const result = serializeToCxf(nodes, entityTypes, [], {
+                    vaultId,
+                    ownerName: state.userName ?? 'Unknown',
+                    ownerEmail: state.personalCalUrl ? '' : 'unknown@cxf.local',
+                    exportTime,
+                    includeSchema,
+                    includeGraph,
+                    includeArchived: !excludeArchived,
+                });
+
+                if (consumer) await recordSync(consumer);
+
+                res.writeHead(200, {
+                    'Content-Type': 'text/cxf; charset=utf-8',
+                    'X-CXF-Export-Time': String(exportTime),
+                    'X-CXF-Entity-Count': String(result.entityCount),
+                    'X-CXF-Schema-Count': String(result.schemaCount),
+                });
+                res.end(result.document);
+            } catch (err) {
+                res.writeHead(500); res.end(JSON.stringify({ error: String(err) }));
+            }
+            return;
+        }
+
+        // ── CXF systems registry ──────────────────────────────────────
+
+        if (req.method === 'GET' && url.pathname === '/api/cxf/systems') {
+            const systems = await loadSystems();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(systems));
+            return;
+        }
+
+        if (req.method === 'POST' && url.pathname === '/api/cxf/systems') {
+            try {
+                const body = JSON.parse(await this.readBody(req)) as Record<string, unknown>;
+                if (!body.id || !body.name || !body.url) {
+                    res.writeHead(400); res.end(JSON.stringify({ error: 'id, name, and url required' })); return;
+                }
+                await addSystem({
+                    id: String(body.id),
+                    name: String(body.name),
+                    url: String(body.url),
+                    cxfPath: body.cxfPath ? String(body.cxfPath) : undefined,
+                    mode: body.mode === 'readwrite' ? 'readwrite' : 'read',
+                    enabled: body.enabled !== false,
+                });
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true }));
+            } catch (err) { res.writeHead(400); res.end(JSON.stringify({ error: String(err) })); }
+            return;
+        }
+
+        const cxfSystemDeleteMatch = url.pathname.match(/^\/api\/cxf\/systems\/([^/]+)$/);
+        if (req.method === 'DELETE' && cxfSystemDeleteMatch) {
+            const id = decodeURIComponent(cxfSystemDeleteMatch[1]);
+            const removed = await removeSystem(id);
+            res.writeHead(removed ? 200 : 404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: removed }));
             return;
         }
 

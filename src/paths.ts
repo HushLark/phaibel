@@ -156,3 +156,11 @@ export async function getLogsDir(): Promise<string> {
 export async function getPampDir(): Promise<string> {
     return join(await getVaultConfigDir(), 'pamp');
 }
+
+export async function getCxfSyncStatePath(): Promise<string> {
+    return join(await getVaultConfigDir(), 'cxf-sync.json');
+}
+
+export async function getCxfSystemsPath(): Promise<string> {
+    return join(await getVaultConfigDir(), 'cxf-systems.json');
+}
