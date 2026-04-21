@@ -13,6 +13,7 @@ import { feralChatHeadless, type ChatHistoryEntry, type ChatResult } from '../co
 import { getQueueManager } from './queue/manager.js';
 import { getEntityIndex } from '../entities/entity-index.js';
 import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, saveProfile, loadState } from '../state/manager.js';
+import { refreshSystemPromptCache } from '../llm/router.js';
 import { getEffectiveConfig } from '../config.js';
 import { LLM_CAPABILITIES } from '../schemas/index.js';
 import { getCronScheduler, loadCronConfig, saveCronConfig } from './cron/scheduler.js';
@@ -391,6 +392,7 @@ export class WebServer {
                     gender: body.gender ?? state.gender,
                 };
                 await saveProfile(updated);
+                refreshSystemPromptCache().catch(() => {});
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ ok: true, ...updated }));
             } catch (err) {
@@ -787,7 +789,7 @@ This vault is the agent's memory. Content is stored as Markdown files with YAML 
         await saveProfile({
             userName: body.userName,
             agentName: body.agentName,
-            personality: body.personality as 'butler' | 'rockstar' | 'executive' | 'friend',
+            personality: body.personality as 'butler' | 'rockstar' | 'executive' | 'friend' | 'pip' | 'emm',
             gender: body.gender as 'male' | 'female' | 'other',
             workType: body.answers?.work || undefined,
             familySituation: body.answers?.relationships || undefined,

@@ -251,7 +251,7 @@ export async function isInterviewComplete(): Promise<boolean> {
 export async function saveProfile(profile: {
     userName: string;
     agentName?: string;
-    personality?: 'butler' | 'rockstar' | 'executive' | 'friend';
+    personality?: 'butler' | 'rockstar' | 'executive' | 'friend' | 'pip' | 'emm';
     honorific?: string;
     gender?: 'male' | 'female' | 'other';
     workType?: string;

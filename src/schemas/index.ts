@@ -57,7 +57,7 @@ export const StateSchema = z.object({
     lastUsed: z.string().optional(),
     userName: z.string().optional(),
     agentName: z.string().optional(),
-    personality: z.enum(['butler', 'rockstar', 'executive', 'friend']).optional(),
+    personality: z.enum(['butler', 'rockstar', 'executive', 'friend', 'pip', 'emm']).optional(),
     honorific: z.string().optional(),
     gender: z.enum(['male', 'female', 'other']).optional(),
     workType: z.string().optional(),

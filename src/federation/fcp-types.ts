@@ -27,18 +27,32 @@ export type Actor = z.infer<typeof ActorSchema>;
 
 // ── Probe — initial context query (ICQ) ─────────────────────────────────────
 
+/**
+ * Probe modes:
+ *   keyword — full-text search using provided keywords (default)
+ *   date    — return entities for a specific date or range (use time_range)
+ *   todo    — return open tasks / action items
+ *   latest  — return most recently created/updated entities
+ */
+export const ProbeModeSchema = z.enum(['keyword', 'date', 'todo', 'latest']);
+export type ProbeMode = z.infer<typeof ProbeModeSchema>;
+
 export const ProbeQuerySchema = z.object({
-    /** Extracted keywords (stop words already removed by caller). */
-    keywords: z.array(z.string().min(1)).min(1).max(32),
+    /** Probe mode — controls how the source interprets the request. Default: "keyword". */
+    mode: ProbeModeSchema.default('keyword'),
+    /** Extracted keywords (stop words already removed). Required for mode="keyword", ignored otherwise. */
+    keywords: z.array(z.string().min(1)).max(32).default([]),
     /** Optional hints to narrow the search. */
     hints: z.object({
         entity_types: z.array(z.string()).optional(),
     }).optional(),
-    /** Optional time range — ISO-8601 dates. */
+    /** Optional time range — ISO-8601 dates. Used for mode="date". */
     time_range: z.object({
         from: z.string().optional(),
         to: z.string().optional(),
     }).optional(),
+    /** Max results to return. Used for mode="latest". Default: 10. */
+    limit: z.number().int().positive().max(50).default(10),
 });
 export type ProbeQuery = z.infer<typeof ProbeQuerySchema>;
 

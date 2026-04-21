@@ -34,6 +34,8 @@ import { classifyScope } from '../context/scope-classifier.js';
 import { analyzeQueryRelevance, filterCatalogNodes } from '../context/query-relevance.js';
 import { buildMomentContext, momentToGlobals } from '../context/moment.js';
 import { updateProfile, validateScores, invalidateProfileCache, type BigFiveSample } from '../personality/big-five.js';
+import { probeAll, probeByDate, probeTodos, probeLatest } from '../federation/federator.js';
+import { getEnabledSources } from '../federation/source-registry.js';
 import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../entities/entity.js';
 import { getEntityType } from '../entities/entity-type-config.js';
 import type { LLMProvider } from '../llm/types.js';
@@ -234,15 +236,50 @@ async function _feralChatHeadlessInner(
     const globalsMap = momentToGlobals(moment, userName);
 
     const scope = classifyScope(userInput, entityTypes, entityIndex.getStats());
-    const contextTree = await buildContextTree(scope, globalsMap);
+
+    // Deterministic pre-filter runs here so keywords are available for FCP probe
+    const relevance = analyzeQueryRelevance(userInput, entityTypes, entityIndex);
+
+    // Run context tree build and FCP probe fan-out in parallel
+    const [contextTree, fcpRelevance] = await Promise.all([
+        buildContextTree(scope, globalsMap),
+        (async () => {
+            try {
+                const sources = await getEnabledSources();
+                if (sources.length === 0) return null;
+                const inputLower = userInput.toLowerCase();
+                // Route to the right probe mode based on query intent
+                if (/\btodo(s)?\b|open tasks?|action items?/i.test(inputLower)) {
+                    return await probeTodos();
+                }
+                if (/\blatest\b|recent(ly)?\b|last \d+ days?\b/i.test(inputLower)) {
+                    return await probeLatest();
+                }
+                const dateMatch = inputLower.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+                if (dateMatch) {
+                    return await probeByDate(dateMatch[1]);
+                }
+                if (/\btoday\b/i.test(inputLower)) {
+                    return await probeByDate(new Date().toISOString().slice(0, 10));
+                }
+                if (relevance.keywords.length > 0) {
+                    return await probeAll(relevance.keywords);
+                }
+                return null;
+            } catch {
+                return null; // federation errors never block the main pipeline
+            }
+        })(),
+    ]);
+
     let contextTreeStr = serializeContextTree(contextTree);
 
     debug('chat', `Context tree: scope=${scope.type}, tokens≈${Math.ceil(contextTreeStr.length / 4)}`);
+    if (fcpRelevance?.hint) {
+        debug('fcp', `Federation hint: ${fcpRelevance.hint.slice(0, 200)}`);
+    }
 
     const allNodes = runtime.catalog.getAllCatalogNodes();
-
-    // Deterministic pre-filter: narrow catalog nodes to relevant entity types
-    const relevance = analyzeQueryRelevance(userInput, entityTypes, entityIndex);
     const filteredNodes = filterCatalogNodes(
         allNodes.filter(n => !n.key.startsWith('speak_')),
         relevance.relevantTypes,
@@ -263,6 +300,10 @@ async function _feralChatHeadlessInner(
 
     const relevanceHintBlock = relevance.relevanceHint
         ? `\nQUERY RELEVANCE (entity matches from vault search):\n${relevance.relevanceHint}\n`
+        : '';
+
+    const fcpHintBlock = fcpRelevance?.hint
+        ? `\nFEDERATED SOURCES (external content matching this query):\n${fcpRelevance.hint}\nTo retrieve full content for any of the above, include fcp_probe_* and fcp_fetch in your node selection.\n`
         : '';
 
     debug('chat', `Catalog has ${allNodes.length} nodes, sending ${filteredNodes.length} after relevance filter (${relevance.relevantTypes.map(rt => rt.type).join(', ') || 'all'})`);
@@ -400,7 +441,7 @@ For new content types (recipe, vehicle, etc.), select "create_content_type". Use
 For field values on creation, also select "set_context_value" to stage fields in context.
 
 AVAILABLE CATALOG NODES:
-${relevanceHintBlock}
+${relevanceHintBlock}${fcpHintBlock}
 ${catalogSummary}
 
 RULES:

@@ -8,7 +8,7 @@
 
 import { probeSource, fetchFromSource, FcpError } from './fcp-client.js';
 import { getEnabledSources } from './source-registry.js';
-import type { Actor, ProbeMatch, ProbeResponse, FetchedNode, SourceConfig } from './fcp-types.js';
+import type { Actor, ProbeMatch, ProbeResponse, FetchedNode, SourceConfig, ProbeMode } from './fcp-types.js';
 import { debug } from '../utils/debug.js';
 
 export interface FederatedSourceResult {
@@ -46,14 +46,27 @@ async function getLocalActor(): Promise<Actor> {
 
 // ── Probe fan-out ────────────────────────────────────────────────────────────
 
-export async function probeAll(
+export interface ProbeOpts {
+    mode?: ProbeMode;
+    entityTypes?: string[];
+    timeoutMs?: number;
+    /** For mode="date" — ISO-8601 date string (YYYY-MM-DD) */
+    date?: string;
+    /** For mode="date" — end of range (ISO-8601). Defaults to same as date for a single day. */
+    dateTo?: string;
+    /** For mode="latest" — max results to return per source */
+    limit?: number;
+}
+
+async function probeAllWithOpts(
     keywords: string[],
-    opts: { entityTypes?: string[]; timeoutMs?: number } = {},
+    opts: ProbeOpts = {},
 ): Promise<FederatedRelevance> {
     const sources = await getEnabledSources();
-    if (sources.length === 0 || keywords.length === 0) {
-        return { sources: [], hint: '', totalMs: 0 };
-    }
+    const mode = opts.mode ?? 'keyword';
+
+    if (sources.length === 0) return { sources: [], hint: '', totalMs: 0 };
+    if (mode === 'keyword' && keywords.length === 0) return { sources: [], hint: '', totalMs: 0 };
 
     const actor = await getLocalActor();
     const started = Date.now();
@@ -62,8 +75,12 @@ export async function probeAll(
         const t0 = Date.now();
         try {
             const resp = await probeSource(source, actor, keywords, {
+                mode,
                 timeoutMs: opts.timeoutMs ?? 600,
                 entityTypes: opts.entityTypes,
+                date: opts.date,
+                dateTo: opts.dateTo,
+                limit: opts.limit,
             });
             return {
                 source: source.id,
@@ -93,6 +110,36 @@ export async function probeAll(
         hint: formatHint(results),
         totalMs: Date.now() - started,
     };
+}
+
+/** Keyword probe — fan-out keyword search to all configured sources. */
+export async function probeAll(
+    keywords: string[],
+    opts: Pick<ProbeOpts, 'entityTypes' | 'timeoutMs'> = {},
+): Promise<FederatedRelevance> {
+    return probeAllWithOpts(keywords, { mode: 'keyword', ...opts });
+}
+
+/** Date probe — ask all sources what they have for a given date (or range). */
+export async function probeByDate(
+    date: string,
+    opts: Pick<ProbeOpts, 'entityTypes' | 'timeoutMs' | 'dateTo'> = {},
+): Promise<FederatedRelevance> {
+    return probeAllWithOpts([], { mode: 'date', date, dateTo: opts.dateTo ?? date, ...opts });
+}
+
+/** Todo probe — ask all sources for open tasks / action items. */
+export async function probeTodos(
+    opts: Pick<ProbeOpts, 'timeoutMs'> = {},
+): Promise<FederatedRelevance> {
+    return probeAllWithOpts([], { mode: 'todo', entityTypes: ['task', 'todo', 'action'], ...opts });
+}
+
+/** Latest probe — ask all sources for their most recently created/updated items. */
+export async function probeLatest(
+    opts: Pick<ProbeOpts, 'entityTypes' | 'timeoutMs' | 'limit'> = {},
+): Promise<FederatedRelevance> {
+    return probeAllWithOpts([], { mode: 'latest', limit: opts.limit ?? 10, ...opts });
 }
 
 // ── Fetch — targeted full pull ───────────────────────────────────────────────

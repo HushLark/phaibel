@@ -185,6 +185,8 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         { RunSchedulerJobNodeCode },
         { McpCallToolNodeCode },
         { A2ASendTaskNodeCode },
+        { FcpProbeNodeCode },
+        { FcpFetchNodeCode },
     ] = await Promise.all([
         import('./node-code/data/read-file-node-code.js'),
         import('./node-code/genai/write-file-node-code.js'),
@@ -203,6 +205,8 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         import('./node-code/scheduler/run-scheduler-job-node-code.js'),
         import('./node-code/mcp/mcp-call-tool-node-code.js'),
         import('./node-code/a2a/a2a-send-task-node-code.js'),
+        import('./node-code/context/fcp-probe-node-code.js'),
+        import('./node-code/context/fcp-fetch-node-code.js'),
     ]);
 
     return [
@@ -223,6 +227,8 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         new RunSchedulerJobNodeCode(),
         new McpCallToolNodeCode(),
         new A2ASendTaskNodeCode(),
+        new FcpProbeNodeCode(),
+        new FcpFetchNodeCode(),
     ];
 }
 
@@ -239,6 +245,7 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         { PampCatalogSource },
         { McpCatalogSource },
         { A2ACatalogSource },
+        { FcpCatalogSource },
     ] = await Promise.all([
         import('./catalog/slack-catalog-source.js'),
         import('./catalog/agent-catalog-source.js'),
@@ -248,6 +255,7 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         import('./catalog/pamp-catalog-source.js'),
         import('./catalog/mcp-catalog-source.js'),
         import('./catalog/a2a-catalog-source.js'),
+        import('./catalog/fcp-catalog-source.js'),
     ]);
 
     return [
@@ -259,6 +267,7 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         new PampCatalogSource(),
         new McpCatalogSource(mcpTools as any),
         new A2ACatalogSource(a2aAgents as any),
+        new FcpCatalogSource(),
     ];
 }
 

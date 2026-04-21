@@ -80,14 +80,24 @@ export async function probeSource(
     source: SourceConfig,
     actor: Actor,
     keywords: string[],
-    opts: { timeoutMs?: number; entityTypes?: string[] } = {},
+    opts: {
+        timeoutMs?: number;
+        entityTypes?: string[];
+        mode?: 'keyword' | 'date' | 'todo' | 'latest';
+        date?: string;
+        dateTo?: string;
+        limit?: number;
+    } = {},
 ): Promise<ProbeResponse> {
     const timeoutMs = opts.timeoutMs ?? 600;
     const req: ProbeRequest = {
         fcp_version: FCP_VERSION,
         query: {
+            mode: opts.mode ?? 'keyword',
             keywords,
             hints: opts.entityTypes ? { entity_types: opts.entityTypes } : undefined,
+            time_range: opts.date ? { from: opts.date, to: opts.dateTo ?? opts.date } : undefined,
+            limit: opts.limit ?? 10,
         },
         actor,
         budget: { max_latency_ms: timeoutMs, max_matches_per_type: 5 },

@@ -342,9 +342,19 @@ function App() {
 
   const handleRemovePin = (id) => setPinboard((p) => p.filter((x) => x.id !== id));
 
+  const handleSendMessage = (text) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    const now = fmtHHMM(new Date());
+    setMessages((m) => [...m, { id: `m-${randId()}`, role: "user", text, at: now }]);
+    setThinking(true);
+    setThinkingStatus("Thinking…");
+    setActiveTab("chat");
+    wsRef.current.send(JSON.stringify({ type: 'chat', message: text }));
+  };
+
   return (
     <div className="app">
-      <LeftPanel pinboard={pinboard} onRemovePin={handleRemovePin} calItems={calItems} agentName={agentName} userName={userName} />
+      <LeftPanel pinboard={pinboard} onRemovePin={handleRemovePin} calItems={calItems} agentName={agentName} userName={userName} onSendMessage={handleSendMessage} />
       <RightPanel
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -359,15 +369,7 @@ function App() {
         setMicActive={setMicActive}
         onPin={handlePinMessage}
         wsConnected={wsConnected}
-        sendMessage={(text) => {
-          if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-          const now = fmtHHMM(new Date());
-          setMessages((m) => [...m, { id: `m-${randId()}`, role: "user", text, at: now }]);
-          setThinking(true);
-          setThinkingStatus("Thinking…");
-          setActiveTab("chat");
-          wsRef.current.send(JSON.stringify({ type: 'chat', message: text }));
-        }}
+        sendMessage={handleSendMessage}
       />
       {tweaksOpen && (
         <TweaksPanel tweaks={tweaks} update={updateTweak} onClose={() => setTweaksOpen(false)} />
@@ -384,7 +386,7 @@ function randId() {
 /* ============================================================
    LEFT PANEL — calendar + timeline + pinboard
    ============================================================ */
-function LeftPanel({ pinboard, onRemovePin, calItems, agentName, userName }) {
+function LeftPanel({ pinboard, onRemovePin, calItems, agentName, userName, onSendMessage }) {
   const initials = (n) => n ? n.split(" ").map(s => s[0]).slice(0,2).join("").toUpperCase() : "?";
   return (
     <aside className="left">
@@ -405,8 +407,8 @@ function LeftPanel({ pinboard, onRemovePin, calItems, agentName, userName }) {
         </div>
       </header>
 
-      <MiniCalendar calItems={calItems} />
-      <Timeline calItems={calItems} />
+      <MiniCalendar calItems={calItems} onSendMessage={onSendMessage} />
+      <Timeline calItems={calItems} onSendMessage={onSendMessage} />
       <Pinboard pins={pinboard} onRemove={onRemovePin} />
 
       <footer className="left-foot">
@@ -424,7 +426,7 @@ function LeftPanel({ pinboard, onRemovePin, calItems, agentName, userName }) {
   );
 }
 
-function MiniCalendar({ calItems }) {
+function MiniCalendar({ calItems, onSendMessage }) {
   const [tick, setTick] = useState(0);
   const [viewDate, setViewDate] = useState(() => { const d = new Date(); d.setDate(1); return d; });
 
@@ -481,10 +483,12 @@ function MiniCalendar({ calItems }) {
       <div className="days">
         {cells.map((d, i) => {
           if (d === null) return <span key={i} className="day empty" />;
-          const cls = ["day", d === todayDay ? "today" : "", WEEKENDS.has(d) ? "weekend" : ""].join(" ");
+          const cls = ["day", d === todayDay ? "today" : "", WEEKENDS.has(d) ? "weekend" : "", "clickable"].join(" ");
           const n = eventDays.has(d) ? 1 : 0;
+          const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+          const label = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
           return (
-            <span key={i} className={cls}>
+            <span key={i} className={cls} onClick={() => onSendMessage && onSendMessage(`What do I have on ${label}?`)}>
               {d}
               {n > 0 ? <span className="day-dots" data-n="1"><i/></span> : null}
             </span>
@@ -495,7 +499,7 @@ function MiniCalendar({ calItems }) {
   );
 }
 
-function Timeline({ calItems }) {
+function Timeline({ calItems, onSendMessage }) {
   const groups = buildTimelineGroups(calItems || []);
   return (
     <div className="card timeline">
@@ -513,7 +517,7 @@ function Timeline({ calItems }) {
               {g.items.length === 0
                 ? <li className="tl-item kind-empty"><div className="tl-main"><div className="tl-t" style={{opacity:0.4}}>Nothing scheduled</div></div></li>
                 : g.items.map((it, i) => (
-                  <li key={i} className={`tl-item kind-${it.kind}`}>
+                  <li key={i} className={`tl-item kind-${it.kind}`} onClick={() => onSendMessage && onSendMessage(`Tell me about "${it.t}"`)}>
                     <span className="tl-kind" aria-hidden>
                       {it.kind === "meeting" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1" y="2" width="8" height="7" fill="none" stroke="currentColor" strokeWidth="1"/><path d="M1 4 H9" stroke="currentColor" strokeWidth="1"/></svg>}
                       {it.kind === "todo" && <svg width="10" height="10" viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" fill="none" stroke="currentColor" strokeWidth="1"/></svg>}
