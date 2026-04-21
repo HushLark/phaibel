@@ -67,7 +67,7 @@ X-CXF-ENTITY-COUNT:{total number of components}
 | `VERSION` | yes | Must be `2.0` (RFC 5545) |
 | `PRODID` | yes | RFC 5545 producer identifier |
 | `X-CXF-VERSION` | yes | CXF version. Must be `1` for this spec. |
-| `X-CXF-EXPORT-TIME` | yes | ISO-8601 UTC timestamp of export. Used as the `since` cursor for incremental sync. |
+| `X-CXF-EXPORT-TIME` | yes | Unix timestamp (seconds) of export. Used as the `since` cursor for incremental sync. |
 | `X-CXF-VAULT-ID` | yes | Stable opaque identifier for the source vault. Consumers use this to namespace UIDs. |
 | `X-CXF-OWNER-NAME` | no | Human-readable vault owner name. |
 | `X-CXF-OWNER-EMAIL` | no | Owner email. Omit if the producer treats it as private. |
@@ -405,7 +405,8 @@ Content-Type: text/cxf; charset=utf-8
 | Parameter | Description | Example |
 |---|---|---|
 | `types` | Comma-separated type slugs. Default: all. | `types=task,goal,event` |
-| `since` | ISO-8601 timestamp. Returns only nodes with `LAST-MODIFIED ≥ since`. | `since=2026-04-21T00:00:00Z` |
+| `since` | Unix timestamp (seconds). Returns only nodes with `LAST-MODIFIED ≥ since`. | `since=1745222400` |
+| `consumer` | Opaque consumer identifier. When provided, the producer records the sync time. | `consumer=cos-01` |
 | `include_schema` | `true` (default) or `false`. Whether to include VSCHEMA blocks. | `include_schema=false` |
 | `include_graph` | `true` (default) or `false`. Whether to include `X-CXF-LINK` properties. | `include_graph=false` |
 | `tags` | Comma-separated tags (AND filter). | `tags=work,urgent` |
@@ -414,19 +415,46 @@ Content-Type: text/cxf; charset=utf-8
 
 ```
 Content-Type: text/cxf; charset=utf-8
-X-CXF-Export-Time: 2026-04-21T09:00:00Z
+X-CXF-Export-Time: 1745222400
 X-CXF-Entity-Count: 214
 X-CXF-Schema-Count: 8
 ```
 
-### 10.3 Incremental Sync (Recommended Pattern for COS)
+`X-CXF-Export-Time` is a Unix timestamp (seconds). Consumers MUST use this value — not their own clock — as the `since` cursor for the next request. This prevents missed updates due to clock skew.
+
+### 10.3 Producer Sync State
+
+Phaibel (and any CXF producer) tracks the last successful sync time per consumer in `.phaibel/cxf-sync.json`:
+
+```json
+{
+  "consumers": {
+    "cos-01": {
+      "lastSyncAt": 1745222400,
+      "firstSyncAt": 1744617600,
+      "syncCount": 47
+    }
+  }
+}
+```
+
+When a request includes `?consumer={id}`, the producer:
+1. Records the current Unix timestamp as `lastSyncAt` for that consumer on successful response.
+2. Sets `firstSyncAt` on the first request from that consumer.
+3. Increments `syncCount`.
+
+This state is used for tombstone management (§9): a deleted entity must be included in every export until `lastSyncAt > deletedAt` for all registered consumers, after which it may be dropped.
+
+If `?since=` is omitted, the producer MAY use the stored `lastSyncAt` for the named consumer as an implicit cursor. This allows a consumer to resume without tracking its own state.
+
+### 10.4 Incremental Sync (Recommended Pattern for COS)
 
 ```
-1. First run:    GET /api/cxf
-                 → full export; record X-CXF-Export-Time as cursor
+1. First run:    GET /api/cxf?consumer=cos-01
+                 → full export; use X-CXF-Export-Time as cursor
 
-2. Subsequent:   GET /api/cxf?since={cursor}
-                 → only nodes changed since last export; update cursor
+2. Subsequent:   GET /api/cxf?since=1745222400&consumer=cos-01
+                 → only nodes changed since that timestamp; use new X-CXF-Export-Time
 
 3. For each component:
    a. Parse UID → entity_id@vault_id
@@ -620,7 +648,7 @@ END:VCALENDAR
    g. Read X-CXF-FIELD-* → apply schema types for casting
    h. Read X-CXF-LINK → store as directed graph edges
 4. Upsert all records and edges.
-5. Record X-CXF-Export-Time as the new incremental cursor.
+5. Record X-CXF-Export-Time (Unix seconds) as the new incremental cursor.
 ```
 
 ### Edge cases
@@ -644,7 +672,7 @@ CXF and FCP are complementary:
 | **Primary use** | Real-time query-driven context retrieval | Bulk export / sync |
 | **Graph** | Via `links[]` in fetch response | Via `X-CXF-LINK` |
 | **Schema** | Discovered via `/fcp/manifest` | Embedded as VSCHEMA |
-| **Incremental** | Via `keywords` + `time_range` | Via `?since=` cursor |
+| **Incremental** | Via `keywords` + `time_range` | Via `?since={unix_seconds}` cursor |
 | **Best for** | Chat-time context retrieval | ETL, backup, bulk import |
 
 A system can implement both. FCP is the real-time read protocol; CXF is the bulk exchange format. COS uses CXF for its initial data load and delta sync, and FCP for query-time context retrieval.
