@@ -139,13 +139,15 @@ function buildTimelineGroups(calItems) {
     const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
     if (ci.entityType === 'task') {
       if (ci.meta && (ci.meta.status === 'done' || ci.meta.status === 'completed')) continue;
-      const item = { t: ci.title, kind: 'todo', time: ci.meta?.startDate ? fmtTime(ci.meta.startDate) : null };
+      const timeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
+      const item = { t: ci.title, kind: 'todo', time: timeVal ? fmtTime(timeVal) : null };
       if (!isValidDate || date === todayStr) { buckets[dates[0]].push(item); }
       else if (date < todayStr) { overdue.push(item); }
       else if (buckets[date]) { buckets[date].push(item); }
     } else if (ci.entityType === 'event') {
       if (!isValidDate) continue;
-      const item = { t: ci.title, kind: 'meeting', time: ci.meta?.startDate ? fmtTime(ci.meta.startDate) : null };
+      const eventTimeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
+      const item = { t: ci.title, kind: 'meeting', time: eventTimeVal ? fmtTime(eventTimeVal) : null };
       if (date < todayStr) { overdue.push(item); }
       else if (buckets[date]) { buckets[date].push(item); }
     } else {
