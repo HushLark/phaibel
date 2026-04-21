@@ -1,6 +1,6 @@
 {
   "name": "phaibel",
-  "version": "5.2.24",
+  "version": "5.2.25",
   "description": "AI personal agent that dynamically assembles executable processes from composable code blocks — powered by FeralCCF",
   "type": "module",
   "engines": {
