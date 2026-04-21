@@ -26,7 +26,7 @@ COS can consume the feed via a simple HTTP GET and process it incrementally usin
 |---|---|---|
 | `task` | `VTODO` | status/priority mapped to ICS equivalents |
 | `goal` | `VTODO` | `X-PHAIBEL-TYPE:goal` distinguishes from task |
-| `todont` | `VTODO` | `X-PHAIBEL-TYPE:todont`; STATUS always CANCELLED to signal "do not do" |
+| `todont` | `VTODO` | `X-PHAIBEL-TYPE:todont`; STATUS reflects actual state (default: IN-PROCESS) |
 | `event` | `VEVENT` | startDate → DTSTART; duration → DURATION |
 | `note` | `VJOURNAL` | createdAt → DTSTART |
 | `person` | Not exported directly | Resolved inline as ATTENDEE on linked entities |
@@ -68,7 +68,10 @@ END:VTODO
 | in-progress | IN-PROCESS |
 | done | COMPLETED |
 | blocked | IN-PROCESS (+ X-PHAIBEL-STATUS:blocked) |
-| *(todont)* | CANCELLED |
+| *(todont — active)* | NEEDS-ACTION |
+| *(todont — managing)* | IN-PROCESS |
+| *(todont — habit broken)* | COMPLETED |
+| *(todont — retired)* | CANCELLED |
 
 **Priority mapping:**
 
@@ -386,7 +389,7 @@ END:VEVENT
 BEGIN:VTODO
 UID:todont-micromanage-i9j0@phaibel
 SUMMARY:Don't micromanage delivery
-STATUS:CANCELLED
+STATUS:IN-PROCESS
 X-PHAIBEL-TYPE:todont
 X-PHAIBEL-REASON:Kills team autonomy and slows delivery
 END:VTODO

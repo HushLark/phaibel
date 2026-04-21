@@ -130,9 +130,8 @@ END:VTODO
 | done | COMPLETED | — |
 | blocked | IN-PROCESS | blocked |
 | paused | IN-PROCESS | paused |
-| *(todont)* | CANCELLED | todont |
 
-**Todonts:** A todont is a negative intent — something to deliberately NOT do. Its STATUS is always CANCELLED and `X-CXF-TYPE` is `todont`. The `X-CXF-FIELD-REASON` property carries the rationale.
+**Todonts:** A todont is a negative intent — something to deliberately NOT do. It uses `X-CXF-TYPE:todont` and carries a standard STATUS that reflects its actual state. The default STATUS is IN-PROCESS (actively managing the avoidance). NEEDS-ACTION means the commitment hasn't been acted on yet, COMPLETED means the pattern has been broken, CANCELLED means the todont was retired. The `X-CXF-FIELD-REASON` property carries the rationale.
 
 **Priority mapping:**
 
@@ -374,7 +373,7 @@ Producers MUST apply this routing when serialising a context node:
 | `entity_type == "event"` | VEVENT |
 | `entity_type == "task"` | VTODO |
 | `entity_type == "note"` | VJOURNAL |
-| `entity_type == "todont"` | VTODO with `STATUS:CANCELLED` and `X-CXF-TYPE:todont` |
+| `entity_type == "todont"` | VTODO with `X-CXF-TYPE:todont` and standard STATUS |
 | all other types | VCONTEXT with `X-CXF-TYPE:{type}` |
 
 This routing is fixed. Producers MUST NOT use VCONTEXT for events, tasks, or notes. Consumers MUST check `X-CXF-TYPE` alongside the component type when discriminating todont from task.
@@ -572,13 +571,12 @@ BEGIN:VTODO
 UID:todont-micromanage-i9j0@vault-gary-clift-01
 SUMMARY:Don't micromanage delivery timelines
 DESCRIPTION:Reduces team autonomy and signals distrust. Coach instead.
-STATUS:CANCELLED
+STATUS:IN-PROCESS
 CREATED:20260210T090000Z
 LAST-MODIFIED:20260210T090000Z
 CATEGORIES:leadership,behaviour
 X-CXF-ID:todont-micromanage-i9j0
 X-CXF-TYPE:todont
-X-CXF-STATUS-EXT:todont
 X-CXF-FIELD-REASON:Kills team autonomy and slows delivery velocity.
 X-CXF-LINK;LABEL=relates-to;EDGE=link:
  goal-great-team-e5f6@vault-gary-clift-01
