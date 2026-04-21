@@ -380,14 +380,53 @@ This routing is fixed. Producers MUST NOT use VCONTEXT for events, tasks, or not
 
 ---
 
-## 9. Deletion / Tombstones
+## 9. CRUD Lifecycle
 
-ICS has no native delete signal. CXF uses status tombstones:
+CXF communicates the full lifecycle of every entity through `LAST-MODIFIED` timestamps and two state properties. Consumers detect changes by requesting `?since={last_cursor}` — any entity whose state changed after that cursor will appear in the response.
 
-- Deleted VEVENT/VTODO/VJOURNAL: `STATUS:CANCELLED` + `X-CXF-DELETED:TRUE`
-- Deleted VCONTEXT: `X-CXF-DELETED:TRUE` (VCONTEXT has no STATUS)
+### 9.1 Create and Update
 
-Producers MUST include tombstones in incremental exports for at least one full sync cycle after deletion. After that, the component may be omitted. Consumers MUST treat `X-CXF-DELETED:TRUE` as a hard delete signal.
+A new entity appears in the next export after it is created. An updated entity appears in any incremental export where `LAST-MODIFIED > since`. No special flag is needed — presence in the response with a newer `LAST-MODIFIED` is the signal.
+
+### 9.2 Archive (Soft Delete)
+
+Archiving hides an entity from active use but preserves it in the vault. Consumers should move the entity to an archived/inactive state, not destroy it.
+
+```
+X-CXF-ARCHIVED:TRUE
+LAST-MODIFIED:{unix timestamp of archival}
+```
+
+- VEVENT/VTODO/VJOURNAL: no change to STATUS (the entity's final status is preserved)
+- VCONTEXT: `X-CXF-ARCHIVED:TRUE` alone is sufficient
+- Archived entities continue to appear in full exports (`GET /api/cxf`) unless the consumer passes `?exclude_archived=true`
+- Archived entities appear in incremental exports for the sync cycle when they were archived, then only in full exports
+
+### 9.3 Delete (Hard Delete)
+
+A hard delete permanently removes an entity. Consumers MUST treat this as a destroy signal.
+
+```
+X-CXF-DELETED:TRUE
+LAST-MODIFIED:{unix timestamp of deletion}
+```
+
+- VEVENT/VTODO/VJOURNAL: also set `STATUS:CANCELLED` for ICS parser compatibility
+- VCONTEXT: `X-CXF-DELETED:TRUE` alone is sufficient
+- Deleted entities MUST appear in every incremental export until the producer's sync state confirms all registered consumers have received the tombstone (`lastSyncAt > deletedAt` for each `consumer` entry in `cxf-sync.json`)
+- After that confirmation, the component MAY be omitted from all future exports
+
+### 9.4 State Summary
+
+| Lifecycle event | `X-CXF-ARCHIVED` | `X-CXF-DELETED` | Consumer action |
+|---|---|---|---|
+| Created | — | — | Upsert |
+| Updated | — | — | Upsert |
+| Archived | TRUE | — | Soft delete / move to archive |
+| Restored from archive | *(property removed)* | — | Upsert (re-activate) |
+| Hard deleted | — | TRUE | Destroy |
+
+Producers MUST NOT set both `X-CXF-ARCHIVED` and `X-CXF-DELETED` on the same component.
 
 ---
 
@@ -458,13 +497,14 @@ If `?since=` is omitted, the producer MAY use the stored `lastSyncAt` for the na
 
 3. For each component:
    a. Parse UID → entity_id@vault_id
-   b. Check X-CXF-DELETED — if TRUE, tombstone and skip
-   c. Check LAST-MODIFIED vs stored; skip if unchanged
-   d. Route by X-CXF-TYPE → correct COS context type
-   e. Parse X-CXF-FIELD-* using VSCHEMA for types
-   f. Parse ATTENDEE → resolve/upsert people by X-CXF-PERSON-ID
-   g. Parse X-CXF-LINK → upsert graph edges
-   h. Upsert node record
+   b. Check LAST-MODIFIED vs stored; skip if unchanged
+   c. Check X-CXF-DELETED — if TRUE, destroy record and skip
+   d. Check X-CXF-ARCHIVED — if TRUE, soft-delete/archive record and skip
+   e. Route by X-CXF-TYPE → correct COS context type
+   f. Parse X-CXF-FIELD-* using VSCHEMA for types
+   g. Parse ATTENDEE → resolve/upsert people by X-CXF-PERSON-ID
+   h. Parse X-CXF-LINK → upsert graph edges
+   i. Upsert node record (re-activate if previously archived)
 ```
 
 ---
@@ -642,7 +682,7 @@ END:VCALENDAR
    a. Determine routing: VEVENT / VTODO / VJOURNAL / VCONTEXT
    b. Read UID → split on "@" to get entity_id and vault_id
    c. Read X-CXF-TYPE → look up schema in registry
-   d. Read X-CXF-DELETED — if present and TRUE, tombstone
+   d. Read X-CXF-DELETED — if TRUE, destroy record; read X-CXF-ARCHIVED — if TRUE, soft-delete
    e. Read LAST-MODIFIED → compare to stored; skip if unchanged
    f. Read ATTENDEE lines → build person records (key: X-CXF-PERSON-ID)
    g. Read X-CXF-FIELD-* → apply schema types for casting
@@ -688,7 +728,9 @@ A producer is CXF/1 conformant if:
 3. Type routing rules in §8.2 are respected.
 4. A VSCHEMA is present for every distinct `X-CXF-TYPE` that appears in the document.
 5. `X-CXF-PERSON-ID` is present on every ATTENDEE property.
-6. `X-CXF-DELETED:TRUE` is emitted for at least one export cycle after deletion.
+6. `X-CXF-DELETED:TRUE` is emitted in every incremental export until all registered consumers have acknowledged the deletion via `cxf-sync.json`.
+7. `X-CXF-ARCHIVED:TRUE` is emitted in the incremental export cycle when an entity is archived, and in all subsequent full exports.
+8. `X-CXF-ARCHIVED` and `X-CXF-DELETED` are never both set on the same component.
 7. The document is parseable by a compliant RFC 5545 library (all CXF-specific content is X- properties or named components that RFC 5545 permits).
 
 ---
@@ -705,7 +747,8 @@ A producer is CXF/1 conformant if:
 | `X-CXF-ENTITY-COUNT` | Envelope: total component count |
 | `X-CXF-ID` | Component: raw entity ID |
 | `X-CXF-TYPE` | Component: context type slug |
-| `X-CXF-DELETED` | Component: tombstone flag |
+| `X-CXF-DELETED` | Component: hard delete tombstone |
+| `X-CXF-ARCHIVED` | Component: soft delete / archive flag |
 | `X-CXF-STATUS-EXT` | Component: extended status |
 | `X-CXF-LINK` | Component: graph edge (multiple) |
 | `X-CXF-PERSON-ID` | ATTENDEE parameter: person entity ID |
