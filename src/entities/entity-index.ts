@@ -343,6 +343,7 @@ export class EntityIndex {
             if (entityType && node.type !== entityType) continue;
 
             const titleLower = node.name.toLowerCase();
+            const nicknameLower = typeof node.meta?.nickname === 'string' ? node.meta.nickname.toLowerCase() : '';
             const tagsLower = node.tags.map(t => t.toLowerCase());
             const summaryLower = node.description.toLowerCase();
 
@@ -364,6 +365,7 @@ export class EntityIndex {
             for (const token of searchTokens) {
                 let matched = false;
                 if (titleLower.includes(token)) { score += 3; matched = true; }
+                if (nicknameLower && nicknameLower.includes(token)) { score += 3; matched = true; }
                 if (tagsLower.some(tag => tag.includes(token))) { score += 2; matched = true; }
                 if (summaryLower.includes(token)) { score += 1; matched = true; }
                 if (!matched) { allMatched = false; break; }
@@ -389,13 +391,21 @@ export class EntityIndex {
         for (const node of this.nodes.values()) {
             if (node.type !== entityType) continue;
 
+            const nicknameLower = typeof node.meta?.nickname === 'string' ? node.meta.nickname.toLowerCase() : '';
+
             if (node.id === titleOrId || node.name.toLowerCase() === needle) {
+                return node;
+            }
+            // Exact nickname match
+            if (nicknameLower && nicknameLower === needle) {
                 return node;
             }
 
             if (!partialMatch) {
                 const nameLower = node.name.toLowerCase();
                 if (nameLower.includes(needle) || needle.includes(nameLower)) {
+                    partialMatch = node;
+                } else if (nicknameLower && (nicknameLower.includes(needle) || needle.includes(nicknameLower))) {
                     partialMatch = node;
                 }
             }

@@ -140,14 +140,14 @@ function buildTimelineGroups(calItems) {
     if (ci.entityType === 'task') {
       if (ci.meta && (ci.meta.status === 'done' || ci.meta.status === 'completed')) continue;
       const timeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
-      const item = { t: ci.title, kind: 'todo', time: timeVal ? fmtTime(timeVal) : null };
+      const item = { t: ci.title, kind: 'todo', time: timeVal ? fmtTime(timeVal) : null, rawTime: timeVal || null };
       if (!isValidDate || date === todayStr) { buckets[dates[0]].push(item); }
       else if (date < todayStr) { overdue.push(item); }
       else if (buckets[date]) { buckets[date].push(item); }
     } else if (ci.entityType === 'event') {
       if (!isValidDate) continue;
       const eventTimeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
-      const item = { t: ci.title, kind: 'meeting', time: eventTimeVal ? fmtTime(eventTimeVal) : null };
+      const item = { t: ci.title, kind: 'meeting', time: eventTimeVal ? fmtTime(eventTimeVal) : null, rawTime: eventTimeVal || null };
       if (date < todayStr) { overdue.push(item); }
       else if (buckets[date]) { buckets[date].push(item); }
     } else {
@@ -163,6 +163,16 @@ function buildTimelineGroups(calItems) {
     const dt = new Date(d + 'T12:00:00');
     return dt.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'});
   };
+  // Sort each bucket chronologically: timed items first (by raw ISO), then untimed
+  const sortBucket = (items) => items.sort((a, b) => {
+    if (a.rawTime && b.rawTime) return a.rawTime < b.rawTime ? -1 : a.rawTime > b.rawTime ? 1 : 0;
+    if (a.rawTime) return -1;
+    if (b.rawTime) return 1;
+    return 0;
+  });
+  Object.keys(buckets).forEach(k => sortBucket(buckets[k]));
+  sortBucket(overdue);
+
   const groups = [];
   if (periods.length) groups.push({ key:'periods', label:'Active', sub:'ongoing', tone:'muted', items: periods });
   if (overdue.length) groups.push({ key:'overdue', label:'Overdue', sub:`${overdue.length} item${overdue.length===1?'':'s'}`, tone:'alert', items: overdue });

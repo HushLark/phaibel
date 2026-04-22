@@ -56,6 +56,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         defaultTags: ['person'],
         fields: [
             { key: 'lastName',     type: 'string',     label: 'Last Name',        required: false },
+            { key: 'nickname',     type: 'string',     label: 'Nickname / AKA',   required: false },
             { key: 'type',         type: 'string',     label: 'Relationship Type', required: false },
             { key: 'email',        type: 'string',     label: 'Email',            required: false },
             { key: 'phone',        type: 'string',     label: 'Phone',            required: false },
