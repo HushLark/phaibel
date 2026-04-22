@@ -19,14 +19,18 @@ import { debug } from '../utils/debug.js';
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface IndexNode {
-    id: string;              // entity id (filename without .md), e.g. "task-abc123"
+    id: string;
     type: EntityTypeName;
-    title: string;
+    name: string;            // display name (was: title)
+    /** @deprecated use name */
+    title: string;           // alias kept for backward compat
     filepath: string;
-    tags: string[];          // cached from frontmatter
-    summary: string;         // cached from frontmatter (LLM-generated)
-    bodySnippet: string;     // first 500 chars of body content (for embedding)
-    meta: Record<string, unknown>;  // full frontmatter metadata
+    tags: string[];
+    description: string;     // short description (was: summary)
+    /** @deprecated use description */
+    summary: string;         // alias kept for backward compat
+    bodySnippet: string;     // first 500 chars of body content
+    meta: Record<string, unknown>;  // full merged metadata
 }
 
 export interface IndexSearchResult {
@@ -108,14 +112,18 @@ export class EntityIndex {
                         const { meta, content } = parseEntity(filepath, raw);
                         const id = (meta.id as string) || paths.basename(file, '.md');
                         const key = EntityIndex.key(entityType, id);
+                        const nodeName = (meta.name as string) || (meta.title as string) || id;
+                        const nodeDesc = (meta.description as string) || (meta.summary as string) || '';
 
                         this.nodes.set(key, {
                             id,
                             type: entityType,
-                            title: (meta.title as string) || id,
+                            name: nodeName,
+                            title: nodeName,        // alias
                             filepath,
                             tags: Array.isArray(meta.tags) ? (meta.tags as string[]) : [],
-                            summary: (meta.summary as string) ?? '',
+                            description: nodeDesc,
+                            summary: nodeDesc,       // alias
                             bodySnippet: content.slice(0, 500),
                             meta,
                         });
@@ -239,7 +247,7 @@ export class EntityIndex {
      * Add or update a single node and re-scan its content for edges.
      * Avoids a full rebuild when a single entity is created or modified.
      */
-    async addOrUpdate(type: EntityTypeName, id: string, title: string, filepath: string, tags?: string[], summary?: string): Promise<void> {
+    async addOrUpdate(type: EntityTypeName, id: string, name: string, filepath: string, tags?: string[], description?: string): Promise<void> {
         const { storage } = getPlatform();
         const key = EntityIndex.key(type, id);
 
@@ -254,7 +262,7 @@ export class EntityIndex {
         } catch { /* keep defaults */ }
 
         // Upsert node
-        this.nodes.set(key, { id, type, title, filepath, tags: tags ?? [], summary: summary ?? '', bodySnippet, meta });
+        this.nodes.set(key, { id, type, name, title: name, filepath, tags: tags ?? [], description: description ?? '', summary: description ?? '', bodySnippet, meta });
 
         // Remove old outbound edges from this node
         this.edges = this.edges.filter(e => e.source !== key);
@@ -334,9 +342,9 @@ export class EntityIndex {
         for (const node of this.nodes.values()) {
             if (entityType && node.type !== entityType) continue;
 
-            const titleLower = node.title.toLowerCase();
+            const titleLower = node.name.toLowerCase();
             const tagsLower = node.tags.map(t => t.toLowerCase());
-            const summaryLower = node.summary.toLowerCase();
+            const summaryLower = node.description.toLowerCase();
 
             // Pre-filter by tag tokens if present
             if (tagTokens.length > 0) {
@@ -381,15 +389,13 @@ export class EntityIndex {
         for (const node of this.nodes.values()) {
             if (node.type !== entityType) continue;
 
-            // Exact match on id or title
-            if (node.id === titleOrId || node.title.toLowerCase() === needle) {
+            if (node.id === titleOrId || node.name.toLowerCase() === needle) {
                 return node;
             }
 
-            // Partial match
             if (!partialMatch) {
-                const titleLower = node.title.toLowerCase();
-                if (titleLower.includes(needle) || needle.includes(titleLower)) {
+                const nameLower = node.name.toLowerCase();
+                if (nameLower.includes(needle) || needle.includes(nameLower)) {
                     partialMatch = node;
                 }
             }

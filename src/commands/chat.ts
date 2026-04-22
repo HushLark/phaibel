@@ -38,6 +38,7 @@ import { probeAll, probeByDate, probeTodos, probeLatest } from '../federation/fe
 import { getEnabledSources } from '../federation/source-registry.js';
 import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../entities/entity.js';
 import { getEntityType } from '../entities/entity-type-config.js';
+import { runProgressiveDisclosure } from '../context/progressive-disclosure.js';
 import type { LLMProvider } from '../llm/types.js';
 import { runWithTokenTracker, type ChatTokenTotals } from '../llm/token-usage.js';
 
@@ -167,6 +168,12 @@ export interface ChatResult {
     tokens: ChatTokenTotals;
 }
 
+export interface ClientHints {
+    platform?: string;
+    screenWidth?: number;
+    screenHeight?: number;
+}
+
 export async function feralChatHeadless(
     userInput: string,
     onStatus?: (status: string) => void,
@@ -175,6 +182,7 @@ export async function feralChatHeadless(
     onChatId?: (chatId: string) => void,
     history?: ChatHistoryEntry[],
     platform?: BootstrapOptions['platform'],
+    clientHints?: ClientHints,
 ): Promise<ChatResult> {
     const status = (s: string) => onStatus?.(s);
     const chatId = generateChatId();
@@ -192,7 +200,7 @@ export async function feralChatHeadless(
 
     try {
         const { result: response, tokens } = await runWithTokenTracker(() =>
-            _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? [], platform)
+            _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? [], platform, clientHints)
         );
         return { response, tokens };
     }
@@ -213,6 +221,7 @@ async function _feralChatHeadlessInner(
     chatId: string,
     history: ChatHistoryEntry[],
     platform?: BootstrapOptions['platform'],
+    clientHints?: ClientHints,
 ): Promise<string> {
     // ── Bootstrap Feral + load entity types + vault context ────────
     const inMemorySource = new InMemoryProcessSource();
@@ -310,6 +319,24 @@ async function _feralChatHeadlessInner(
 
     const llm = await getModelForCapability('reason');
 
+    // ── PHASE PD: Progressive Disclosure ──────────────────────────────
+    // Keyword search → summaries → iterative LLM-driven detail requests.
+    // Appends a targeted context snapshot that the pipeline steps can use.
+    if (relevance.keywords.length > 0) {
+        try {
+            status('Scanning context…');
+            const pdContext = await runProgressiveDisclosure(
+                llm, userInput, vaultContext, relevance.keywords,
+            );
+            if (pdContext) {
+                contextTreeStr = contextTreeStr + '\n\nPROGRESSIVE CONTEXT:\n' + pdContext;
+                debug('chat', `PD context: ${Math.ceil(pdContext.length / 4)} tokens`);
+            }
+        } catch (err) {
+            debug('chat', `Progressive disclosure failed (non-fatal): ${err}`);
+        }
+    }
+
     // ── PHASE 1: Process reuse ─────────────────────────────────────────
     // Show the LLM ALL known processes and let it pick one, or choose "custom".
     const allProcesses = runtime.processFactory.getAllProcesses()
@@ -395,7 +422,7 @@ Return ONLY the JSON object, no markdown fences.`,
                 // Synthesize response
                 const finalResponse = await synthesizeResponse(
                     llm, userInput, matchResult.reasoning,
-                    [scrubbedResult], [], vaultContext, history, chatId,
+                    [scrubbedResult], [], vaultContext, history, chatId, clientHints,
                 );
                 await logger.log('response', { response: finalResponse });
 
@@ -764,7 +791,7 @@ Return ONLY the JSON object, no markdown fences.`,
 
     const finalResponse = await synthesizeResponse(
         llm, userInput, nodeSelection.reasoning,
-        allResults, nodesUsed, vaultContext, history, chatId,
+        allResults, nodesUsed, vaultContext, history, chatId, clientHints,
     );
     await logger.log('response', { response: finalResponse });
 
@@ -801,8 +828,18 @@ async function synthesizeResponse(
     vaultContext: string,
     history: ChatHistoryEntry[] = [],
     chatId?: string,
+    clientHints?: ClientHints,
 ): Promise<string> {
-    const synthesisPrompt = `The user said: "${userInput}"
+    const clientHintBlock = clientHints?.platform === 'mobile'
+        ? `CLIENT CONTEXT:
+- Rendering on a mobile screen${clientHints.screenWidth ? ` (${clientHints.screenWidth}×${clientHints.screenHeight}px)` : ''}
+- Prefer concise responses: short paragraphs, brief bullet lists; avoid wide tables or deeply nested structure
+- Markdown renders correctly (bold, bullets, headers, code blocks are all fine)
+
+`
+        : '';
+
+    const synthesisPrompt = `${clientHintBlock}The user said: "${userInput}"
 ${formatHistoryBlock(history)}
 WHAT WAS DONE:
 Reasoning: ${reasoning}

@@ -60,13 +60,17 @@ export interface CadenceDetails {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface EntityMeta {
-    id: string;                // e.g. "task-abc123" — type prefix + 6 base-36 chars
-    title: string;
+    id: string;
+    name: string;              // display name (was: title)
     entityType: EntityTypeName;
     created: string;           // ISO 8601
     updated?: string;          // ISO 8601, set on every save
     tags: string[];
-    summary?: string;          // LLM-generated one-sentence summary (max 150 chars)
+    description?: string;      // short description / summary (was: summary)
+    /** @deprecated use name */
+    title?: string;
+    /** @deprecated use description */
+    summary?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -203,11 +207,100 @@ export function createEntityMeta(
 ): EntityMeta {
     return {
         id: generateNodeId(),
-        title,
+        name: title,
         entityType,
         created: new Date().toISOString(),
         tags: opts.tags ?? [],
     };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROGRESSIVE DISCLOSURE — BODY FIELD FORMAT
+// ─────────────────────────────────────────────────────────────────────────────
+// Type-specific fields (status, dueDate, priority, etc.) are stored in the body
+// as a leading block of "key: value" lines, terminated by the first blank line.
+// Only the 7 core identity fields stay in YAML frontmatter.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Core identity fields that live in frontmatter — everything else goes to body. */
+export const CORE_FRONTMATTER_KEYS = new Set([
+    'id', 'entityType', 'contextType',
+    'name', 'title',            // both accepted; written as 'name'
+    'description', 'summary',   // both accepted; written as 'description'
+    'tags', 'created', 'updated',
+]);
+
+/**
+ * Parse a scalar value string from a body field line.
+ * Handles booleans, integers, floats, JSON arrays/objects, and strings.
+ */
+function parseFieldScalar(raw: string): unknown {
+    const v = raw.trim();
+    if (v === 'true') return true;
+    if (v === 'false') return false;
+    if (v === 'null' || v === '~' || v === '') return null;
+    if (/^-?\d+$/.test(v)) return parseInt(v, 10);
+    if (/^-?\d+\.\d+$/.test(v)) return parseFloat(v);
+    if ((v.startsWith('{') || v.startsWith('[')) ) {
+        try { return JSON.parse(v); } catch { /* fall through */ }
+    }
+    return v;
+}
+
+/**
+ * Serialize a value for a body field line.
+ */
+function serializeFieldScalar(value: unknown): string {
+    if (typeof value === 'boolean' || typeof value === 'number') return String(value);
+    if (typeof value === 'string') return value;
+    // Arrays/objects: JSON inline
+    return JSON.stringify(value);
+}
+
+/**
+ * Parse domain fields from the body prefix.
+ * Lines at the start matching "key: value" (before the first blank line) are
+ * extracted as domain fields; the rest is the user-written content.
+ */
+export function parseEntityBody(body: string): { fields: Record<string, unknown>; content: string } {
+    const lines = body.split('\n');
+    const fields: Record<string, unknown> = {};
+    let fieldLineCount = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.trim() === '') {
+            // Blank line ends the fields block
+            fieldLineCount = i + 1;
+            break;
+        }
+        const match = line.match(/^([a-zA-Z][a-zA-Z0-9_]*)\s*:\s*(.*)$/);
+        if (match) {
+            fields[match[1]] = parseFieldScalar(match[2]);
+            fieldLineCount = i + 1;
+        } else {
+            // Non-matching line — not a fields block, treat entire body as content
+            return { fields: {}, content: body.trim() };
+        }
+    }
+
+    const content = lines.slice(fieldLineCount).join('\n').trim();
+    return { fields, content };
+}
+
+/**
+ * Serialize domain fields into a body prefix block.
+ * Core frontmatter fields are excluded. Returns body string with
+ * fields at the top (if any), blank line separator, then content.
+ */
+export function serializeEntityBody(domainFields: Record<string, unknown>, content: string): string {
+    const lines: string[] = [];
+    for (const [key, value] of Object.entries(domainFields)) {
+        if (value === undefined || value === null) continue;
+        lines.push(`${key}: ${serializeFieldScalar(value)}`);
+    }
+    if (lines.length === 0) return content;
+    return lines.join('\n') + '\n\n' + content;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -240,17 +333,37 @@ export async function ensureEntityDir(entityType: EntityTypeName): Promise<strin
 
 /**
  * Parse a markdown file into an Entity (frontmatter + body content).
+ * Supports both legacy format (all fields in frontmatter) and new format
+ * (core fields only in frontmatter; domain fields in body prefix block).
+ * Always returns a unified meta object with all fields merged.
  */
 export function parseEntity(filepath: string, rawContent: string): { meta: Record<string, unknown>; content: string } {
-    const { data, content } = matter(rawContent);
-    // Ensure filepath is available for callers
-    data._filepath = filepath;
-    return { meta: data, content: content.trim() };
+    const { data, content: rawBody } = matter(rawContent);
+
+    // Normalise legacy field names (title → name, summary → description)
+    if (data.title !== undefined && data.name === undefined) {
+        data.name = data.title;
+    }
+    if (data.summary !== undefined && data.description === undefined) {
+        data.description = data.summary;
+    }
+    // Keep title as alias for backward-compat callers
+    if (data.name !== undefined) data.title = data.name;
+
+    // Extract domain fields from body prefix (new format)
+    const { fields, content } = parseEntityBody(rawBody.trim());
+
+    // Merge: frontmatter wins over body-derived fields for shared keys
+    const meta: Record<string, unknown> = { ...fields, ...data };
+    meta._filepath = filepath;
+    return { meta, content };
 }
 
 /**
- * Write an entity to a markdown file with frontmatter.
- * Sets `updated` timestamp automatically.
+ * Write an entity to a markdown file using the new simplified-frontmatter format.
+ * Core fields (id, name, entityType, description, tags, created, updated) go in
+ * YAML frontmatter. All domain fields (status, dueDate, priority, etc.) are
+ * written as a key:value block at the top of the body.
  */
 export async function writeEntity(
     filepath: string,
@@ -258,18 +371,35 @@ export async function writeEntity(
     content: string,
 ): Promise<void> {
     await assertWithinFoundation(filepath);
-    // Always update the timestamp on write
     meta.updated = new Date().toISOString();
-    // Remove internal fields
+
     const cleanMeta = { ...meta };
     delete cleanMeta._filepath;
-    // Strip undefined values — js-yaml can't serialize them
-    for (const key of Object.keys(cleanMeta)) {
-        if (cleanMeta[key] === undefined) {
-            delete cleanMeta[key];
+
+    // Normalise: title → name, summary → description
+    if (cleanMeta.title !== undefined && cleanMeta.name === undefined) {
+        cleanMeta.name = cleanMeta.title;
+    }
+    delete cleanMeta.title;
+    if (cleanMeta.summary !== undefined && cleanMeta.description === undefined) {
+        cleanMeta.description = cleanMeta.summary;
+    }
+    delete cleanMeta.summary;
+
+    // Separate core (frontmatter) from domain (body)
+    const frontmatter: Record<string, unknown> = {};
+    const domainFields: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(cleanMeta)) {
+        if (value === undefined) continue;
+        if (CORE_FRONTMATTER_KEYS.has(key)) {
+            frontmatter[key] = value;
+        } else {
+            domainFields[key] = value;
         }
     }
-    const fileContent = matter.stringify(content, cleanMeta);
+
+    const fullBody = serializeEntityBody(domainFields, content);
+    const fileContent = matter.stringify(fullBody, frontmatter);
     await getPlatform().storage.writeFile(filepath, fileContent);
 }
 
