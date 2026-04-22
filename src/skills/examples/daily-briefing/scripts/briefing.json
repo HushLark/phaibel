@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "key": "skill.daily-briefing",
-  "description": "Morning briefing: open tasks, today's events, active goals",
+  "description": "Morning briefing: tasks, events, and active goals",
   "context": {},
   "nodes": [
     {
@@ -13,19 +13,13 @@
     {
       "key": "list_tasks",
       "catalog_node_key": "list_tasks",
-      "configuration": { "filter_field": "status", "filter_value": "open" },
+      "configuration": { "context_path": "tasks" },
       "edges": { "ok": "list_events", "empty": "list_events", "error": "list_events" }
     },
     {
       "key": "list_events",
       "catalog_node_key": "list_events",
-      "configuration": {},
-      "edges": { "ok": "list_goals", "empty": "list_goals", "error": "list_goals" }
-    },
-    {
-      "key": "list_goals",
-      "catalog_node_key": "list_goals",
-      "configuration": { "filter_field": "status", "filter_value": "active" },
+      "configuration": { "context_path": "events" },
       "edges": { "ok": "done", "empty": "done", "error": "done" }
     },
     {

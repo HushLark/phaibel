@@ -856,136 +856,235 @@
   .onboarding-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(10, 10, 20, 0.95);
+    background: #080d14;
     z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    overflow-y: auto;
+    padding: 32px 16px 48px;
+  }
+  .onboarding-overlay.hidden { display: none; }
+
+  .ob-card {
+    width: 100%;
+    max-width: 540px;
+  }
+
+  .ob-step-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 8px;
+  }
+
+  .ob-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+    line-height: 1.2;
+  }
+
+  .ob-subtitle {
+    font-size: 14px;
+    color: var(--dim);
+    margin-bottom: 28px;
+    line-height: 1.5;
+  }
+
+  .ob-step { display: none; }
+  .ob-step.active { display: block; }
+
+  /* Profile cards */
+  .profile-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+
+  .profile-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #111827;
+    border: 1.5px solid #1f2937;
+    border-radius: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .profile-card:hover { border-color: var(--cyan-dim); }
+  .profile-card.selected { border-color: var(--profile-accent, var(--cyan)); background: color-mix(in srgb, var(--profile-accent, var(--cyan)) 8%, #111827); }
+
+  .profile-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
-    overflow-y: auto;
+    font-size: 20px;
+    flex-shrink: 0;
+    background: var(--profile-accent, var(--cyan));
   }
 
-  .onboarding-overlay.hidden { display: none; }
+  .profile-text { flex: 1; min-width: 0; }
+  .profile-label { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .profile-label.selected { color: var(--profile-accent, var(--cyan)); }
+  .profile-tagline { font-size: 12px; color: var(--dim); line-height: 1.4; }
 
-  .onboarding-card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    max-width: 560px;
-    width: 90%;
-    padding: 32px;
-    margin: 24px;
-  }
+  .profile-check { font-size: 18px; color: var(--profile-accent, var(--cyan)); flex-shrink: 0; opacity: 0; transition: opacity 0.15s; }
+  .profile-card.selected .profile-check { opacity: 1; }
 
-  .onboarding-card h2 {
-    color: var(--cyan);
-    font-size: 18px;
-    margin-bottom: 4px;
-    text-align: center;
-  }
-
-  .onboarding-card .subtitle {
-    color: var(--dim);
+  /* Profile badge (shown on interview step) */
+  .profile-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font-size: 12px;
-    text-align: center;
-    margin-bottom: 24px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 20px;
+    margin-bottom: 20px;
+    border: 1px solid;
   }
 
-  .onboarding-step { display: none; }
-  .onboarding-step.active { display: block; }
+  /* Interview questions */
+  .ob-question-block { margin-bottom: 20px; }
+  .ob-question-text {
+    font-size: 15px;
+    color: var(--text);
+    font-weight: 500;
+    margin-bottom: 6px;
+    line-height: 1.4;
+  }
+  .ob-optional { font-size: 11px; color: var(--dim); margin-bottom: 6px; }
 
+  .ob-input {
+    width: 100%;
+    background: #111827;
+    border: 1px solid #1f2937;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    outline: none;
+    resize: vertical;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+  }
+  .ob-input:focus { border-color: var(--cyan); }
+
+  /* Personality grid */
   .personality-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    gap: 8px;
     margin-bottom: 20px;
   }
-
   .personality-option {
-    background: var(--bg);
-    border: 2px solid var(--border);
+    background: #111827;
+    border: 1.5px solid #1f2937;
     border-radius: 8px;
-    padding: 14px;
+    padding: 12px 14px;
     cursor: pointer;
-    transition: border-color 0.2s;
+    transition: border-color 0.15s;
   }
-
   .personality-option:hover { border-color: var(--cyan-dim); }
   .personality-option.selected { border-color: var(--cyan); }
+  .personality-option .p-label { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+  .personality-option .p-desc { font-size: 11px; color: var(--dim); line-height: 1.4; }
 
-  .personality-option .p-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 4px;
-  }
-
-  .personality-option .p-desc {
-    font-size: 11px;
-    color: var(--dim);
-    line-height: 1.4;
-  }
-
-  .ob-field {
-    margin-bottom: 14px;
-  }
-
-  .ob-field label {
-    display: block;
-    font-size: 11px;
-    color: var(--dim);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
-  }
-
+  /* Agent name / your name fields */
+  .ob-field { margin-bottom: 16px; }
+  .ob-field label { display: block; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; }
   .ob-field input, .ob-field select {
     width: 100%;
-    background: var(--bg);
-    border: 1px solid var(--border);
+    background: #111827;
+    border: 1px solid #1f2937;
     color: var(--text);
     font-family: inherit;
-    font-size: 13px;
-    padding: 8px 10px;
-    border-radius: 6px;
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
     outline: none;
+    box-sizing: border-box;
+    transition: border-color 0.15s;
   }
-
   .ob-field input:focus, .ob-field select:focus { border-color: var(--cyan); }
 
-  .ob-field .hint {
-    font-size: 10px;
-    color: var(--dim);
-    margin-top: 2px;
-  }
-
-  .ob-buttons {
-    display: flex;
-    gap: 10px;
-    justify-content: flex-end;
-    margin-top: 20px;
-  }
-
-  .ob-btn {
-    background: var(--border);
-    color: var(--text);
+  /* Buttons */
+  .ob-continue-btn {
+    width: 100%;
+    background: var(--cyan);
+    color: #080d14;
     border: none;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 700;
+    padding: 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: opacity 0.15s;
+  }
+  .ob-continue-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .ob-skip-btn {
+    width: 100%;
+    background: none;
+    border: none;
+    color: var(--dim);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 10px;
+    cursor: pointer;
+    margin-top: 4px;
+  }
+  .ob-skip-btn:hover { color: var(--text); }
+
+  .ob-back-btn {
+    background: none;
+    border: none;
+    color: var(--cyan);
     font-family: inherit;
     font-size: 13px;
     font-weight: 600;
-    padding: 8px 20px;
-    border-radius: 6px;
+    padding: 0 0 16px 0;
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
 
-  .ob-btn.primary {
-    background: var(--cyan);
-    color: var(--bg);
+  /* Progress / setup screen */
+  .ob-progress-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    margin: 0 auto 20px;
   }
 
-  .ob-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+  .ob-progress-steps { margin: 32px 0; display: flex; flex-direction: column; gap: 16px; }
+  .ob-progress-row { display: flex; align-items: center; gap: 14px; }
+  .ob-progress-icon-cell { width: 24px; text-align: center; flex-shrink: 0; }
+  .ob-progress-label { font-size: 15px; color: var(--dim); }
+  .ob-progress-label.running { color: var(--text); font-weight: 600; }
+  .ob-progress-label.done { color: var(--text); }
+
+  @keyframes ob-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
   }
+  .ob-spinner { display: inline-block; animation: ob-spin 0.9s linear infinite; color: var(--cyan); }
 
   /* ── Responsive ──────────────────────────────────── */
 
@@ -995,6 +1094,7 @@
       grid-template-rows: auto auto 1fr;
     }
     .personality-grid { grid-template-columns: 1fr; }
+    .onboarding-overlay { padding: 20px 12px 40px; }
   }
 </style>
 </head>
@@ -1002,27 +1102,40 @@
 
 <!-- Onboarding overlay (shown when no vault or interview incomplete) -->
 <div class="onboarding-overlay hidden" id="onboarding">
-  <div class="onboarding-card">
-    <h2>Welcome to Phaibel</h2>
-    <p class="subtitle">Let's set up your personal AI assistant</p>
+  <div class="ob-card">
 
-    <!-- Step 1: Personality -->
-    <div class="onboarding-step active" id="ob-step-1">
-      <div class="personality-grid" id="personality-grid"></div>
-      <div class="ob-buttons">
-        <button class="ob-btn primary" id="ob-next-1" disabled>Next</button>
-      </div>
+    <!-- Step 1: Profile picker -->
+    <div class="ob-step active" id="ob-step-1">
+      <div class="ob-step-label">Step 1 of 3</div>
+      <div class="ob-title">Who are you?</div>
+      <div class="ob-subtitle">Phaibel will tailor itself to how you work.</div>
+      <div class="profile-list" id="ob-profile-list"></div>
+      <button class="ob-continue-btn" id="ob-next-1" disabled>
+        Continue <span>→</span>
+      </button>
     </div>
 
-    <!-- Step 2: Identity -->
-    <div class="onboarding-step" id="ob-step-2">
+    <!-- Step 2: Profile interview -->
+    <div class="ob-step" id="ob-step-2">
+      <button class="ob-back-btn" id="ob-back-2">← Back</button>
+      <div class="ob-step-label">Step 2 of 3</div>
+      <div class="ob-title">Tell us about yourself</div>
+      <div class="ob-subtitle">This helps your assistant understand your context from day one.</div>
+      <div id="ob-profile-badge"></div>
+      <div id="ob-questions"></div>
+      <button class="ob-continue-btn" id="ob-next-2">Continue <span>→</span></button>
+      <button class="ob-skip-btn" id="ob-skip-2">Skip for now</button>
+    </div>
+
+    <!-- Step 3: Agent setup -->
+    <div class="ob-step" id="ob-step-3">
+      <button class="ob-back-btn" id="ob-back-3">← Back</button>
+      <div class="ob-step-label">Step 3 of 3</div>
+      <div class="ob-title">Meet your assistant</div>
+      <div class="ob-subtitle">Give your agent a name and pick a personality.</div>
       <div class="ob-field">
         <label>Agent Name</label>
         <input type="text" id="ob-agent-name" placeholder="e.g. Jarvis, Friday, Alfred" value="Agent">
-      </div>
-      <div class="ob-field">
-        <label>Your Name</label>
-        <input type="text" id="ob-user-name" placeholder="Your name">
       </div>
       <div class="ob-field">
         <label>How should your agent address you?</label>
@@ -1032,44 +1145,21 @@
           <option value="other">Boss / Chief / Friend</option>
         </select>
       </div>
-      <div class="ob-buttons">
-        <button class="ob-btn" id="ob-back-2">Back</button>
-        <button class="ob-btn primary" id="ob-next-2">Next</button>
+      <div class="ob-field">
+        <label>Personality</label>
+        <div class="personality-grid" id="ob-personality-grid"></div>
       </div>
+      <button class="ob-continue-btn" id="ob-submit">Set Up Phaibel →</button>
     </div>
 
-    <!-- Step 3: Profile (optional) -->
-    <div class="onboarding-step" id="ob-step-3">
-      <p class="subtitle" style="margin-bottom:16px">Optional — skip any you like</p>
-      <div class="ob-field">
-        <label>Location</label>
-        <input type="text" id="ob-location" placeholder="City / region">
-      </div>
-      <div class="ob-field">
-        <label>Work</label>
-        <input type="text" id="ob-work" placeholder="Role, industry, student, retired…">
-      </div>
-      <div class="ob-field">
-        <label>Goals</label>
-        <input type="text" id="ob-goals" placeholder="What are you working towards?">
-      </div>
-      <div class="ob-field">
-        <label>Relationships</label>
-        <input type="text" id="ob-relationships" placeholder="Partner, kids, family, friends">
-      </div>
-      <div class="ob-field">
-        <label>Health &amp; Fitness</label>
-        <input type="text" id="ob-health" placeholder="Exercise, diet, health goals">
-      </div>
-      <div class="ob-field">
-        <label>Growth</label>
-        <input type="text" id="ob-growth" placeholder="Learning, hobbies, habits">
-      </div>
-      <div class="ob-buttons">
-        <button class="ob-btn" id="ob-back-3">Back</button>
-        <button class="ob-btn primary" id="ob-submit">Get Started</button>
-      </div>
+    <!-- Step 4: Progress -->
+    <div class="ob-step" id="ob-step-4">
+      <div class="ob-progress-icon" id="ob-progress-icon"></div>
+      <div class="ob-title" id="ob-progress-title" style="text-align:center">Setting up Phaibel…</div>
+      <div class="ob-subtitle" id="ob-progress-subtitle" style="text-align:center">Just a moment while we configure everything.</div>
+      <div class="ob-progress-steps" id="ob-progress-steps"></div>
     </div>
+
   </div>
 </div>
 
@@ -2071,14 +2161,17 @@ async function markTaskDone(checkEl) {
   // ── Onboarding ──────────────────────────────────────────────
 
   const onboardingOverlay = document.getElementById('onboarding');
-  let obPersonality = '';
+  var obSelectedProfile = null;  // full profile object
+  var obProfileAnswers = {};
+  var obPersonality = '';
+  var obProfiles = [];
 
   async function checkOnboarding() {
     try {
       const res = await fetch('/api/status');
       const data = await res.json();
       if (!data.vaultRoot || !data.interviewComplete) {
-        showOnboarding();
+        await showOnboarding();
         return true;
       }
     } catch { /* ignore */ }
@@ -2087,38 +2180,69 @@ async function markTaskDone(checkEl) {
 
   async function showOnboarding() {
     onboardingOverlay.classList.remove('hidden');
-    // Load personalities
-    try {
-      const res = await fetch('/api/personalities');
-      const list = await res.json();
-      const grid = document.getElementById('personality-grid');
-      grid.innerHTML = list.map(function(p) {
-        return '<div class="personality-option" data-id="' + esc(p.id) + '">'
-          + '<div class="p-label">' + esc(p.label) + '</div>'
-          + '<div class="p-desc">' + esc(p.description) + '</div>'
-          + '</div>';
-      }).join('');
 
-      grid.addEventListener('click', function(e) {
-        var opt = e.target.closest('.personality-option');
-        if (!opt) return;
-        grid.querySelectorAll('.personality-option').forEach(function(el) { el.classList.remove('selected'); });
-        opt.classList.add('selected');
-        obPersonality = opt.dataset.id;
-        document.getElementById('ob-next-1').disabled = false;
+    // Load profiles + personalities in parallel
+    var [profilesRes, personalitiesRes] = await Promise.all([
+      fetch('/api/onboarding-profiles').then(function(r) { return r.json(); }).catch(function() { return []; }),
+      fetch('/api/personalities').then(function(r) { return r.json(); }).catch(function() { return []; }),
+    ]);
+    obProfiles = profilesRes;
+
+    // Render profile list (step 1)
+    var profileList = document.getElementById('ob-profile-list');
+    profileList.innerHTML = obProfiles.map(function(p) {
+      return '<div class="profile-card" data-type="' + esc(p.type) + '" style="--profile-accent:' + esc(p.accentColor) + '">'
+        + '<div class="profile-icon" style="background:' + esc(p.accentColor) + '">' + p.icon + '</div>'
+        + '<div class="profile-text">'
+        +   '<div class="profile-label">' + esc(p.label) + '</div>'
+        +   '<div class="profile-tagline">' + esc(p.tagline) + '</div>'
+        + '</div>'
+        + '<div class="profile-check">✓</div>'
+        + '</div>';
+    }).join('');
+
+    profileList.addEventListener('click', function(e) {
+      var card = e.target.closest('.profile-card');
+      if (!card) return;
+      profileList.querySelectorAll('.profile-card').forEach(function(el) {
+        el.classList.remove('selected');
+        el.querySelector('.profile-label').classList.remove('selected');
       });
-    } catch (err) {
-      console.error('Failed to load personalities', err);
-    }
+      card.classList.add('selected');
+      card.querySelector('.profile-label').classList.add('selected');
+      obSelectedProfile = obProfiles.find(function(p) { return p.type === card.dataset.type; });
+      document.getElementById('ob-next-1').disabled = false;
+    });
+
+    // Render personality grid (step 3)
+    var pgrid = document.getElementById('ob-personality-grid');
+    pgrid.innerHTML = personalitiesRes.map(function(p) {
+      return '<div class="personality-option" data-id="' + esc(p.id) + '">'
+        + '<div class="p-label">' + esc(p.label) + '</div>'
+        + '<div class="p-desc">' + esc(p.description) + '</div>'
+        + '</div>';
+    }).join('');
+    pgrid.addEventListener('click', function(e) {
+      var opt = e.target.closest('.personality-option');
+      if (!opt) return;
+      pgrid.querySelectorAll('.personality-option').forEach(function(el) { el.classList.remove('selected'); });
+      opt.classList.add('selected');
+      obPersonality = opt.dataset.id;
+    });
 
     // Step navigation
-    document.getElementById('ob-next-1').addEventListener('click', function() { obGoStep(2); });
+    document.getElementById('ob-next-1').addEventListener('click', function() {
+      obBuildQuestions();
+      obGoStep(2);
+    });
     document.getElementById('ob-back-2').addEventListener('click', function() { obGoStep(1); });
     document.getElementById('ob-next-2').addEventListener('click', function() {
-      if (!document.getElementById('ob-user-name').value.trim()) {
-        document.getElementById('ob-user-name').focus();
-        return;
-      }
+      obCollectAnswers();
+      obApplyProfileDefaults();
+      obGoStep(3);
+    });
+    document.getElementById('ob-skip-2').addEventListener('click', function() {
+      obApplyProfileDefaults();
       obGoStep(3);
     });
     document.getElementById('ob-back-3').addEventListener('click', function() { obGoStep(2); });
@@ -2126,47 +2250,144 @@ async function markTaskDone(checkEl) {
   }
 
   function obGoStep(n) {
-    document.querySelectorAll('.onboarding-step').forEach(function(el) { el.classList.remove('active'); });
+    document.querySelectorAll('.ob-step').forEach(function(el) { el.classList.remove('active'); });
     document.getElementById('ob-step-' + n).classList.add('active');
+    onboardingOverlay.scrollTo(0, 0);
+  }
+
+  function obBuildQuestions() {
+    if (!obSelectedProfile) return;
+    var p = obSelectedProfile;
+
+    // Profile badge
+    var badge = document.getElementById('ob-profile-badge');
+    badge.innerHTML = '<span class="profile-badge" style="color:' + esc(p.accentColor) + ';border-color:' + esc(p.accentColor) + '40;background:' + esc(p.accentColor) + '15">'
+      + p.icon + ' ' + esc(p.label) + '</span>';
+
+    // Questions
+    var qs = document.getElementById('ob-questions');
+    qs.innerHTML = p.questions.map(function(q) {
+      var tag = q.multiline ? 'textarea' : 'input';
+      var attrs = q.multiline ? 'rows="3"' : 'type="text"';
+      return '<div class="ob-question-block">'
+        + '<div class="ob-question-text">' + esc(q.question) + '</div>'
+        + (q.optional ? '<div class="ob-optional">Optional</div>' : '')
+        + '<' + tag + ' class="ob-input" data-key="' + esc(q.key) + '" ' + attrs
+        +   ' placeholder="' + esc(q.placeholder) + '"'
+        +   ' value="' + esc(obProfileAnswers[q.key] || '') + '"'
+        + '></' + tag + '>'
+        + '</div>';
+    }).join('');
+  }
+
+  function obCollectAnswers() {
+    var inputs = document.querySelectorAll('#ob-questions .ob-input');
+    obProfileAnswers = {};
+    inputs.forEach(function(el) {
+      var v = el.value.trim();
+      if (v) obProfileAnswers[el.dataset.key] = v;
+    });
+  }
+
+  function obApplyProfileDefaults() {
+    if (!obSelectedProfile) return;
+    // Pre-select personality if not already chosen
+    if (!obPersonality && obSelectedProfile.defaultPersonality) {
+      var pgrid = document.getElementById('ob-personality-grid');
+      var defOpt = pgrid.querySelector('[data-id="' + obSelectedProfile.defaultPersonality + '"]');
+      if (defOpt) {
+        pgrid.querySelectorAll('.personality-option').forEach(function(el) { el.classList.remove('selected'); });
+        defOpt.classList.add('selected');
+        obPersonality = obSelectedProfile.defaultPersonality;
+      }
+    }
   }
 
   async function submitOnboarding() {
+    obCollectAnswers();
     var btn = document.getElementById('ob-submit');
     btn.disabled = true;
-    btn.textContent = 'Setting up…';
 
+    // Transition to progress step
+    obGoStep(4);
+    var profileAccent = obSelectedProfile ? obSelectedProfile.accentColor : '#00d4b4';
+    document.getElementById('ob-progress-icon').style.background = profileAccent;
+    document.getElementById('ob-progress-icon').textContent = obSelectedProfile ? obSelectedProfile.icon : '⚙️';
+
+    var setupSteps = [
+      'Creating your workspace',
+      'Adding context types',
+      'Personalizing your assistant',
+      'Finishing up',
+    ];
+    var stepsEl = document.getElementById('ob-progress-steps');
+
+    function renderSteps(statuses) {
+      stepsEl.innerHTML = setupSteps.map(function(label, i) {
+        var status = statuses[i] || 'pending';
+        var icon = status === 'done'    ? '<span style="color:#22c55e">✓</span>'
+                 : status === 'running' ? '<span class="ob-spinner">↻</span>'
+                 : status === 'error'   ? '<span style="color:#f59e0b">!</span>'
+                 :                        '<span style="color:#374151">○</span>';
+        return '<div class="ob-progress-row">'
+          + '<div class="ob-progress-icon-cell">' + icon + '</div>'
+          + '<div class="ob-progress-label ' + status + '">' + esc(label) + '</div>'
+          + '</div>';
+      }).join('');
+    }
+
+    var statuses = ['running', 'pending', 'pending', 'pending'];
+    renderSteps(statuses);
+
+    // Small delays to animate the steps visually
     var payload = {
-      personality: obPersonality,
+      personality: obPersonality || (obSelectedProfile && obSelectedProfile.defaultPersonality) || 'executive',
       agentName: document.getElementById('ob-agent-name').value.trim() || 'Agent',
-      userName: document.getElementById('ob-user-name').value.trim(),
+      userName: obProfileAnswers.name || '',
       gender: document.getElementById('ob-gender').value,
-      answers: {
-        location: document.getElementById('ob-location').value.trim() || undefined,
-        work: document.getElementById('ob-work').value.trim() || undefined,
-        workGoals: document.getElementById('ob-goals').value.trim() || undefined,
-        relationships: document.getElementById('ob-relationships').value.trim() || undefined,
-        health: document.getElementById('ob-health').value.trim() || undefined,
-        growth: document.getElementById('ob-growth').value.trim() || undefined,
-      },
+      userType: obSelectedProfile ? obSelectedProfile.type : undefined,
+      profileAnswers: obProfileAnswers,
     };
 
     try {
+      statuses = ['done', 'running', 'pending', 'pending'];
+      renderSteps(statuses);
+      await new Promise(function(r) { setTimeout(r, 300); });
+
+      statuses = ['done', 'done', 'running', 'pending'];
+      renderSteps(statuses);
+
       var res = await fetch('/api/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        var err = await res.json().catch(function() { return {}; });
-        throw new Error(err.error || 'Setup failed');
+        var errData = await res.json().catch(function() { return {}; });
+        throw new Error(errData.error || 'Setup failed');
       }
-      // Success — reload the page
+
+      statuses = ['done', 'done', 'done', 'running'];
+      renderSteps(statuses);
+      await new Promise(function(r) { setTimeout(r, 400); });
+
+      statuses = ['done', 'done', 'done', 'done'];
+      renderSteps(statuses);
+
+      var profileLabel = obSelectedProfile ? obSelectedProfile.label : '';
+      document.getElementById('ob-progress-title').textContent = "You're all set!";
+      document.getElementById('ob-progress-subtitle').textContent = profileLabel
+        ? 'Configured for ' + profileLabel + '. Let\'s get started.'
+        : 'Let\'s get started.';
+
+      await new Promise(function(r) { setTimeout(r, 700); });
       onboardingOverlay.classList.add('hidden');
       location.reload();
     } catch (err) {
-      btn.disabled = false;
-      btn.textContent = 'Get Started';
-      alert('Setup failed: ' + (err.message || err));
+      statuses[statuses.indexOf('running')] = 'error';
+      renderSteps(statuses);
+      document.getElementById('ob-progress-title').textContent = 'Setup failed';
+      document.getElementById('ob-progress-subtitle').textContent = err.message || String(err);
     }
   }
 

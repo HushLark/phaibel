@@ -1,0 +1,88 @@
+{
+  "runId": "2026-04-22T13-13-28",
+  "timestamp": "2026-04-22T13:13:28.517Z",
+  "config": {
+    "label": "loop-1-iso-duration",
+    "gitCommit": "676f0cb",
+    "scenarioFilter": [
+      "persona-project-kickoff-multi",
+      "event-not-task"
+    ]
+  },
+  "scenarios": [
+    {
+      "scenarioId": "event-not-task",
+      "scenarioName": "Dentist appointment creates event, not task",
+      "category": "entity-type",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "An event should be created for the appointment",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Dentist Appointment",
+          "message": "Created event: \"Dentist Appointment\""
+        },
+        {
+          "description": "A task should NOT be created for an appointment",
+          "type": "entity_not_created",
+          "passed": true,
+          "message": "No unwanted task matching \"dentist\" was created"
+        }
+      ],
+      "responseText": "Noted, sir! Agent has created a **Dentist Appointment** event for **Tuesday, April 28 at 2:00 PM** (one hour). It's safely tucked into your calendar.\n\nShould Agent set a reminder beforehand, or perhaps note your dentist's details for future reference?",
+      "durationMs": 30891
+    },
+    {
+      "scenarioId": "persona-project-kickoff-multi",
+      "scenarioName": "Project kickoff creates event + goal + task",
+      "category": "persona",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A kickoff meeting event should be created",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Website Redesign Kickoff Meeting",
+          "message": "Created event: \"Website Redesign Kickoff Meeting\""
+        },
+        {
+          "description": "A website redesign goal should be created",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Launch Website Redesign by June",
+          "message": "Created goal: \"Launch Website Redesign by June\""
+        },
+        {
+          "description": "A task to send the brief should be created",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Send project brief to the team",
+          "message": "Created task: \"Send project brief to the team\""
+        }
+      ],
+      "responseText": "The website redesign project is officially underway, sir. Agent has set up three items in the vault:\n\n- 📅 **Website Redesign Kickoff Meeting** — scheduled for Monday, April 27 at 9:00 AM (1 hour)\n- 🎯 **Launch Website Redesign by June** — goal set with a target date of June 30, status: active\n- ✅ **Send project brief to the team** — high-priority task, open and ready\n\nAll three are tagged `website-redesign` and linked to the goal, so the task and meeting contribute toward the June launch target.\n\nMight Agent also suggest setting a due date on the brief task — perhaps before the kickoff meeting on Monday — to ensure the team has time to review it beforehand?",
+      "durationMs": 37418
+    }
+  ],
+  "summary": {
+    "totalScenarios": 2,
+    "passed": 2,
+    "failed": 0,
+    "overallScore": 1,
+    "byCategory": {
+      "entity-type": {
+        "total": 1,
+        "passed": 1,
+        "score": 1
+      },
+      "persona": {
+        "total": 1,
+        "passed": 1,
+        "score": 1
+      }
+    }
+  }
+}

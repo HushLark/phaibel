@@ -33,8 +33,9 @@ import { transcribeAudio } from '../llm/transcribe.js';
 import { handleMcpRequest } from './mcp-server.js';
 import { handleAgentCard, handleA2ARequest } from './a2a-server.js';
 import { PERSONALITIES } from '../personalities.js';
-import { initEntityTypes, loadEntityTypes } from '../entities/entity-type-config.js';
+import { initEntityTypes, loadEntityTypes, addEntityType } from '../entities/entity-type-config.js';
 import { SYSTEM_DIR } from '../paths.js';
+import { WEB_PROFILE_LIST, WEB_PROFILES } from '../onboarding/web-profiles.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -458,6 +459,22 @@ export class WebServer {
             return;
         }
 
+        // GET /api/onboarding-profiles — profile list for the onboarding UI
+        if (req.method === 'GET' && url.pathname === '/api/onboarding-profiles') {
+            const list = WEB_PROFILE_LIST.map(p => ({
+                type: p.type,
+                label: p.label,
+                tagline: p.tagline,
+                icon: p.icon,
+                accentColor: p.accentColor,
+                defaultPersonality: p.defaultPersonality,
+                questions: p.questions,
+            }));
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(list));
+            return;
+        }
+
         // POST /api/setup — onboarding: create vault + save profile
         if (req.method === 'POST' && url.pathname === '/api/setup') {
             try {
@@ -828,6 +845,8 @@ export class WebServer {
         agentName: string;
         userName: string;
         gender: string;
+        userType?: string;
+        profileAnswers?: Record<string, string>;
         answers?: {
             location?: string;
             work?: string;
@@ -913,7 +932,52 @@ This vault is the agent's memory. Content is stored as Markdown files with YAML 
         // Ensure env is set for state operations
         process.env.PHAIBEL_VAULT = vaultPath;
 
-        // 2. Save profile
+        // 2. Install profile-specific entity types
+        if (body.userType) {
+            const webProfile = WEB_PROFILES[body.userType];
+            if (webProfile) {
+                for (const et of webProfile.entityTypes) {
+                    try {
+                        await addEntityType(et);
+                    } catch (err) {
+                        // Already exists — skip silently
+                        if (!String(err).includes('already exists')) {
+                            debug('setup', `Entity type ${et.name} error: ${err}`);
+                        }
+                    }
+                }
+
+                // Write profile context block
+                if (body.profileAnswers && Object.keys(body.profileAnswers).length > 0) {
+                    const lines = webProfile.buildContextLines(body.profileAnswers);
+                    if (lines.length > 0) {
+                        const profileBlock = `<!-- PROFILE:START -->\n${lines.join('\n')}\n<!-- PROFILE:END -->`;
+                        try {
+                            let content = await fs.readFile(vaultFilePath, 'utf-8');
+                            if (content.includes('<!-- PROFILE:START -->')) {
+                                content = content.replace(/<!-- PROFILE:START -->[\s\S]*?<!-- PROFILE:END -->/, profileBlock);
+                            } else {
+                                content = content.trimEnd() + '\n\n' + profileBlock + '\n';
+                            }
+                            await fs.writeFile(vaultFilePath, content);
+                        } catch (err) {
+                            debug('setup', `Failed to write profile block: ${err}`);
+                        }
+                    }
+                }
+
+                // Store userType in profile (userName may come from profileAnswers)
+                if (!body.userName && body.profileAnswers?.name) {
+                    body.userName = body.profileAnswers.name;
+                }
+                // Default personality from profile if not explicitly set
+                if (!body.personality && webProfile.defaultPersonality) {
+                    body.personality = webProfile.defaultPersonality;
+                }
+            }
+        }
+
+        // 3. Save profile
         await saveProfile({
             userName: body.userName,
             agentName: body.agentName,

@@ -1,28 +1,40 @@
 /**
- * Persona Scenarios — Dialog & feedback widgets
+ * Persona Scenarios — accuracy and token efficiency; skills, saved processes, and custom processes
  *
  * Auto-generated for /innovate. These scenarios test Phaibel's ability
- * to ask clarifying questions via prompt_input/prompt_select when the
- * user's request is missing required information, rather than guessing
- * or failing validation.
+ * to handle use cases specific to: accuracy and token usage using anthropic —
+ * covering skill activation (daily-briefing), create-vs-update flows, multi-entity
+ * custom processes, and entity type discrimination.
  */
 import type { EvalScenario } from '../types.js';
 
 export const personaScenarios: EvalScenario[] = [
+    // ── Skill: daily briefing ───────────────────────────────────────
     {
-        id: 'persona-event-missing-time',
-        name: 'Event with date but no time should still create event',
+        id: 'persona-skill-daily-briefing',
+        name: 'Daily briefing skill returns task and event summary',
         category: 'persona',
-        userInput: 'Add an event for my team standup next Monday',
+        vaultSeed: [
+            { entityType: 'task', title: 'Review budget', fields: { status: 'open', priority: 'high' } },
+            { entityType: 'task', title: 'Call client', fields: { status: 'open', priority: 'medium' } },
+            { entityType: 'event', title: 'Team standup', fields: { startDate: '2026-04-21T09:00:00-06:00' } },
+        ],
+        userInput: 'Give me my morning briefing',
         assertions: [
             {
-                type: 'entity_created',
-                entityType: 'event',
-                titleMatch: 'standup',
-                description: 'An event should be created for the standup',
+                type: 'response_contains',
+                match: 'budget',
+                description: 'Briefing should mention the high-priority budget task',
+            },
+            {
+                type: 'response_contains',
+                match: 'standup',
+                description: 'Briefing should mention the standup event',
             },
         ],
+        timeoutSeconds: 90,
     },
+    // ── Custom process: task with priority field ────────────────────
     {
         id: 'persona-task-with-priority',
         name: 'Task with explicit priority sets the field',
@@ -45,64 +57,106 @@ export const personaScenarios: EvalScenario[] = [
             },
         ],
     },
+    // ── Custom process: multi-entity project kickoff ────────────────
     {
-        id: 'persona-goal-created-cleanly',
-        name: 'Goal creation succeeds without validation errors',
+        id: 'persona-project-kickoff-multi',
+        name: 'Project kickoff creates event + goal + task',
         category: 'persona',
-        userInput: 'My goal is to read 24 books this year',
+        userInput: 'Kick off the website redesign project: add a kickoff meeting for next Monday, set a goal to launch by June, and add a task to send the brief to the team.',
         assertions: [
             {
                 type: 'entity_created',
+                entityType: 'event',
+                titleMatch: 'kickoff',
+                description: 'A kickoff meeting event should be created',
+            },
+            {
+                type: 'entity_created',
                 entityType: 'goal',
-                titleMatch: 'book',
-                description: 'A goal should be created for reading books',
+                titleMatch: 'website',
+                description: 'A website redesign goal should be created',
+            },
+            {
+                type: 'entity_created',
+                entityType: 'task',
+                titleMatch: 'brief',
+                description: 'A task to send the brief should be created',
+            },
+        ],
+        timeoutSeconds: 90,
+    },
+    // ── Create-vs-update: mark task done ───────────────────────────
+    {
+        id: 'persona-update-task-status',
+        name: 'Mark an existing task done (update, not create)',
+        category: 'persona',
+        vaultSeed: [
+            { entityType: 'task', title: 'Send quarterly report', fields: { status: 'open', priority: 'high' } },
+        ],
+        userInput: 'I finished sending the quarterly report, mark it done',
+        assertions: [
+            {
+                type: 'entity_updated',
+                entityType: 'task',
+                titleMatch: 'quarterly report',
+                description: 'The existing task should be updated to done',
+            },
+            {
+                type: 'entity_not_created',
+                entityType: 'task',
+                titleMatch: 'quarterly report',
+                description: 'Should not create a duplicate task',
             },
         ],
     },
+    // ── Entity type discrimination: note not task ───────────────────
     {
-        id: 'persona-note-with-info',
-        name: 'Note stores reference information correctly',
+        id: 'persona-note-not-task',
+        name: 'Meeting notes create a note, not a task',
         category: 'persona',
-        userInput: 'Remember that the garage door code is 4821',
+        userInput: 'Take a note: discussed migration timeline with engineering, target is end of May',
         assertions: [
             {
                 type: 'entity_created',
                 entityType: 'note',
-                titleMatch: 'garage',
-                description: 'A note should be created for the garage door code',
+                titleMatch: 'migration',
+                description: 'A note should be created for meeting notes',
             },
             {
-                type: 'response_contains',
-                match: '4821',
-                description: 'Response should confirm the code was stored',
+                type: 'entity_not_created',
+                entityType: 'task',
+                titleMatch: 'migration',
+                description: 'Should not create a task for a note',
             },
         ],
     },
+    // ── Custom process: person with fields ─────────────────────────
     {
-        id: 'persona-contact-partial-info',
-        name: 'Contact creation with partial info succeeds',
+        id: 'persona-add-client-contact',
+        name: 'Add a client contact with role and email',
         category: 'persona',
-        userInput: 'Add a contact for my plumber Mike, phone 555-0199',
+        userInput: 'Add a new contact: Marcus Williams, VP of Engineering at CloudBase, email marcus@cloudbase.io',
         assertions: [
             {
                 type: 'entity_created',
                 entityType: 'person',
-                titleMatch: 'Mike',
-                description: 'A person entity should be created for Mike',
+                titleMatch: 'Marcus',
+                description: 'A person entity should be created for Marcus',
             },
             {
                 type: 'entity_field',
                 entityType: 'person',
-                titleMatch: 'Mike',
-                field: 'phone',
-                expected: '555-0199',
-                description: 'Phone field should be populated',
+                titleMatch: 'Marcus',
+                field: 'email',
+                expected: 'marcus@cloudbase.io',
+                description: 'Email should be set correctly',
             },
         ],
     },
+    // ── Custom process: todont ──────────────────────────────────────
     {
         id: 'persona-todont-simple',
-        name: 'Simple stop-doing creates todont without errors',
+        name: 'Stop-doing creates todont without errors',
         category: 'persona',
         userInput: 'I should stop eating fast food for lunch',
         assertions: [
@@ -117,6 +171,21 @@ export const personaScenarios: EvalScenario[] = [
                 entityType: 'task',
                 titleMatch: 'fast food',
                 description: 'Should not create a task for a stop-doing',
+            },
+        ],
+    },
+    // ── Goal creation ───────────────────────────────────────────────
+    {
+        id: 'persona-goal-created-cleanly',
+        name: 'Goal creation succeeds cleanly',
+        category: 'persona',
+        userInput: 'My goal is to read 24 books this year',
+        assertions: [
+            {
+                type: 'entity_created',
+                entityType: 'goal',
+                titleMatch: 'book',
+                description: 'A goal should be created for reading books',
             },
         ],
     },

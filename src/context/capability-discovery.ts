@@ -182,7 +182,10 @@ export async function runCapabilityDiscovery(
     const fetchedNodes = new Set<string>();
     let capabilitySummary = '';
 
-    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
+    // If no skills are installed, limit to one pass (node doc lookup only, no skill browsing)
+    const effectiveMaxIterations = skillMetas.length === 0 ? 1 : MAX_ITERATIONS;
+
+    for (let iteration = 0; iteration < effectiveMaxIterations; iteration++) {
         const skillDetailBlock = collectedSkillDetails.length > 0
             ? `\nSKILL DETAILS (loaded so far):\n${collectedSkillDetails.join('\n\n')}\n`
             : '';

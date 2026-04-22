@@ -14,6 +14,42 @@ import { resetEmbeddingIndex } from '../src/entities/embedding-index.js';
 import { DEFAULT_ENTITY_TYPES } from '../src/entities/entity-types-defaults.js';
 import type { VaultSeedEntity, VaultSnapshot, SnapshotEntity } from './types.js';
 
+// Bundled skill for skill-scenario testing — daily-briefing
+const DAILY_BRIEFING_SKILL_MD = `---
+name: daily-briefing
+description: Generates a morning briefing summarizing today's tasks, events, and goals
+version: "1.0.0"
+triggers:
+  - morning briefing
+  - daily briefing
+  - what's on my agenda
+  - what do I have today
+  - start my day
+tags:
+  - productivity
+  - daily
+  - planning
+---
+
+# Daily Briefing
+
+Retrieve today's tasks, upcoming events, and active goals, then synthesize a concise morning briefing.
+Keep it to 3-5 bullet points and lead with the most important item.
+`;
+
+const DAILY_BRIEFING_SCRIPT = JSON.stringify({
+    schema_version: 1,
+    key: 'skill.daily-briefing',
+    description: 'Morning briefing: open tasks, today\'s events, active goals',
+    context: {},
+    nodes: [
+        { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'list_tasks' } },
+        { key: 'list_tasks', catalog_node_key: 'list_tasks', configuration: { context_path: 'tasks' }, edges: { ok: 'list_events', empty: 'list_events', error: 'list_events' } },
+        { key: 'list_events', catalog_node_key: 'list_events', configuration: { context_path: 'events' }, edges: { ok: 'done', empty: 'done', error: 'done' } },
+        { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
+    ],
+}, null, 2);
+
 let vaultDir: string | null = null;
 let originalCwd: string;
 
@@ -106,6 +142,12 @@ export async function createEvalVault(
     for (const et of EVAL_ENTITY_TYPES) {
         await fs.mkdir(path.join(vaultDir, et.directory), { recursive: true });
     }
+
+    // Install built-in skills so skill scenarios can activate them
+    const skillsDir = path.join(vaultDir, 'skills', 'daily-briefing', 'scripts');
+    await fs.mkdir(skillsDir, { recursive: true });
+    await fs.writeFile(path.join(skillsDir, '..', 'SKILL.md'), DAILY_BRIEFING_SKILL_MD);
+    await fs.writeFile(path.join(skillsDir, 'briefing.json'), DAILY_BRIEFING_SCRIPT);
 
     // Reset all caches/singletons so the new vault is discovered cleanly
     process.chdir(vaultDir);

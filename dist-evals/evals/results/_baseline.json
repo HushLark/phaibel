@@ -1,0 +1,635 @@
+{
+  "runId": "2026-04-22T13-49-43",
+  "timestamp": "2026-04-22T13:49:43.967Z",
+  "config": {
+    "label": "loop-2-full",
+    "gitCommit": "676f0cb"
+  },
+  "scenarios": [
+    {
+      "scenarioId": "event-not-task",
+      "scenarioName": "Dentist appointment creates event, not task",
+      "category": "entity-type",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "An event should be created for the appointment",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Dentist Appointment",
+          "message": "Created event: \"Dentist Appointment\""
+        },
+        {
+          "description": "A task should NOT be created for an appointment",
+          "type": "entity_not_created",
+          "passed": true,
+          "message": "No unwanted task matching \"dentist\" was created"
+        }
+      ],
+      "responseText": "Noted and done, sir. Agent has created **Dentist Appointment** on your calendar for **Tuesday, April 28 at 2:00 PM** (one hour). It's been tagged under *health* and *dentist* for easy retrieval.\n\nMight Agent suggest setting a reminder the day before, or noting the clinic's name and address for future reference?",
+      "durationMs": 33026
+    },
+    {
+      "scenarioId": "task-not-event",
+      "scenarioName": "Buying groceries creates task, not event",
+      "category": "entity-type",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A task should be created for buying groceries",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Buy groceries",
+          "message": "Created task: \"Buy groceries\""
+        },
+        {
+          "description": "An event should NOT be created for a chore",
+          "type": "entity_not_created",
+          "passed": true,
+          "message": "No unwanted event matching \"grocer\" was created"
+        }
+      ],
+      "responseText": "Consider it done, sir. Agent has created a task — **Buy groceries** — due this Saturday, April 25. It's been tagged under *groceries* and *errands* with medium priority.\n\nShould you wish to add a shopping list or link this to a specific store or goal, Agent is most happy to oblige.",
+      "durationMs": 20431
+    },
+    {
+      "scenarioId": "goal-not-task",
+      "scenarioName": "Marathon goal creates goal, not task",
+      "category": "entity-type",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A goal should be created for a long-term objective",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Run a Marathon",
+          "message": "Created goal: \"Run a Marathon\""
+        },
+        {
+          "description": "A task should NOT be created for a yearly goal",
+          "type": "entity_not_created",
+          "passed": true,
+          "message": "No unwanted task matching \"marathon\" was created"
+        }
+      ],
+      "responseText": "Splendid ambition, boss! Agent has created the goal **Run a Marathon** — marked as high priority with a target date of December 31, 2026, and tagged with *fitness* and *yearly*.\n\nA few suggestions to keep the momentum going:\n- **Register for a race** — having a date on the calendar is a powerful motivator\n- **Create a training plan** — Agent can track weekly milestones as tasks linked to this goal\n- **Log a starting point** — current fitness level, weekly mileage, etc.\n\nShall Agent set up some training milestones to get you started?",
+      "durationMs": 27786
+    },
+    {
+      "scenarioId": "note-not-task",
+      "scenarioName": "Wifi password creates note, not task",
+      "category": "entity-type",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A note should be created for a piece of info to remember",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "WiFi Password",
+          "message": "Created note: \"WiFi Password\""
+        },
+        {
+          "description": "A task should NOT be created for remembering info",
+          "type": "entity_not_created",
+          "passed": true,
+          "message": "No unwanted task matching \"wifi\" was created"
+        }
+      ],
+      "responseText": "Noted and stored, sir. Agent has created a note titled **WiFi Password** containing the credentials, tagged `wifi` and `credentials` for easy retrieval whenever you need it.",
+      "durationMs": 25543
+    },
+    {
+      "scenarioId": "update-existing-task",
+      "scenarioName": "Marking a task done updates it, does not create a new one",
+      "category": "create-vs-update",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Existing task should be updated",
+          "type": "entity_updated",
+          "passed": true,
+          "message": "task \"Buy groceries\" was updated (timestamp changed)"
+        },
+        {
+          "description": "Task status should be set to complete",
+          "type": "entity_field",
+          "passed": true,
+          "actual": "complete",
+          "message": "status = \"complete\" contains \"complete\""
+        },
+        {
+          "description": "Should still have exactly 1 task (no duplicate created)",
+          "type": "entity_count",
+          "passed": true,
+          "actual": 1,
+          "message": "task count = 1"
+        }
+      ],
+      "responseText": "Consider it done, sir. **Buy groceries** has been marked as complete. Agent is delighted to keep the list tidy.",
+      "durationMs": 21308
+    },
+    {
+      "scenarioId": "create-alongside-existing",
+      "scenarioName": "Adding a new task alongside an existing one",
+      "category": "create-vs-update",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A new task should be created for cleaning the kitchen",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Clean the kitchen",
+          "message": "Created task: \"Clean the kitchen\""
+        },
+        {
+          "description": "Should have 2 tasks total (existing + new)",
+          "type": "entity_count",
+          "passed": true,
+          "actual": 2,
+          "message": "task count = 2"
+        }
+      ],
+      "responseText": "Consider it noted, sir. Agent has created **Clean the kitchen** as an open task with medium priority. You'll find it waiting patiently in your task list whenever you're ready to attend to it.\n\nShould you wish to assign a due date or bump the priority, simply say the word.",
+      "durationMs": 19544
+    },
+    {
+      "scenarioId": "two-creates",
+      "scenarioName": "Create both a task and a goal in one request",
+      "category": "multi-entity",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A task should be created for fixing the fence",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Fix the fence",
+          "message": "Created task: \"Fix the fence\""
+        },
+        {
+          "description": "A goal should be created for improving the backyard",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Improve the backyard",
+          "message": "Created goal: \"Improve the backyard\""
+        }
+      ],
+      "responseText": "Consider it done, sir. Agent has created the following:\n\n- ✅ **Task:** Fix the fence\n- 🎯 **Goal:** Improve the backyard\n\nThe task has been linked to the goal as a contributing action — fixing the fence is now one step toward improving the backyard overall. Should you wish to add more tasks to that goal (landscaping, lighting, patio work, and the like), Agent is at the ready.",
+      "durationMs": 22829
+    },
+    {
+      "scenarioId": "todont-creation",
+      "scenarioName": "Stop-doing statement creates a todont",
+      "category": "multi-entity",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A todont should be created for the habit to stop",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Check phone before bed",
+          "message": "Created todont: \"Check phone before bed\""
+        },
+        {
+          "description": "A task should NOT be created for a todont",
+          "type": "entity_not_created",
+          "passed": true,
+          "message": "No unwanted task matching \"phone\" was created"
+        }
+      ],
+      "responseText": "Noted and logged, sir. Agent has created a **To-Don't: Check phone before bed**, with the reason recorded as: *disrupts sleep quality and makes it harder to wind down at night*.\n\nA fine intention — the small habits often make the greatest difference. Might Agent suggest pairing this with a goal around sleep quality, or perhaps a nightly wind-down routine? Either would give this resolve a proper home.",
+      "durationMs": 29593
+    },
+    {
+      "scenarioId": "person-creation",
+      "scenarioName": "Adding a contact creates a person entity with fields",
+      "category": "conversational",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A person entity should be created for Sarah",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Sarah Chen",
+          "message": "Created person: \"Sarah Chen\""
+        },
+        {
+          "description": "Email field should be set correctly",
+          "type": "entity_field",
+          "passed": true,
+          "actual": "sarah@acme.com",
+          "message": "email = \"sarah@acme.com\" contains \"sarah@acme.com\""
+        },
+        {
+          "description": "Company field should contain Acme",
+          "type": "entity_field",
+          "passed": true,
+          "actual": "Acme Corp",
+          "message": "company = \"Acme Corp\" contains \"Acme\""
+        }
+      ],
+      "responseText": "Done, sir. **Sarah Chen** has been added to your contacts — she's at Acme Corp and can be reached at sarah@acme.com.\n\nShall Agent also create an entry for Acme Corp as a company, or note any other details about Sarah (role, phone, how you know her)?",
+      "durationMs": 23349
+    },
+    {
+      "scenarioId": "model-awareness",
+      "scenarioName": "Phaibel can identify the model it is using",
+      "category": "conversational",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Response should mention the model name (claude)",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"claude\""
+        }
+      ],
+      "responseText": "A most astute enquiry, sir. Agent is pleased to report the following model configuration currently in service:\n\n| Capability | Provider | Model |\n|---|---|---|\n| Chat & Reasoning | Anthropic | Claude Sonnet 4.6 |\n| Formatting, Summarisation & Categorisation | Anthropic | Claude Haiku 4.5 |\n\nIn short — Sonnet handles the weightier thinking (such as this very conversation), while Haiku attends to the lighter, swifter duties behind the scenes. All Anthropic, all present and accounted for.",
+      "durationMs": 29562
+    },
+    {
+      "scenarioId": "create-sport-activity",
+      "scenarioName": "Soccer parent creates a practice schedule",
+      "category": "context-type-creation",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Response should mention Emma",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"Emma\""
+        },
+        {
+          "description": "Response should mention soccer",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"soccer\""
+        }
+      ],
+      "responseText": "Duly noted, and all arranged, sir!\n\nAgent has done the following:\n\n- **Created a recurring event** — *Emma Soccer Practice* — every Tuesday at 5:00 PM at **Northfield Park**, with 13 upcoming instances scheduled\n- **Created a contact** — *Emma* — noted as your daughter and soccer player\n- **Linked** Emma → *attends* → Emma Soccer Practice (recurring)\n\nShould you wish to add Emma's coach, a reminder beforehand, or any other details, Agent stands ready.",
+      "durationMs": 39538
+    },
+    {
+      "scenarioId": "create-vehicle-type",
+      "scenarioName": "Car enthusiast adds a vehicle to their collection",
+      "category": "context-type-creation",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Response should mention the Mustang",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"Mustang\""
+        }
+      ],
+      "responseText": "A slight hiccup to report, I'm afraid, sir. Agent successfully defined a new **vehicle** content type and prepared the entry for your **2019 Ford Mustang GT**, but the record failed to save — the validator expected numeric values for `year` and `mileage`, yet they arrived as strings. A minor type-coercion bug, nothing more.\n\nAll the details are safely in hand:\n- **VIN:** 1FA6P8CF7K5410123\n- **Mileage:** 42,000\n- **Make/Model:** 2019 Ford Mustang GT\n\nAgent will retry the creation with the numeric fields properly cast. If the issue persists, the vehicle can be saved as a **note** in the interim so nothing is lost. Shall Agent attempt the retry now?",
+      "durationMs": 68833
+    },
+    {
+      "scenarioId": "create-player-type",
+      "scenarioName": "Football coach adds players to the roster",
+      "category": "context-type-creation",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Response should mention Jake",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"Jake\""
+        },
+        {
+          "description": "Response should mention Marcus",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"Marcus\""
+        }
+      ],
+      "responseText": "Both players have been added to the roster, sir. Here's a summary of what Agent has recorded:\n\n| # | Name | Position | Tags |\n|---|------|----------|------|\n| #12 | Jake Williams | Quarterback | `roster` `quarterback` `jersey-12` |\n| #44 | Marcus Johnson | Linebacker | `roster` `linebacker` `jersey-44` |\n\nBoth are tagged with `roster` for easy filtering. Should Agent create a **Team** entity and link these players to it? That would make it straightforward to pull the full roster at a glance.",
+      "durationMs": 30069
+    },
+    {
+      "scenarioId": "create-recipe-type",
+      "scenarioName": "Home cook saves a recipe",
+      "category": "context-type-creation",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Response should mention the cookie recipe",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"cookie\""
+        }
+      ],
+      "responseText": "Grandma's Chocolate Chip Cookie Recipe has been saved to the vault, sir — ingredients, instructions, yield and all, neatly filed under *recipe, cookies, baking, dessert,* and *grandma* for easy retrieval.\n\nShould Agent also create a dedicated **Recipe** content type so future recipes can be tracked with structured fields (prep time, cook time, yield, cuisine)? It would make your growing collection rather easy to browse.",
+      "durationMs": 24147
+    },
+    {
+      "scenarioId": "create-pets-mixed",
+      "scenarioName": "Pet owner adds two dogs and a cat",
+      "category": "context-type-creation",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Response should mention Bailey",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"Bailey\""
+        },
+        {
+          "description": "Response should mention Rigby",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"Rigby\""
+        },
+        {
+          "description": "Response should mention Sgt Pepper",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"Sgt Pepper\""
+        }
+      ],
+      "responseText": "Noted and committed to memory, boss! Agent has created a brand new **pet** content type and added all three of your beloved companions to the vault:\n\n- 🐶 **Bailey** — dog\n- 🐶 **Rigby** — dog\n- 🐱 **Sgt Pepper** — cat\n\nShould you wish to add details later — breed, birthday, vet notes — Agent is at the ready.",
+      "durationMs": 32923
+    },
+    {
+      "scenarioId": "create-book-type",
+      "scenarioName": "Book club member tracks books to read",
+      "category": "context-type-creation",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Response should mention The Great Gatsby",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"Gatsby\""
+        }
+      ],
+      "responseText": "Consider it done, sir. Agent has added **Read The Great Gatsby by F. Scott Fitzgerald** to your reading list, due **Sunday, May 31**. It's tagged `reading-list` and sitting open at medium priority whenever you're ready to begin.\n\nShould Agent link this to a broader reading goal, or perhaps set a midway check-in reminder to keep you on track?",
+      "durationMs": 24066
+    },
+    {
+      "scenarioId": "create-plant-type",
+      "scenarioName": "Gardener tracks a new plant",
+      "category": "context-type-creation",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Response should mention the tomato plant",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"tomato\""
+        }
+      ],
+      "responseText": "Splendid news on the garden front, sir! Agent has attended to the details promptly:\n\n- 📝 **Cherry Tomato Plant** note created — planted April 1st, full sun, raised bed location, watering every other day\n- 🔁 **Water Cherry Tomato Plant** recurring task created and linked to the plant note (daily cadence; 61 task instances spawned)\n\nOne small note: the recurrence runs on a *daily* cadence, as every-other-day isn't a native schedule. Agent would suggest setting a reminder to skip alternate days, or Agent can mark odd/even days in the task notes if that would be helpful.\n\nShall Agent also set a harvest reminder, or track any fertilising schedule for the tomato?",
+      "durationMs": 34205
+    },
+    {
+      "scenarioId": "persona-skill-daily-briefing",
+      "scenarioName": "Daily briefing skill returns task and event summary",
+      "category": "persona",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "Briefing should mention the high-priority budget task",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"budget\""
+        },
+        {
+          "description": "Briefing should mention the standup event",
+          "type": "response_contains",
+          "passed": true,
+          "message": "Response contains \"standup\""
+        }
+      ],
+      "responseText": "Good morning, sir. Here is your briefing for Wednesday, April 22nd:\n\n- 🔴 **Review budget** — your highest-priority open task. Agent would suggest tackling this early while the mind is fresh.\n- 📞 **Call client** — open task awaiting your attention today.\n- 📅 **Team standup** — this event shows a start time of yesterday (Tuesday, April 21 at 9 AM). It may be a recurring event; if so, Agent can ensure it stays properly synced going forward.\n\nYour calendar shows no events formally scheduled for today, and you have no overdue tasks — a rather tidy state of affairs, if Agent may say so.\n\n**Suggested next steps:** Shall Agent mark the standup as recurring, or set a due date on the budget review to keep things on track?",
+      "durationMs": 10030
+    },
+    {
+      "scenarioId": "persona-task-with-priority",
+      "scenarioName": "Task with explicit priority sets the field",
+      "category": "persona",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A task should be created for the budget review",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Review the Q2 budget",
+          "message": "Created task: \"Review the Q2 budget\""
+        },
+        {
+          "description": "Priority should be set to high as explicitly stated",
+          "type": "entity_field",
+          "passed": true,
+          "actual": "high",
+          "message": "priority = \"high\" contains \"high\""
+        }
+      ],
+      "responseText": "Done, sir. Agent has created **Review the Q2 budget** as a high-priority open task. It's ready and waiting whenever you are.\n\nShould Agent set a due date, or perhaps link it to a goal or project?",
+      "durationMs": 20273
+    },
+    {
+      "scenarioId": "persona-project-kickoff-multi",
+      "scenarioName": "Project kickoff creates event + goal + task",
+      "category": "persona",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A kickoff meeting event should be created",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Website Redesign Kickoff Meeting",
+          "message": "Created event: \"Website Redesign Kickoff Meeting\""
+        },
+        {
+          "description": "A website redesign goal should be created",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Launch Website Redesign by June",
+          "message": "Created goal: \"Launch Website Redesign by June\""
+        },
+        {
+          "description": "A task to send the brief should be created",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Send project brief to the team",
+          "message": "Created task: \"Send project brief to the team\""
+        }
+      ],
+      "responseText": "The website redesign project is well and truly underway, sir. Agent has taken care of all three items in one fell swoop:\n\n- 📅 **Website Redesign Kickoff Meeting** — scheduled for **Monday, April 27 at 9 AM** (1 hour)\n- 🎯 **Launch Website Redesign by June** — goal created with a target date of **June 30, 2026** (high priority)\n- ✅ **Send project brief to the team** — task created, due **Monday, April 27** (high priority), linked to the goal as *supports*\n\nAll three are tagged `website-redesign` for easy retrieval. Might Agent suggest also creating a project note to centralise briefs, decisions, and progress updates as the redesign gets underway?",
+      "durationMs": 52396
+    },
+    {
+      "scenarioId": "persona-update-task-status",
+      "scenarioName": "Mark an existing task done (update, not create)",
+      "category": "persona",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "The existing task should be updated to done",
+          "type": "entity_updated",
+          "passed": true,
+          "message": "task \"Send quarterly report\" was updated (timestamp changed)"
+        },
+        {
+          "description": "Should not create a duplicate task",
+          "type": "entity_not_created",
+          "passed": true,
+          "message": "No unwanted task matching \"quarterly report\" was created"
+        }
+      ],
+      "responseText": "Done, sir. **Send quarterly report** has been marked complete. Well done on getting that off your plate!\n\nShould Agent log this against any related goal or project, or perhaps set a reminder for the next quarterly report?",
+      "durationMs": 19624
+    },
+    {
+      "scenarioId": "persona-note-not-task",
+      "scenarioName": "Meeting notes create a note, not a task",
+      "category": "persona",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A note should be created for meeting notes",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Migration Timeline Discussion with Engineering",
+          "message": "Created note: \"Migration Timeline Discussion with Engineering\""
+        },
+        {
+          "description": "Should not create a task for a note",
+          "type": "entity_not_created",
+          "passed": true,
+          "message": "No unwanted task matching \"migration\" was created"
+        }
+      ],
+      "responseText": "Noted, sir. Agent has created **Migration Timeline Discussion with Engineering** — capturing that the team is targeting end of May for completion. Tagged under `migration` and `engineering` for easy retrieval.\n\nMight Agent suggest creating a task or goal tied to this milestone? If the migration has a formal project or deadline worth tracking, Agent would be happy to set that up.",
+      "durationMs": 22619
+    },
+    {
+      "scenarioId": "persona-add-client-contact",
+      "scenarioName": "Add a client contact with role and email",
+      "category": "persona",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A person entity should be created for Marcus",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Marcus Williams",
+          "message": "Created person: \"Marcus Williams\""
+        },
+        {
+          "description": "Email should be set correctly",
+          "type": "entity_field",
+          "passed": true,
+          "actual": "marcus@cloudbase.io",
+          "message": "email = \"marcus@cloudbase.io\" contains \"marcus@cloudbase.io\""
+        }
+      ],
+      "responseText": "Consider it done, sir. Agent has created the following:\n\n- **Marcus Williams** — VP of Engineering, CloudBase (marcus@cloudbase.io)\n- **CloudBase** — new company entity, linked to Marcus with a *works-at* relationship\n\nShould you wish to add further details — a phone number, notes from a prior conversation, or linked tasks — Agent stands ready to assist.",
+      "durationMs": 28653
+    },
+    {
+      "scenarioId": "persona-todont-simple",
+      "scenarioName": "Stop-doing creates todont without errors",
+      "category": "persona",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A todont should be created",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Eat fast food for lunch",
+          "message": "Created todont: \"Eat fast food for lunch\""
+        },
+        {
+          "description": "Should not create a task for a stop-doing",
+          "type": "entity_not_created",
+          "passed": true,
+          "message": "No unwanted task matching \"fast food\" was created"
+        }
+      ],
+      "responseText": "Noted, boss. Agent has recorded **\"Eat fast food for lunch\"** as a todont — a deliberate abstention, filed away for your conscience to reference. The reasoning is logged: unhealthy choices at lunchtime are to be avoided in favour of better nutrition and wellbeing.\n\nMight Agent suggest pairing this with a goal around healthy eating, or perhaps a note of preferred lunch alternatives to make the transition a touch easier?",
+      "durationMs": 23594
+    },
+    {
+      "scenarioId": "persona-goal-created-cleanly",
+      "scenarioName": "Goal creation succeeds cleanly",
+      "category": "persona",
+      "passed": true,
+      "score": 1,
+      "assertionResults": [
+        {
+          "description": "A goal should be created for reading books",
+          "type": "entity_created",
+          "passed": true,
+          "actual": "Read 24 Books This Year",
+          "message": "Created goal: \"Read 24 Books This Year\""
+        }
+      ],
+      "responseText": "Splendid ambition, if Agent may say so! The goal **Read 24 Books This Year** has been created and is now active in your vault, with a target date of December 31, 2026 — approximately 2 books per month.\n\nA couple of suggestions to keep the momentum going:\n- Agent can create a **book** content type to track each title as you finish it, linking completions back to this goal\n- A recurring monthly task — \"Check reading progress\" — could help keep you on pace\n\nShall Agent set either of those up for you?",
+      "durationMs": 31245
+    }
+  ],
+  "summary": {
+    "totalScenarios": 25,
+    "passed": 25,
+    "failed": 0,
+    "overallScore": 1,
+    "byCategory": {
+      "entity-type": {
+        "total": 4,
+        "passed": 4,
+        "score": 1
+      },
+      "create-vs-update": {
+        "total": 2,
+        "passed": 2,
+        "score": 1
+      },
+      "multi-entity": {
+        "total": 2,
+        "passed": 2,
+        "score": 1
+      },
+      "conversational": {
+        "total": 2,
+        "passed": 2,
+        "score": 1
+      },
+      "context-type-creation": {
+        "total": 7,
+        "passed": 7,
+        "score": 1
+      },
+      "persona": {
+        "total": 8,
+        "passed": 8,
+        "score": 1
+      }
+    }
+  }
+}

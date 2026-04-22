@@ -177,9 +177,241 @@ function buildTimelineGroups(calItems) {
 }
 
 /* ============================================================
-   ROOT
+   ONBOARDING MODAL
    ============================================================ */
 const { useState, useEffect, useRef, useMemo } = React;
+
+function OnboardingModal({ onComplete }) {
+  const [step, setStep] = useState(1);
+  const [profiles, setProfiles] = useState([]);
+  const [personalities, setPersonalities] = useState([]);
+  const [selectedProfile, setSelectedProfile] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [agentName, setAgentName] = useState("Agent");
+  const [gender, setGender] = useState("other");
+  const [personality, setPersonality] = useState("");
+  const [progressSteps, setProgressSteps] = useState([
+    { label: "Creating your workspace",     status: "pending" },
+    { label: "Adding context types",         status: "pending" },
+    { label: "Personalizing your assistant", status: "pending" },
+    { label: "Finishing up",                 status: "pending" },
+  ]);
+  const [progressDone, setProgressDone] = useState(false);
+  const [progressError, setProgressError] = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/onboarding-profiles").then(r => r.json()).catch(() => []),
+      fetch("/api/personalities").then(r => r.json()).catch(() => []),
+    ]).then(([p, pers]) => { setProfiles(p); setPersonalities(pers); });
+  }, []);
+
+  // When profile selected, pre-select its default personality
+  useEffect(() => {
+    if (selectedProfile && !personality) {
+      setPersonality(selectedProfile.defaultPersonality || "");
+    }
+  }, [selectedProfile]);
+
+  function updateStep(i, status) {
+    setProgressSteps(prev => prev.map((s, idx) => idx === i ? { ...s, status } : s));
+  }
+
+  async function submit() {
+    setStep(4);
+    const steps = ["running", "pending", "pending", "pending"];
+    setProgressSteps(prev => prev.map((s, i) => ({ ...s, status: steps[i] })));
+
+    const payload = {
+      personality: personality || (selectedProfile && selectedProfile.defaultPersonality) || "executive",
+      agentName: agentName || "Agent",
+      userName: answers.name || "",
+      gender,
+      userType: selectedProfile ? selectedProfile.type : undefined,
+      profileAnswers: answers,
+    };
+
+    try {
+      await new Promise(r => setTimeout(r, 300));
+      setProgressSteps(p => p.map((s, i) => ({ ...s, status: i === 0 ? "done" : i === 1 ? "running" : "pending" })));
+
+      const res = await fetch("/api/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.error || "Setup failed");
+      }
+
+      setProgressSteps(p => p.map((s, i) => ({ ...s, status: i <= 1 ? "done" : i === 2 ? "running" : "pending" })));
+      await new Promise(r => setTimeout(r, 300));
+      setProgressSteps(p => p.map((s, i) => ({ ...s, status: i <= 2 ? "done" : "running" })));
+      await new Promise(r => setTimeout(r, 400));
+      setProgressSteps(p => p.map(s => ({ ...s, status: "done" })));
+      setProgressDone(true);
+      await new Promise(r => setTimeout(r, 700));
+      onComplete(payload.agentName);
+    } catch (err) {
+      setProgressError(err.message || String(err));
+    }
+  }
+
+  const ic = {
+    done:    <span style={{color:"#22c55e",fontSize:"16px"}}>✓</span>,
+    running: <span style={{display:"inline-block",animation:"ob-spin 0.9s linear infinite",color:"var(--gold)",fontSize:"16px"}}>↻</span>,
+    error:   <span style={{color:"#f59e0b",fontSize:"16px"}}>!</span>,
+    pending: <span style={{color:"#374151",fontSize:"16px"}}>○</span>,
+  };
+
+  const cardStyle = {
+    position:"fixed", inset:0, background:"rgba(8,13,20,0.96)",
+    zIndex:2000, overflowY:"auto", display:"flex", flexDirection:"column",
+    alignItems:"center", justifyContent:"flex-start", padding:"40px 20px 60px",
+  };
+  const innerStyle = { width:"100%", maxWidth:"520px" };
+  const stepLabel = { fontSize:"11px", fontWeight:"700", letterSpacing:"1px", textTransform:"uppercase", color:"var(--gold)", marginBottom:"8px" };
+  const title = { fontSize:"26px", fontWeight:"700", color:"var(--paper)", marginBottom:"4px", lineHeight:"1.2" };
+  const subtitle = { fontSize:"14px", color:"var(--muted)", marginBottom:"28px", lineHeight:"1.5" };
+  const continueBtn = (disabled) => ({
+    width:"100%", background: disabled ? "var(--ink-3)" : "var(--gold)", color: disabled ? "var(--muted)" : "var(--ink)",
+    border:"none", fontFamily:"inherit", fontSize:"15px", fontWeight:"700", padding:"14px",
+    borderRadius:"10px", cursor: disabled ? "not-allowed" : "pointer", marginTop:"8px",
+    display:"flex", alignItems:"center", justifyContent:"center", gap:"8px",
+  });
+  const skipBtn = { width:"100%", background:"none", border:"none", color:"var(--muted)", fontFamily:"inherit", fontSize:"13px", padding:"10px", cursor:"pointer", marginTop:"4px" };
+  const backBtn = { background:"none", border:"none", color:"var(--gold)", fontFamily:"inherit", fontSize:"13px", fontWeight:"600", padding:"0 0 16px 0", cursor:"pointer", display:"flex", alignItems:"center", gap:"4px" };
+  const fieldLabel = { display:"block", fontSize:"11px", color:"var(--muted)", textTransform:"uppercase", letterSpacing:"0.5px", marginBottom:"5px" };
+  const input = { width:"100%", background:"var(--ink-2)", border:"1px solid var(--ink-3)", color:"var(--paper)", fontFamily:"inherit", fontSize:"14px", padding:"10px 12px", borderRadius:"8px", outline:"none", boxSizing:"border-box" };
+
+  if (step === 1) return (
+    <div style={cardStyle}>
+      <div style={innerStyle}>
+        <div style={stepLabel}>Step 1 of 3</div>
+        <div style={title}>Who are you?</div>
+        <div style={subtitle}>Phaibel will tailor itself to how you work.</div>
+        <div style={{display:"flex",flexDirection:"column",gap:"10px",marginBottom:"28px"}}>
+          {profiles.map(p => (
+            <div key={p.type}
+              onClick={() => setSelectedProfile(p)}
+              style={{
+                display:"flex", alignItems:"center", gap:"14px",
+                background: selectedProfile?.type === p.type ? p.accentColor + "12" : "var(--ink-2)",
+                border: `1.5px solid ${selectedProfile?.type === p.type ? p.accentColor : "var(--ink-3)"}`,
+                borderRadius:"12px", padding:"14px 16px", cursor:"pointer",
+              }}>
+              <div style={{width:"44px",height:"44px",borderRadius:"10px",background:p.accentColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"20px",flexShrink:0}}>{p.icon}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:"15px",fontWeight:"600",color: selectedProfile?.type === p.type ? p.accentColor : "var(--paper)",marginBottom:"2px"}}>{p.label}</div>
+                <div style={{fontSize:"12px",color:"var(--muted)",lineHeight:"1.4"}}>{p.tagline}</div>
+              </div>
+              {selectedProfile?.type === p.type && <span style={{color:p.accentColor,fontSize:"18px"}}>✓</span>}
+            </div>
+          ))}
+        </div>
+        <button style={continueBtn(!selectedProfile)} disabled={!selectedProfile} onClick={() => setStep(2)}>Continue →</button>
+      </div>
+    </div>
+  );
+
+  if (step === 2) return (
+    <div style={cardStyle}>
+      <div style={innerStyle}>
+        <button style={backBtn} onClick={() => setStep(1)}>← Back</button>
+        <div style={stepLabel}>Step 2 of 3</div>
+        <div style={title}>Tell us about yourself</div>
+        <div style={subtitle}>This helps your assistant understand your context from day one.</div>
+        {selectedProfile && (
+          <div style={{display:"inline-flex",alignItems:"center",gap:"6px",fontSize:"12px",fontWeight:"600",padding:"4px 10px",borderRadius:"20px",border:`1px solid ${selectedProfile.accentColor}40`,background:selectedProfile.accentColor+"15",color:selectedProfile.accentColor,marginBottom:"20px"}}>
+            {selectedProfile.icon} {selectedProfile.label}
+          </div>
+        )}
+        {selectedProfile?.questions.map(q => (
+          <div key={q.key} style={{marginBottom:"20px"}}>
+            <div style={{fontSize:"15px",color:"var(--paper)",fontWeight:"500",marginBottom:"4px"}}>{q.question}</div>
+            {q.optional && <div style={{fontSize:"11px",color:"var(--muted)",marginBottom:"4px"}}>Optional</div>}
+            {q.multiline
+              ? <textarea rows={3} value={answers[q.key]||""} onChange={e=>setAnswers(p=>({...p,[q.key]:e.target.value}))} placeholder={q.placeholder} style={{...input,resize:"vertical",textAlignVertical:"top"}} />
+              : <input type="text" value={answers[q.key]||""} onChange={e=>setAnswers(p=>({...p,[q.key]:e.target.value}))} placeholder={q.placeholder} style={input} />
+            }
+          </div>
+        ))}
+        <button style={continueBtn(false)} onClick={() => setStep(3)}>Continue →</button>
+        <button style={skipBtn} onClick={() => setStep(3)}>Skip for now</button>
+      </div>
+    </div>
+  );
+
+  if (step === 3) return (
+    <div style={cardStyle}>
+      <div style={innerStyle}>
+        <button style={backBtn} onClick={() => setStep(2)}>← Back</button>
+        <div style={stepLabel}>Step 3 of 3</div>
+        <div style={title}>Meet your assistant</div>
+        <div style={subtitle}>Give your agent a name and pick a personality.</div>
+        <div style={{marginBottom:"16px"}}>
+          <label style={fieldLabel}>Agent Name</label>
+          <input type="text" value={agentName} onChange={e=>setAgentName(e.target.value)} placeholder="e.g. Jarvis, Friday, Alfred" style={input} />
+        </div>
+        <div style={{marginBottom:"20px"}}>
+          <label style={fieldLabel}>How should your agent address you?</label>
+          <select value={gender} onChange={e=>setGender(e.target.value)} style={input}>
+            <option value="male">Sir / Boss / Captain</option>
+            <option value="female">Ma'am / Miss / Madam</option>
+            <option value="other">Boss / Chief / Friend</option>
+          </select>
+        </div>
+        <div style={{marginBottom:"24px"}}>
+          <label style={fieldLabel}>Personality</label>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px"}}>
+            {personalities.map(p => (
+              <div key={p.id}
+                onClick={()=>setPersonality(p.id)}
+                style={{
+                  background: personality===p.id ? "var(--ink-3)" : "var(--ink-2)",
+                  border:`1.5px solid ${personality===p.id ? "var(--gold)" : "var(--ink-3)"}`,
+                  borderRadius:"8px", padding:"12px 14px", cursor:"pointer",
+                }}>
+                <div style={{fontSize:"13px",fontWeight:"600",color:personality===p.id?"var(--gold)":"var(--paper)",marginBottom:"3px"}}>{p.label}</div>
+                <div style={{fontSize:"11px",color:"var(--muted)",lineHeight:"1.4"}}>{p.description}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <button style={continueBtn(false)} onClick={submit}>Set Up Phaibel →</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={cardStyle}>
+      <div style={{...innerStyle,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh"}}>
+        {selectedProfile && (
+          <div style={{width:"72px",height:"72px",borderRadius:"18px",background:selectedProfile.accentColor,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"32px",marginBottom:"20px"}}>{selectedProfile.icon}</div>
+        )}
+        <div style={{...title,textAlign:"center"}}>{progressDone ? "You're all set!" : progressError ? "Setup failed" : "Setting up Phaibel…"}</div>
+        <div style={{...subtitle,textAlign:"center"}}>
+          {progressDone ? `Configured for ${selectedProfile?.label || "Phaibel"}. Let's get started.`
+           : progressError ? progressError
+           : "Just a moment while we configure everything."}
+        </div>
+        <div style={{width:"100%",marginTop:"32px",display:"flex",flexDirection:"column",gap:"16px"}}>
+          {progressSteps.map((s,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:"14px"}}>
+              <div style={{width:"24px",textAlign:"center"}}>{ic[s.status]}</div>
+              <div style={{fontSize:"15px",color:s.status==="done"||s.status==="running"?"var(--paper)":"var(--muted)",fontWeight:s.status==="running"?"600":"400"}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   ROOT
+   ============================================================ */
 
 function App() {
   const [tweaks, setTweaks] = useState(TWEAKS);
@@ -200,6 +432,7 @@ function App() {
   const [wsConnected, setWsConnected] = useState(false);
   const [agentName, setAgentName] = useState("Phaibel");
   const [userName, setUserName] = useState("");
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const threadRef = useRef(null);
   const wsRef = useRef(null);
 
@@ -222,6 +455,7 @@ function App() {
       fetch('/api/status').then(r => r.json()).then(d => {
         if (d.agentName) setAgentName(d.agentName);
         if (d.userName) setUserName(d.userName);
+        if (!d.interviewComplete) setShowOnboarding(true);
       }).catch(() => {});
     };
     fetchData();
@@ -401,6 +635,13 @@ function App() {
       />
       {tweaksOpen && (
         <TweaksPanel tweaks={tweaks} update={updateTweak} onClose={() => setTweaksOpen(false)} />
+      )}
+      {showOnboarding && (
+        <OnboardingModal onComplete={(name) => {
+          if (name) setAgentName(name);
+          setShowOnboarding(false);
+          window.location.reload();
+        }} />
       )}
       <GlobalStyle />
     </div>
@@ -2613,6 +2854,10 @@ function GlobalStyle() {
         0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--gold) 55%, transparent); }
         70% { box-shadow: 0 0 0 8px color-mix(in oklab, var(--gold) 0%, transparent); }
         100% { box-shadow: 0 0 0 0 transparent; }
+      }
+      @keyframes ob-spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
       }
 
       .bubble {

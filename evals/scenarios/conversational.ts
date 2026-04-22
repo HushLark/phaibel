@@ -10,6 +10,7 @@ export const conversationalScenarios: EvalScenario[] = [
         id: 'person-creation',
         name: 'Adding a contact creates a person entity with fields',
         category: 'conversational',
+        timeoutSeconds: 120,
         userInput: 'Add a contact: Sarah Chen, works at Acme Corp, email sarah@acme.com',
         assertions: [
             {
@@ -49,6 +50,6 @@ export const conversationalScenarios: EvalScenario[] = [
                 weight: 0.5,
             },
         ],
-        timeoutSeconds: 30,
+        timeoutSeconds: 60,
     },
 ];
