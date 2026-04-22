@@ -9,7 +9,7 @@ export interface ExecutionLog {
     timestamp: string;
     chat_id: string;
     user_input: string;
-    process_source: 'reuse' | 'custom';
+    process_source: 'reuse' | 'custom' | 'skill';
     process_key: string;
     process_json: Record<string, unknown>;
     context_result: Record<string, unknown>;

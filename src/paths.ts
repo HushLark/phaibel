@@ -164,3 +164,7 @@ export async function getCxfSyncStatePath(): Promise<string> {
 export async function getCxfSystemsPath(): Promise<string> {
     return join(await getVaultConfigDir(), 'cxf-systems.json');
 }
+
+export async function getSkillsDir(): Promise<string> {
+    return join(await getFoundationDir(), 'skills');
+}

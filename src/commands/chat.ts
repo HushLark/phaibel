@@ -39,6 +39,9 @@ import { getEnabledSources } from '../federation/source-registry.js';
 import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../entities/entity.js';
 import { getEntityType } from '../entities/entity-type-config.js';
 import { runProgressiveDisclosure } from '../context/progressive-disclosure.js';
+import { loadSkillMetas, loadSkillManifest, loadSkillScript } from '../skills/skill-manager.js';
+import { hydrateProcess } from '../feral/process/process-json-hydrator.js';
+import type { ProcessConfigJson } from '../feral/process/process-json-hydrator.js';
 import type { LLMProvider } from '../llm/types.js';
 import { runWithTokenTracker, type ChatTokenTotals } from '../llm/token-usage.js';
 
@@ -318,6 +321,104 @@ async function _feralChatHeadlessInner(
     debug('chat', `Catalog has ${allNodes.length} nodes, sending ${filteredNodes.length} after relevance filter (${relevance.relevantTypes.map(rt => rt.type).join(', ') || 'all'})`);
 
     const llm = await getModelForCapability('reason');
+
+    // ── PHASE 0: Skill Matching ───────────────────────────────────────
+    // Load lightweight skill metas and ask the LLM if any skill matches
+    // the user request. If yes, run the skill's Feral process and synthesize.
+    const skillMetas = await loadSkillMetas().catch(() => []);
+    if (skillMetas.length > 0) {
+        try {
+            const skillSummary = skillMetas.map(m =>
+                `- ${m.name}: ${m.description}${m.triggers.length ? ` [triggers: ${m.triggers.join(', ')}]` : ''}`
+            ).join('\n');
+
+            const skillMatchResponse = await llm.chat(
+                [{
+                    role: 'user' as const,
+                    content: `The user said: "${userInput}"
+
+AVAILABLE SKILLS:
+${skillSummary}
+
+Does this user request match any of the above skills? A skill matches when the user's intent aligns with the skill's description or triggers.
+
+Return JSON only:
+{ "match": "skill-name-or-null", "reasoning": "brief explanation" }`,
+                }],
+                {
+                    systemPrompt: 'You are a skill matcher. Return JSON only. Be conservative — only match when clearly aligned.',
+                    temperature: 0.1,
+                },
+            );
+
+            const skillMatch = parseJsonResponse(skillMatchResponse) as { match: string | null; reasoning: string };
+            debug('chat', `Phase 0 skill match: ${JSON.stringify(skillMatch)}`);
+
+            if (skillMatch.match) {
+                const matchedMeta = skillMetas.find(m => m.name === skillMatch.match);
+                if (matchedMeta && matchedMeta.scriptNames.length > 0) {
+                    status(`Running skill: ${matchedMeta.name}…`);
+                    const script = await loadSkillScript(matchedMeta);
+                    if (script) {
+                        const manifest = await loadSkillManifest(matchedMeta);
+                        const skillProcess = hydrateProcess(script.process as unknown as ProcessConfigJson);
+                        inMemorySource.add(skillProcess);
+
+                        let contextResult: Record<string, unknown>;
+                        let success = true;
+                        try {
+                            const ctx = await runtime.runner.run(skillProcess.key, {
+                                user_input: userInput,
+                                skill_name: matchedMeta.name,
+                                skill_instructions: manifest.body,
+                                ...(onQuestion ? { _askQuestion: onQuestion } : {}),
+                            });
+                            contextResult = ctx.getAll();
+                        } catch (error) {
+                            debug('chat', `Skill execution failed: ${error}`);
+                            contextResult = { _error: error instanceof Error ? error.message : String(error) };
+                            success = false;
+                        }
+
+                        if (success) {
+                            const filteredResult = Object.entries(contextResult)
+                                .filter(([k]) => !k.startsWith('_') && k !== 'user_input')
+                                .reduce((acc, [k, v]) => {
+                                    acc[k] = typeof v === 'string' && v.length > 2000 ? v.slice(0, 2000) + '…' : v;
+                                    return acc;
+                                }, {} as Record<string, unknown>);
+
+                            const scrubbedResult = scrubSecrets(filteredResult) as Record<string, unknown>;
+                            await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'skill' });
+
+                            const finalResponse = await synthesizeResponse(
+                                llm, userInput, `Skill "${matchedMeta.name}": ${skillMatch.reasoning}`,
+                                [scrubbedResult], [], vaultContext, history, chatId, clientHints,
+                            );
+                            await logger.log('response', { response: finalResponse });
+
+                            writeExecutionLog({
+                                timestamp: new Date().toISOString(),
+                                chat_id: chatId,
+                                user_input: userInput,
+                                process_source: 'skill',
+                                process_key: skillProcess.key,
+                                process_json: { key: skillProcess.key, skill: matchedMeta.name },
+                                context_result: scrubbedResult,
+                                success,
+                                outcome_summary: finalResponse.slice(0, 500),
+                                iterations: 1,
+                            }).catch(err => debug('chat', `Execution log write failed: ${err}`));
+
+                            return finalResponse;
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            debug('chat', `Phase 0 skill matching failed (non-fatal): ${err}`);
+        }
+    }
 
     // ── PHASE PD: Progressive Disclosure ──────────────────────────────
     // Keyword search → summaries → iterative LLM-driven detail requests.
