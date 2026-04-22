@@ -680,7 +680,7 @@ export class WebServer {
             }
 
             if (ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'chat.response', message: response, chatId: currentChatId, totalTokens: tokens.totalTokens }));
+                ws.send(JSON.stringify({ type: 'chat.response', message: response, chatId: currentChatId, totalTokens: tokens.totalTokens, inputTokens: tokens.inputTokens, outputTokens: tokens.outputTokens }));
             }
 
             // If the chat likely mutated entities, tell clients to refresh

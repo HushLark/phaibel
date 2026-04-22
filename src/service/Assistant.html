@@ -500,7 +500,7 @@ function App() {
             break;
           case 'chat.response':
             setThinking(false);
-            setMessages(m => [...m, { id: `m-${randId()}`, role:'assistant', text: msg.message||'', at: now, tokens: msg.totalTokens||0 }]);
+            setMessages(m => [...m, { id: `m-${randId()}`, role:'assistant', text: msg.message||'', at: now, tokens: msg.totalTokens||0, inputTokens: msg.inputTokens||0, outputTokens: msg.outputTokens||0 }]);
             break;
           case 'chat.error':
             setThinking(false);
@@ -1666,9 +1666,9 @@ function Message({ m, onPin, pinned }) {
             <span>{m.at}</span>
             <span className="dim">·</span>
             <span>{m.id}</span>
-            {m.tokens && <>
+            {m.tokens > 0 && <>
               <span className="dim">·</span>
-              <span>{m.tokens} tokens</span>
+              <span>↑{m.inputTokens} ↓{m.outputTokens}</span>
             </>}
           </div>
         )}
