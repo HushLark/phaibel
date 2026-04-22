@@ -18,6 +18,11 @@ export interface DailySnapshot {
         byType: Record<string, number>; // per-type counts
         created: number;                // entities created today
     };
+    skills?: {
+        runs: number;                   // total skill executions today
+        errors: number;                 // skill executions that failed
+        bySkill: Record<string, { runs: number; errors: number }>; // per-skill counts
+    };
 }
 
 /** Persistent analytics data file. */
@@ -44,6 +49,8 @@ export interface AnalyticsSummary {
     averageTokensPerDay: number;
     averageCostPerDay: number;
     dailySnapshots: DailySnapshot[];
+    totalSkillRuns: number;
+    totalSkillErrors: number;
 }
 
 /** Cost per million tokens by model. */

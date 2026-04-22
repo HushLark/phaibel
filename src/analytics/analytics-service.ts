@@ -124,6 +124,23 @@ export class AnalyticsService {
         await saveAnalytics(prune(data));
     }
 
+    /** Record a skill execution. */
+    async recordSkillRun(skillName: string, success: boolean): Promise<void> {
+        const data = await loadAnalytics();
+        const day = ensureDay(data, today());
+        if (!day.skills) {
+            day.skills = { runs: 0, errors: 0, bySkill: {} };
+        }
+        day.skills.runs += 1;
+        if (!success) day.skills.errors += 1;
+        if (!day.skills.bySkill[skillName]) {
+            day.skills.bySkill[skillName] = { runs: 0, errors: 0 };
+        }
+        day.skills.bySkill[skillName].runs += 1;
+        if (!success) day.skills.bySkill[skillName].errors += 1;
+        await saveAnalytics(prune(data));
+    }
+
     /** Record an entity creation event. */
     async recordEntityCreated(entityType: string): Promise<void> {
         const data = await loadAnalytics();
@@ -174,6 +191,8 @@ export class AnalyticsService {
         let totalCalls = 0;
         let totalCost = 0;
         let totalCreated = 0;
+        let totalSkillRuns = 0;
+        let totalSkillErrors = 0;
 
         for (const s of snapshots) {
             totalChats += s.chats;
@@ -182,6 +201,8 @@ export class AnalyticsService {
             totalCalls += s.calls;
             totalCost += s.estimatedCostUsd;
             totalCreated += s.entities.created;
+            totalSkillRuns += s.skills?.runs ?? 0;
+            totalSkillErrors += s.skills?.errors ?? 0;
         }
 
         // Use latest snapshot for current entity state
@@ -204,6 +225,8 @@ export class AnalyticsService {
             averageChatsPerDay: Math.round((totalChats / totalDays) * 100) / 100,
             averageTokensPerDay: Math.round(((totalInputTokens + totalOutputTokens) / totalDays)),
             averageCostPerDay: Math.round((totalCost / totalDays) * 100) / 100,
+            totalSkillRuns,
+            totalSkillErrors,
             dailySnapshots: snapshots,
         };
     }

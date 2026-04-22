@@ -380,6 +380,11 @@ Return JSON only:
                             success = false;
                         }
 
+                        // Record skill run in analytics (fire-and-forget)
+                        import('../analytics/analytics-service.js')
+                            .then(({ getAnalyticsService }) => getAnalyticsService().recordSkillRun(matchedMeta.name, success))
+                            .catch(() => {});
+
                         if (success) {
                             const filteredResult = Object.entries(contextResult)
                                 .filter(([k]) => !k.startsWith('_') && k !== 'user_input')
