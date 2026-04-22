@@ -40,6 +40,7 @@ import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../e
 import { getEntityType } from '../entities/entity-type-config.js';
 import { runProgressiveDisclosure } from '../context/progressive-disclosure.js';
 import { loadSkillMetas, loadSkillManifest, loadSkillScript } from '../skills/skill-manager.js';
+import { runCapabilityDiscovery } from '../context/capability-discovery.js';
 import { hydrateProcess } from '../feral/process/process-json-hydrator.js';
 import type { ProcessConfigJson } from '../feral/process/process-json-hydrator.js';
 import type { LLMProvider } from '../llm/types.js';
@@ -322,116 +323,14 @@ async function _feralChatHeadlessInner(
 
     const llm = await getModelForCapability('reason');
 
-    // ── PHASE 0: Skill Matching ───────────────────────────────────────
-    // Load lightweight skill metas and ask the LLM if any skill matches
-    // the user request. If yes, run the skill's Feral process and synthesize.
-    const skillMetas = await loadSkillMetas().catch(() => []);
-    if (skillMetas.length > 0) {
-        try {
-            const skillSummary = skillMetas.map(m =>
-                `- ${m.name}: ${m.description}${m.triggers.length ? ` [triggers: ${m.triggers.join(', ')}]` : ''}`
-            ).join('\n');
-
-            const skillMatchResponse = await llm.chat(
-                [{
-                    role: 'user' as const,
-                    content: `The user said: "${userInput}"
-
-AVAILABLE SKILLS:
-${skillSummary}
-
-Does this user request match any of the above skills? A skill matches when the user's intent aligns with the skill's description or triggers.
-
-Return JSON only:
-{ "match": "skill-name-or-null", "reasoning": "brief explanation" }`,
-                }],
-                {
-                    systemPrompt: 'You are a skill matcher. Return JSON only. Be conservative — only match when clearly aligned.',
-                    temperature: 0.1,
-                },
-            );
-
-            const skillMatch = parseJsonResponse(skillMatchResponse) as { match: string | null; reasoning: string };
-            debug('chat', `Phase 0 skill match: ${JSON.stringify(skillMatch)}`);
-
-            if (skillMatch.match) {
-                const matchedMeta = skillMetas.find(m => m.name === skillMatch.match);
-                if (matchedMeta && matchedMeta.scriptNames.length > 0) {
-                    status(`Running skill: ${matchedMeta.name}…`);
-                    const script = await loadSkillScript(matchedMeta);
-                    if (script) {
-                        const manifest = await loadSkillManifest(matchedMeta);
-                        const skillProcess = hydrateProcess(script.process as unknown as ProcessConfigJson);
-                        inMemorySource.add(skillProcess);
-
-                        let contextResult: Record<string, unknown>;
-                        let success = true;
-                        try {
-                            const ctx = await runtime.runner.run(skillProcess.key, {
-                                user_input: userInput,
-                                skill_name: matchedMeta.name,
-                                skill_instructions: manifest.body,
-                                ...(onQuestion ? { _askQuestion: onQuestion } : {}),
-                            });
-                            contextResult = ctx.getAll();
-                        } catch (error) {
-                            debug('chat', `Skill execution failed: ${error}`);
-                            contextResult = { _error: error instanceof Error ? error.message : String(error) };
-                            success = false;
-                        }
-
-                        // Record skill run in analytics (fire-and-forget)
-                        import('../analytics/analytics-service.js')
-                            .then(({ getAnalyticsService }) => getAnalyticsService().recordSkillRun(matchedMeta.name, success))
-                            .catch(() => {});
-
-                        if (success) {
-                            const filteredResult = Object.entries(contextResult)
-                                .filter(([k]) => !k.startsWith('_') && k !== 'user_input')
-                                .reduce((acc, [k, v]) => {
-                                    acc[k] = typeof v === 'string' && v.length > 2000 ? v.slice(0, 2000) + '…' : v;
-                                    return acc;
-                                }, {} as Record<string, unknown>);
-
-                            const scrubbedResult = scrubSecrets(filteredResult) as Record<string, unknown>;
-                            await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'skill' });
-
-                            const finalResponse = await synthesizeResponse(
-                                llm, userInput, `Skill "${matchedMeta.name}": ${skillMatch.reasoning}`,
-                                [scrubbedResult], [], vaultContext, history, chatId, clientHints,
-                            );
-                            await logger.log('response', { response: finalResponse });
-
-                            writeExecutionLog({
-                                timestamp: new Date().toISOString(),
-                                chat_id: chatId,
-                                user_input: userInput,
-                                process_source: 'skill',
-                                process_key: skillProcess.key,
-                                process_json: { key: skillProcess.key, skill: matchedMeta.name },
-                                context_result: scrubbedResult,
-                                success,
-                                outcome_summary: finalResponse.slice(0, 500),
-                                iterations: 1,
-                            }).catch(err => debug('chat', `Execution log write failed: ${err}`));
-
-                            return finalResponse;
-                        }
-                    }
-                }
-            }
-        } catch (err) {
-            debug('chat', `Phase 0 skill matching failed (non-fatal): ${err}`);
-        }
-    }
-
-    // ── PHASE PD: Progressive Disclosure ──────────────────────────────
+    // ── PHASE PD: Progressive Disclosure (entity context) ────────────
     // Keyword search → summaries → iterative LLM-driven detail requests.
-    // Appends a targeted context snapshot that the pipeline steps can use.
+    // Appends a targeted entity context snapshot used by all later phases.
+    let pdContext = '';
     if (relevance.keywords.length > 0) {
         try {
             status('Scanning context…');
-            const pdContext = await runProgressiveDisclosure(
+            pdContext = await runProgressiveDisclosure(
                 llm, userInput, vaultContext, relevance.keywords,
             );
             if (pdContext) {
@@ -441,6 +340,94 @@ Return JSON only:
         } catch (err) {
             debug('chat', `Progressive disclosure failed (non-fatal): ${err}`);
         }
+    }
+
+    // ── PHASE CD: Capability Discovery ────────────────────────────────
+    // After entity context is loaded, the LLM browses skill manifests and
+    // catalog node docs iteratively until it either selects a skill to run
+    // directly or has enough knowledge to compose a custom Feral process.
+    // The capability snapshot enriches Step 1 and Step 2 prompts.
+    const skillMetas = await loadSkillMetas().catch(() => []);
+    let capabilitySnapshot = '';
+    try {
+        status('Discovering capabilities…');
+        const cdResult = await runCapabilityDiscovery(
+            llm, userInput, pdContext,
+            skillMetas, runtime.catalog, runtime.nodeCodeFactory,
+        );
+        capabilitySnapshot = cdResult.contextSnapshot;
+        debug('chat', `CD snapshot: ${Math.ceil(capabilitySnapshot.length / 4)} tokens`);
+
+        // If the LLM selected a skill, execute it and return early
+        if (cdResult.selectedSkill) {
+            const matchedMeta = cdResult.selectedSkill;
+            if (matchedMeta.scriptNames.length > 0) {
+                status(`Running skill: ${matchedMeta.name}…`);
+                const script = await loadSkillScript(matchedMeta, cdResult.selectedScript ?? undefined);
+                if (script) {
+                    const manifest = await loadSkillManifest(matchedMeta);
+                    const skillProcess = hydrateProcess(script.process as unknown as ProcessConfigJson);
+                    inMemorySource.add(skillProcess);
+
+                    let contextResult: Record<string, unknown>;
+                    let success = true;
+                    try {
+                        const ctx = await runtime.runner.run(skillProcess.key, {
+                            user_input: userInput,
+                            skill_name: matchedMeta.name,
+                            skill_instructions: manifest.body,
+                            ...(onQuestion ? { _askQuestion: onQuestion } : {}),
+                        });
+                        contextResult = ctx.getAll();
+                    } catch (error) {
+                        debug('chat', `Skill execution failed: ${error}`);
+                        contextResult = { _error: error instanceof Error ? error.message : String(error) };
+                        success = false;
+                    }
+
+                    // Record skill run in analytics (fire-and-forget)
+                    import('../analytics/analytics-service.js')
+                        .then(({ getAnalyticsService }) => getAnalyticsService().recordSkillRun(matchedMeta.name, success))
+                        .catch(() => {});
+
+                    if (success) {
+                        const filteredResult = Object.entries(contextResult)
+                            .filter(([k]) => !k.startsWith('_') && k !== 'user_input')
+                            .reduce((acc, [k, v]) => {
+                                acc[k] = typeof v === 'string' && v.length > 2000 ? v.slice(0, 2000) + '…' : v;
+                                return acc;
+                            }, {} as Record<string, unknown>);
+
+                        const scrubbedResult = scrubSecrets(filteredResult) as Record<string, unknown>;
+                        await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'skill' });
+
+                        const finalResponse = await synthesizeResponse(
+                            llm, userInput, `Skill "${matchedMeta.name}"`,
+                            [scrubbedResult], [], vaultContext, history, chatId, clientHints,
+                        );
+                        await logger.log('response', { response: finalResponse });
+
+                        writeExecutionLog({
+                            timestamp: new Date().toISOString(),
+                            chat_id: chatId,
+                            user_input: userInput,
+                            process_source: 'skill',
+                            process_key: skillProcess.key,
+                            process_json: { key: skillProcess.key, skill: matchedMeta.name },
+                            context_result: scrubbedResult,
+                            success,
+                            outcome_summary: finalResponse.slice(0, 500),
+                            iterations: 1,
+                        }).catch(err => debug('chat', `Execution log write failed: ${err}`));
+
+                        return finalResponse;
+                    }
+                    // Fall through to custom pipeline if skill execution failed
+                }
+            }
+        }
+    } catch (err) {
+        debug('chat', `Capability discovery failed (non-fatal): ${err}`);
     }
 
     // ── PHASE 1: Process reuse ─────────────────────────────────────────
@@ -576,7 +563,7 @@ For field values on creation, also select "set_context_value" to stage fields in
 AVAILABLE CATALOG NODES:
 ${relevanceHintBlock}${fcpHintBlock}
 ${catalogSummary}
-
+${capabilitySnapshot ? `\nCAPABILITY CONTEXT (from discovery phase):\n${capabilitySnapshot}\n` : ''}
 RULES:
 - Always include "start" and "stop". Select only nodes needed for the request.
 - Prefer entity nodes (create_*, complete_*, find_*) over llm_chat for data operations.
@@ -720,7 +707,7 @@ ${selectedNodeDetails}
 
 NODE CONFIGURATION DETAILS:
 ${nodeCodeDetails.join('\n\n')}
-
+${capabilitySnapshot ? `\nCAPABILITY CONTEXT (from discovery phase — use node docs above to configure correctly):\n${capabilitySnapshot}\n` : ''}
 PROCESS FORMAT RULES:
 1. schema_version=1, key="chat.generated". First node: key="start", catalog_node_key="start". Last node: key="done", catalog_node_key="stop", edges={}.
 2. "edges" maps result statuses to next node key. Most nodes produce "ok" and "error". Use {context_key} for interpolation.
