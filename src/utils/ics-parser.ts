@@ -2,6 +2,9 @@
 // ICS PARSER
 // Thin wrapper around node-ical that converts ICS VEVENT objects into
 // CalendarEvent shape for the `cal sync` command.
+// Uses node-ical's expandRecurringEvent to expand RRULE occurrences within
+// the requested date window so recurring events (standups, weekly meetings, etc.)
+// all get imported as individual vault entities.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import ical, { type VEvent } from 'node-ical';
@@ -23,10 +26,15 @@ export interface CalendarEvent {
 }
 
 /**
- * Parse raw ICS text into an array of CalendarEvents.
- * Filters to VEVENTs only, skips cancelled events.
+ * Parse raw ICS text into an array of CalendarEvents within [from, to].
+ * Expands recurring events (RRULE) so each occurrence in the window becomes
+ * its own CalendarEvent with a date-scoped UID.
  */
-export function parseIcsFeed(icsText: string): CalendarEvent[] {
+export function parseIcsFeed(
+    icsText: string,
+    from: Date = new Date(0),
+    to: Date = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+): CalendarEvent[] {
     const parsed = ical.parseICS(icsText);
     const events: CalendarEvent[] = [];
 
@@ -42,29 +50,43 @@ export function parseIcsFeed(icsText: string): CalendarEvent[] {
         const uid = item.uid;
         if (!uid) continue;
 
-        const title = str(item.summary) || '(Untitled)';
-        const start = item.start;
-        const end = item.end;
+        // Expand into instances (handles both single events and RRULE recurrences)
+        let instances: Array<{ start: Date; end: Date; summary: unknown; event: VEvent }>;
+        try {
+            instances = ical.expandRecurringEvent(item, { from, to, includeOverrides: true, excludeExdates: true });
+        } catch {
+            // Fallback: treat as single event
+            instances = item.start ? [{ start: item.start as Date, end: (item.end ?? item.start) as Date, summary: item.summary, event: item }] : [];
+        }
 
-        if (!start) continue;
+        for (const instance of instances) {
+            const { start, end, event } = instance;
 
-        // node-ical returns Date objects for both DATE and DATE-TIME values
-        const startDate = start instanceof Date ? start.toISOString() : new Date(String(start)).toISOString();
-        const endDate = end
-            ? (end instanceof Date ? end.toISOString() : new Date(String(end)).toISOString())
-            : startDate;
+            if (!start) continue;
 
-        const event: CalendarEvent = {
-            uid,
-            title,
-            startDate,
-            endDate,
-        };
+            const startDate = start instanceof Date ? start.toISOString() : new Date(String(start)).toISOString();
+            const endDate = end
+                ? (end instanceof Date ? end.toISOString() : new Date(String(end)).toISOString())
+                : startDate;
 
-        if (item.location) event.location = str(item.location);
-        if (item.description) event.description = str(item.description).trim();
+            // For recurring events, append the date to the UID so each occurrence
+            // is stored as a separate vault entity without overwriting the others.
+            const instanceUid = event.rrule
+                ? `${uid}_${start.toISOString().slice(0, 10).replace(/-/g, '')}`
+                : uid;
 
-        events.push(event);
+            const calEvent: CalendarEvent = {
+                uid: instanceUid,
+                title: str(event.summary || instance.summary) || '(Untitled)',
+                startDate,
+                endDate,
+            };
+
+            if (event.location) calEvent.location = str(event.location);
+            if (event.description) calEvent.description = str(event.description).trim();
+
+            events.push(calEvent);
+        }
     }
 
     return events;

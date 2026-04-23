@@ -127,22 +127,25 @@ export async function handleApiRoute(
 
                     const rawDate = e.meta[t.calendarDateField!];
                     if (!rawDate || typeof rawDate !== 'string') continue;
-                    const date = rawDate.slice(0, 10);
-                    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+                    const dateSlice = rawDate.slice(0, 10);
+                    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateSlice)) continue;
 
                     const item: Record<string, unknown> = {
                         entityType: t.name,
                         id: e.meta.id,
                         title: e.meta.title,
-                        date,
+                        date: rawDate,
                         dateField: t.calendarDateField,
                         meta: e.meta,
+                        // True only for types that persist until explicitly completed (task, delegation, etc.)
+                        // False for point-in-time types (event, milestone) that just come and go
+                        overduable: !!t.completionField,
                     };
 
                     // Period item: has calendarEndField or calendarDurationField
                     if (t.calendarEndField || t.calendarDurationField) {
                         item.type = 'period';
-                        if (t.calendarEndField) item.endDate = (e.meta[t.calendarEndField] as string | undefined)?.slice(0, 10);
+                        if (t.calendarEndField) item.endDate = (e.meta[t.calendarEndField] as string | undefined) ?? undefined;
                         if (t.calendarDurationField) item.duration = e.meta[t.calendarDurationField];
                     }
 

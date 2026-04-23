@@ -129,32 +129,32 @@ function buildTimelineGroups(calItems) {
 
     // Period items — show as active spans (today's bucket, once)
     if (ci.type === 'period' && ci.date && ci.endDate) {
-      if (ci.date <= todayStr && (ci.endDate >= todayStr)) {
-        periods.push({ t: ci.title, kind: 'period', startDate: ci.date, endDate: ci.endDate });
+      const pStart = ci.date.includes('T') ? ymd(new Date(ci.date)) : ci.date.slice(0, 10);
+      const pEnd = ci.endDate.includes('T') ? ymd(new Date(ci.endDate)) : ci.endDate.slice(0, 10);
+      if (pStart <= todayStr && pEnd >= todayStr) {
+        periods.push({ t: ci.title, kind: 'period', startDate: pStart, endDate: pEnd });
       }
       continue;
     }
 
-    const date = (ci.date || '').slice(0, 10);
+    const dateRaw = ci.date || '';
+    const date = dateRaw.length >= 10 ? (dateRaw.includes('T') ? ymd(new Date(dateRaw)) : dateRaw.slice(0, 10)) : '';
     const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date);
-    if (ci.entityType === 'task') {
+    if (ci.entityType === 'task' || ci.overduable) {
+      // Completable types — linger until done, can be overdue
       if (ci.meta && (ci.meta.status === 'done' || ci.meta.status === 'completed')) continue;
       const timeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
       const item = { t: ci.title, kind: 'todo', time: timeVal ? fmtTime(timeVal) : null, rawTime: timeVal || null };
       if (!isValidDate || date === todayStr) { buckets[dates[0]].push(item); }
       else if (date < todayStr) { overdue.push(item); }
       else if (buckets[date]) { buckets[date].push(item); }
-    } else if (ci.entityType === 'event') {
-      if (!isValidDate) continue;
-      const eventTimeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
-      const item = { t: ci.title, kind: 'meeting', time: eventTimeVal ? fmtTime(eventTimeVal) : null, rawTime: eventTimeVal || null };
-      if (date < todayStr) { overdue.push(item); }
-      else if (buckets[date]) { buckets[date].push(item); }
     } else {
-      if (!isValidDate) continue;
-      const item = { t: ci.title, kind: 'milestone' };
-      if (date < todayStr) { overdue.push(item); }
-      else if (buckets[date]) { buckets[date].push(item); }
+      // Point-in-time types (events, milestones, etc.) — past items are simply gone, never overdue
+      if (!isValidDate || date < todayStr) continue;
+      const timeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
+      const kind = ci.entityType === 'event' ? 'meeting' : 'milestone';
+      const item = { t: ci.title, kind, time: timeVal ? fmtTime(timeVal) : null, rawTime: timeVal || null };
+      if (buckets[date]) { buckets[date].push(item); }
     }
   }
 
@@ -681,9 +681,6 @@ function LeftPanel({ pinboard, onRemovePin, calItems, agentName, userName, onSen
           <div className="brand-name">{agentName}</div>
           <div className="brand-sub">Personal agent</div>
         </div>
-        <div className="brand-status">
-          <span className="dot" /> Online
-        </div>
       </header>
 
       <MiniCalendar calItems={calItems} onSendMessage={onSendMessage} />
@@ -715,7 +712,8 @@ function MiniCalendar({ calItems, onSendMessage }) {
   // Build set of days that have events this month
   const eventDays = new Set();
   for (const ci of (calItems || [])) {
-    const d = (ci.date || '').slice(0, 10);
+    const raw = ci.date || '';
+    const d = raw.includes('T') ? ymd(new Date(raw)) : raw.slice(0, 10);
     if (d.startsWith(`${year}-${String(month+1).padStart(2,'0')}`)) {
       eventDays.add(parseInt(d.slice(8), 10));
     }

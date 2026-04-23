@@ -51,10 +51,40 @@
   <div class="container">
     <a href="/" class="back-link">&larr; Back to Phaibel</a>
     <h1>Privacy Policy</h1>
-    <p class="updated">Last updated: March 30, 2026</p>
+    <p class="updated">Last updated: April 22, 2026</p>
 
     <h2>Overview</h2>
-    <p>Phaibel is an open-source, locally-installed personal assistant. <strong>Your data stays on your machine.</strong> We do not operate servers that store, process, or transmit your personal data. This policy covers only the <strong>phaibel.com</strong> marketing website.</p>
+    <p>Phaibel is a personal assistant platform. <strong>Your data stays under your control.</strong> We do not operate central servers that store your personal information. This policy covers the <strong>phaibel.com</strong> marketing website and the <strong>Phaibel iOS app</strong>.</p>
+
+    <h2>The Phaibel iOS App</h2>
+    <p>The Phaibel app connects to a Phaibel server that <strong>you own and control</strong> — either running on your own computer or a server you host. All your data (tasks, events, notes, contacts) is stored on that server, not by us.</p>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:20px 0 8px;color:var(--text)">Data the app sends to your server</h3>
+    <ul>
+      <li>Your typed and spoken messages to the assistant</li>
+      <li>Commands to create, update, or delete items in your vault</li>
+    </ul>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:20px 0 8px;color:var(--text)">Data stored only on your device</h3>
+    <ul>
+      <li>Your server's URL and connection credentials (stored in the device's secure keychain via iOS Secure Store — never transmitted to us)</li>
+      <li>App preferences and settings</li>
+    </ul>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:20px 0 8px;color:var(--text)">Microphone</h3>
+    <p>Phaibel requests microphone access solely to support voice input. Audio is recorded only while you are actively holding the microphone button. Audio is processed locally by iOS speech recognition or sent to your own server for transcription — it is never sent to Phaibel or any third party we control.</p>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:20px 0 8px;color:var(--text)">Notifications</h3>
+    <p>Phaibel may send local notifications (reminders, task due dates) delivered entirely on-device. We do not use push notification services that transmit your data to external servers.</p>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:20px 0 8px;color:var(--text)">LLM providers</h3>
+    <p>Your Phaibel server routes AI requests to providers you configure (such as Anthropic or OpenAI) using API keys you supply. These requests travel from your server directly to the provider — Phaibel does not proxy or log them. Please review your chosen provider's privacy policy.</p>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:20px 0 8px;color:var(--text)">No account required</h3>
+    <p>The Phaibel app does not require you to create an account with us. There is no sign-up, no email address collected, and no profile stored by Phaibel.</p>
+
+    <h3 style="font-size:1rem;font-weight:600;margin:20px 0 8px;color:var(--text)">Data deletion</h3>
+    <p>Because all your data lives on your own server, you can delete it at any time by removing files from that server. Uninstalling the app removes all locally stored credentials and preferences from your device.</p>
 
     <h2>What We Collect on This Website</h2>
     <p>When you visit phaibel.com and accept cookies, we use <strong>Google Analytics</strong> to collect:</p>
@@ -82,8 +112,8 @@
       <li><strong>Non-discrimination</strong> — we will not treat you differently for exercising your privacy rights</li>
     </ul>
 
-    <h2>The Phaibel Application</h2>
-    <p>The Phaibel CLI application runs entirely on your local machine. Your vault data (tasks, events, notes, etc.) is stored as plain Markdown files in a directory you choose. <strong>We have no access to this data.</strong></p>
+    <h2>The Phaibel Desktop / CLI Application</h2>
+    <p>The Phaibel CLI and desktop daemon run entirely on your local machine. Your vault data (tasks, events, notes, etc.) is stored as plain Markdown files in a directory you choose. <strong>We have no access to this data.</strong></p>
     <p>When you configure an LLM provider (OpenAI, Anthropic), your requests are sent directly from your machine to that provider using your own API key. Phaibel does not proxy, log, or intercept these requests. Please review the privacy policies of your chosen LLM provider.</p>
     <p>API keys are stored locally in <code>~/.phaibel/secrets.json</code> and never transmitted to us.</p>
 
@@ -98,7 +128,7 @@
     <p>We may update this policy from time to time. Changes will be posted on this page with an updated date.</p>
 
     <h2>Contact</h2>
-    <p>For privacy questions, open an issue at <a href="https://github.com/clift-labs/phaibel/issues" target="_blank" rel="noopener">github.com/clift-labs/phaibel/issues</a> or email privacy at cliftlabs dot com.</p>
+    <p>For privacy questions, email <a href="mailto:privacy@clift-labs.com">privacy@clift-labs.com</a> or open an issue at <a href="https://github.com/clift-labs/phaibel/issues" target="_blank" rel="noopener">github.com/clift-labs/phaibel/issues</a>.</p>
 
     <p class="footer-copy">&copy; 2026 Clift Labs</p>
   </div>
