@@ -20,6 +20,7 @@ import { hydrateProcessFromString } from '../feral/process/process-json-hydrator
 import type { ProcessSource } from '../feral/process/process-factory.js';
 import type { Process } from '../feral/process/process.js';
 import { getModelForCapability, createSystemPrompt } from '../llm/router.js';
+import { getCapabilityModel } from '../config.js';
 import { debug } from '../utils/debug.js';
 import { ChatLogger, generateChatId, appendJudgement } from '../utils/chat-logger.js';
 import { parseJsonResponse } from '../utils/json-parser.js';
@@ -45,6 +46,63 @@ import { hydrateProcess } from '../feral/process/process-json-hydrator.js';
 import type { ProcessConfigJson } from '../feral/process/process-json-hydrator.js';
 import type { LLMProvider } from '../llm/types.js';
 import { runWithTokenTracker, type ChatTokenTotals } from '../llm/token-usage.js';
+import { getContextWindowTokens } from '../config.js';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RESULTS COMPACTION
+// Trims entity arrays in process results before injecting into LLM prompts.
+// Prevents context window overflow on listing queries (e.g. "what events do you know about?").
+// Budget: allow up to 40% of the model's context window for results (chars ≈ tokens * 4).
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TODAY_MS = () => Date.now();
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+function compactResultsForPrompt(results: Record<string, unknown>[], modelName: string): string {
+    const windowTokens = getContextWindowTokens(modelName);
+    const budgetChars = windowTokens * 4 * 0.40; // 40% of context in chars
+
+    const full = JSON.stringify(results, null, 2);
+    if (full.length <= budgetChars) return full;
+
+    // Over budget — compact entity arrays: replace with count + highlights
+    const now = TODAY_MS();
+    const compacted = results.map(r => {
+        const out: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(r)) {
+            if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === 'object') {
+                const arr = v as Record<string, unknown>[];
+                // Sort by first ISO date field found, keep next-7-days first then rest
+                const withDate = arr.map(item => {
+                    const dateStr = Object.values(item).find(
+                        x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}/.test(x as string)
+                    ) as string | undefined;
+                    return { item, ts: dateStr ? new Date(dateStr).getTime() : Infinity };
+                });
+                withDate.sort((a, b) => a.ts - b.ts);
+                const highlights = withDate
+                    .filter(x => x.ts === Infinity || x.ts >= now - 86_400_000) // today onward + undated
+                    .slice(0, 20)
+                    .map(x => {
+                        // Strip content/body fields to keep highlights lean
+                        const { content: _c, body: _b, ...rest } = x.item as Record<string, unknown>;
+                        return rest;
+                    });
+                out[k] = { total: arr.length, highlights };
+            } else {
+                out[k] = v;
+            }
+        }
+        return out;
+    });
+
+    const compactStr = JSON.stringify(compacted, null, 2);
+    // If still somehow over budget, hard-truncate with a note
+    if (compactStr.length > budgetChars) {
+        return compactStr.slice(0, budgetChars) + '\n… [truncated to fit context window]';
+    }
+    return compactStr;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // IN-MEMORY PROCESS SOURCE
@@ -321,7 +379,11 @@ async function _feralChatHeadlessInner(
 
     debug('chat', `Catalog has ${allNodes.length} nodes, sending ${filteredNodes.length} after relevance filter (${relevance.relevantTypes.map(rt => rt.type).join(', ') || 'all'})`);
 
-    const llm = await getModelForCapability('reason');
+    const [llm, reasonMapping] = await Promise.all([
+        getModelForCapability('reason'),
+        getCapabilityModel('reason'),
+    ]);
+    const reasonModelName = reasonMapping?.model ?? 'gpt-4o';
 
     // ── PHASE PD: Progressive Disclosure (entity context) ────────────
     // Keyword search → summaries → iterative LLM-driven detail requests.
@@ -692,7 +754,7 @@ Return ONLY the JSON object, no markdown fences.`,
         status(`Designing process${iteration > 0 ? ` (step ${iteration + 1})` : ''}…`);
 
         const previousResultsStr = allResults.length > 0
-            ? `\n\nRESULTS FROM PREVIOUS STEPS:\n${JSON.stringify(allResults, null, 2)}`
+            ? `\n\nRESULTS FROM PREVIOUS STEPS:\n${compactResultsForPrompt(allResults, reasonModelName)}`
             : '';
 
         const step2Response = await llm.chat(
@@ -825,7 +887,7 @@ We have completed ${iteration + 1} step(s) so far.
 Step reasoning: ${allReasonings.join(' → ')}
 
 Results from all steps:
-${JSON.stringify(allResults, null, 2)}
+${compactResultsForPrompt(allResults, reasonModelName)}
 
 Is the user's request fulfilled? Consider:
 - Did we create the entity/entities the user explicitly asked for?
@@ -884,7 +946,7 @@ Return ONLY the JSON object, no markdown fences.`,
 
     const finalResponse = await synthesizeResponse(
         llm, userInput, nodeSelection.reasoning,
-        allResults, nodesUsed, vaultContext, history, chatId, clientHints,
+        allResults, nodesUsed, vaultContext, history, chatId, clientHints, reasonModelName,
     );
     await logger.log('response', { response: finalResponse });
 
@@ -922,6 +984,7 @@ async function synthesizeResponse(
     history: ChatHistoryEntry[] = [],
     chatId?: string,
     clientHints?: ClientHints,
+    modelName = 'gpt-4o',
 ): Promise<string> {
     const clientHintBlock = clientHints?.platform === 'mobile'
         ? `CLIENT CONTEXT:
@@ -940,7 +1003,7 @@ Reasoning: ${reasoning}
 ${results.length} process step(s) executed.
 
 ${nodesUsed.length > 0 ? `Nodes used:\n${nodesUsed.join('\n')}\n` : ''}Results:
-${JSON.stringify(results, null, 2)}
+${compactResultsForPrompt(results, modelName)}
 
 ${results.some(r => r._error) ? `Note: Some steps encountered errors.` : ''}
 

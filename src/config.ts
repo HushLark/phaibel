@@ -23,6 +23,28 @@ import { SYSTEM_DIR, SECRETS_PATH, getConfigPath, getVaultConfigDir } from './pa
 // Google Gemini pricing notes:
 //   gemini-2.5-pro:   $1.25/1M input, $10.00/1M output (best reasoning, thinking model)
 //   gemini-2.5-flash: $0.15/1M input, $0.60/1M output  (fast, cheap, great all-rounder)
+// Known context window sizes (in tokens) per model.
+// Used to decide how aggressively to trim results before injecting into prompts.
+// Conservative default applied for unlisted models.
+export const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
+    'gpt-4o':                    128_000,
+    'gpt-4o-mini':               128_000,
+    'o3':                        200_000,
+    'o4-mini':                   200_000,
+    'claude-opus-4-7':           200_000,
+    'claude-sonnet-4-6':         200_000,
+    'claude-haiku-4-5-20251001': 200_000,
+    'gemini-2.5-pro':          1_000_000,
+    'gemini-2.5-flash':        1_000_000,
+    'deepseek-reasoner':          64_000,
+    'deepseek-chat':              64_000,
+};
+
+/** Tokens available for the model. Falls back to 64K if unknown (safe conservative floor). */
+export function getContextWindowTokens(model: string): number {
+    return MODEL_CONTEXT_WINDOWS[model] ?? 64_000;
+}
+
 export const PROVIDER_MODELS: Record<string, Partial<Record<LLMCapability, string>>> = {
     openai: {
         reason: 'gpt-4o',

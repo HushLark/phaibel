@@ -19,6 +19,7 @@ import {
     generateEntityId,
     createEntityMeta,
     entityFilename,
+    trashEntity,
 } from '../entities/entity.js';
 import { getEntityType, addEntityType } from '../entities/entity-type-config.js';
 import { getEntityIndex } from '../entities/entity-index.js';
@@ -31,6 +32,8 @@ export interface CalendarEntry {
     id: string;
     name: string;
     url: string;
+    windowDaysPast?: number;    // days before today to retain (default: 14)
+    windowDaysFuture?: number;  // days ahead to fetch (default: 90)
 }
 
 export interface CalConfig {
@@ -189,18 +192,22 @@ export interface SyncCalendarResult {
     created: number;
     updated: number;
     unchanged: number;
+    pruned: number;
 }
 
+const DEFAULT_WINDOW_PAST = 14;    // days
+const DEFAULT_WINDOW_FUTURE = 90;  // days
+
 /**
- * Sync one calendar feed into the vault.
+ * Sync one calendar feed into the vault, then prune events outside the retention window.
  */
-async function syncOneCalendar(
-    cal: CalendarEntry,
-    daysAhead: number,
-): Promise<SyncCalendarResult> {
+async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> {
+    const daysPast   = cal.windowDaysPast   ?? DEFAULT_WINDOW_PAST;
+    const daysFuture = cal.windowDaysFuture ?? DEFAULT_WINDOW_FUTURE;
+
     const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const horizon = new Date(startOfToday.getTime() + daysAhead * 24 * 60 * 60 * 1000);
+    const windowStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysPast);
+    const windowEnd   = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysFuture);
 
     // 1. Fetch ICS feed
     const res = await fetch(cal.url);
@@ -209,16 +216,10 @@ async function syncOneCalendar(
     }
     const icsText = await res.text();
 
-    // 2. Parse
-    const allEvents = parseIcsFeed(icsText);
+    // 2. Parse — pass the full window so recurring events expand correctly
+    const eventsInWindow = parseIcsFeed(icsText, windowStart, windowEnd);
 
-    // 3. Filter to date window
-    const upcoming = allEvents.filter(ev => {
-        const start = new Date(ev.startDate);
-        return start >= startOfToday && start <= horizon;
-    });
-
-    // 4. Build UID map scoped to this calendar (or legacy events with no calendarId)
+    // 3. Build UID map scoped to this calendar (or legacy events with no calendarId)
     const existingEntities = await listEntities('event', { metaOnly: true });
     const uidMap = new Map<string, { filepath: string; meta: Record<string, unknown>; content: string }>();
     for (const ent of existingEntities) {
@@ -229,14 +230,14 @@ async function syncOneCalendar(
         }
     }
 
-    // 5. Sync
+    // 4. Sync — upsert events within the window
     const eventsDir = await ensureEntityDir('event');
     const index = getEntityIndex();
-    let created = 0;
-    let updated = 0;
-    let unchanged = 0;
+    let created = 0, updated = 0, unchanged = 0;
+    const syncedUids = new Set<string>();
 
-    for (const ev of upcoming) {
+    for (const ev of eventsInWindow) {
+        syncedUids.add(ev.uid);
         const existing = uidMap.get(ev.uid);
 
         if (existing) {
@@ -252,24 +253,16 @@ async function syncOneCalendar(
                 meta.startDate = ev.startDate;
                 meta.endDate = ev.endDate;
                 meta.location = ev.location;
-                // Stamp calendarId on legacy events during update
                 if (!meta.calendarId) meta.calendarId = cal.id;
                 const body = ev.description || existing.content;
                 await writeEntity(existing.filepath, meta, body);
-
-                if (index.isBuilt) {
-                    const eventId = meta.id as string;
-                    await index.addOrUpdate('event', eventId, ev.title, existing.filepath);
-                }
+                if (index.isBuilt) await index.addOrUpdate('event', meta.id as string, ev.title, existing.filepath);
                 updated++;
             } else {
                 unchanged++;
             }
         } else {
-            const baseMeta = createEntityMeta('event', ev.title, {
-                tags: ['calendar'],
-            });
-
+            const baseMeta = createEntityMeta('event', ev.title, { tags: ['calendar'] });
             const meta: Record<string, unknown> = {
                 ...baseMeta,
                 startDate: ev.startDate,
@@ -279,19 +272,39 @@ async function syncOneCalendar(
                 calendarId: cal.id,
                 status: 'confirmed',
             };
-
             const filepath = path.join(eventsDir, entityFilename(ev.title, baseMeta.id));
-            const body = ev.description || '';
-            await writeEntity(filepath, meta, body);
-
-            if (index.isBuilt) {
-                await index.addOrUpdate('event', baseMeta.id, ev.title, filepath);
-            }
+            await writeEntity(filepath, meta, ev.description || '');
+            if (index.isBuilt) await index.addOrUpdate('event', baseMeta.id, ev.title, filepath);
             created++;
         }
     }
 
-    return { created, updated, unchanged };
+    // 5. Prune — trash vault events for this calendar that are outside the window
+    let pruned = 0;
+    for (const ent of existingEntities) {
+        const entCalId = ent.meta.calendarId as string | undefined;
+        if (entCalId !== cal.id && entCalId !== undefined) continue; // different calendar
+        const uid = ent.meta.calendarUid as string | undefined;
+        if (!uid) continue; // not a calendar-imported event
+
+        const startDate = ent.meta.startDate as string | undefined;
+        if (!startDate) continue;
+
+        const eventStart = new Date(startDate);
+        const outsideWindow = eventStart < windowStart || eventStart > windowEnd;
+
+        if (outsideWindow) {
+            try {
+                await trashEntity(ent.filepath);
+                if (index.isBuilt) index.remove?.('event', ent.meta.id as string);
+                pruned++;
+            } catch {
+                // If trash fails (already gone, etc.) continue without crashing
+            }
+        }
+    }
+
+    return { created, updated, unchanged, pruned };
 }
 
 /**
@@ -301,7 +314,7 @@ async function syncOneCalendar(
  * @param opts.calendarId - sync only this calendar; omit to sync all
  * @param opts.days - number of days ahead to sync (default: 60)
  */
-export async function syncCalendar(opts?: { days?: number; calendarId?: string }): Promise<SyncCalendarResult> {
+export async function syncCalendar(opts?: { calendarId?: string }): Promise<SyncCalendarResult> {
     const cfg = await loadCalConfig();
 
     if (cfg.calendars.length === 0) {
@@ -310,27 +323,22 @@ export async function syncCalendar(opts?: { days?: number; calendarId?: string }
 
     await ensureEventType();
 
-    const daysAhead = opts?.days ?? 60;
-
-    // Determine which calendars to sync
     let targets: CalendarEntry[];
     if (opts?.calendarId) {
         const cal = cfg.calendars.find(c => c.id === opts.calendarId || c.name === opts.calendarId);
-        if (!cal) {
-            throw new Error(`No calendar found with id or name "${opts.calendarId}".`);
-        }
+        if (!cal) throw new Error(`No calendar found with id or name "${opts.calendarId}".`);
         targets = [cal];
     } else {
         targets = cfg.calendars;
     }
 
-    // Sync each calendar, aggregate results
-    const totals: SyncCalendarResult = { created: 0, updated: 0, unchanged: 0 };
+    const totals: SyncCalendarResult = { created: 0, updated: 0, unchanged: 0, pruned: 0 };
     for (const cal of targets) {
-        const result = await syncOneCalendar(cal, daysAhead);
-        totals.created += result.created;
-        totals.updated += result.updated;
+        const result = await syncOneCalendar(cal);
+        totals.created   += result.created;
+        totals.updated   += result.updated;
         totals.unchanged += result.unchanged;
+        totals.pruned    += result.pruned;
     }
 
     return totals;
@@ -340,11 +348,8 @@ export async function syncCalendar(opts?: { days?: number; calendarId?: string }
 
 calCommand
     .command('sync [name]')
-    .description('Fetch ICS feed(s) and sync events into the vault')
-    .option('--days <n>', 'Number of days ahead to sync (default: 60)', '60')
-    .action(async (name: string | undefined, opts: { days: string }) => {
-        const daysAhead = parseInt(opts.days, 10) || 60;
-
+    .description('Fetch ICS feed(s) and sync events into the vault, pruning events outside the retention window')
+    .action(async (name: string | undefined) => {
         if (name) {
             console.log(chalk.gray(`\n  Syncing calendar "${name}"...`));
         } else {
@@ -352,11 +357,29 @@ calCommand
         }
 
         try {
-            const result = await syncCalendar({ days: daysAhead, calendarId: name });
-            console.log(chalk.green(`\n  Sync complete: ${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged.\n`));
+            const result = await syncCalendar({ calendarId: name });
+            const pruneNote = result.pruned > 0 ? `, ${result.pruned} pruned` : '';
+            console.log(chalk.green(`\n  Sync complete: ${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged${pruneNote}.\n`));
         } catch (err) {
             console.log(chalk.red(`\n  ${err instanceof Error ? err.message : err}\n`));
         }
+    });
+
+// ── set-window ────────────────────────────────────────────────────────────────
+
+calCommand
+    .command('set-window <name>')
+    .description('Set the retention window for a calendar (days past / days future)')
+    .option('--past <n>', `Days before today to keep (default: ${DEFAULT_WINDOW_PAST})`)
+    .option('--future <n>', `Days ahead to fetch (default: ${DEFAULT_WINDOW_FUTURE})`)
+    .action(async (name: string, opts: { past?: string; future?: string }) => {
+        const cfg = await loadCalConfig();
+        const cal = cfg.calendars.find(c => c.id === name || c.name === name);
+        if (!cal) { console.log(chalk.yellow(`\n  No calendar found with id or name "${name}", sir.\n`)); return; }
+        if (opts.past   !== undefined) cal.windowDaysPast   = parseInt(opts.past,   10);
+        if (opts.future !== undefined) cal.windowDaysFuture = parseInt(opts.future, 10);
+        await saveCalConfig(cfg);
+        console.log(chalk.green(`\n  Window updated for "${cal.name}": past=${cal.windowDaysPast ?? DEFAULT_WINDOW_PAST}d, future=${cal.windowDaysFuture ?? DEFAULT_WINDOW_FUTURE}d.\n`));
     });
 
 export default calCommand;

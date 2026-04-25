@@ -10,6 +10,7 @@ import { syncCalendar } from '../../commands/cal.js';
 import { processInbox } from '../../commands/inbox.js';
 import { generateRecurrences } from '../../commands/recurrence.js';
 import { checkPampMail } from './pamp-checker.js';
+import { runTemporalArchive } from './temporal-archive.js';
 import { getEntityIndex } from '../../entities/entity-index.js';
 import { getEmbeddingIndex } from '../../entities/embedding-index.js';
 import { getCronConfigPath, getVaultConfigDir } from '../../paths.js';
@@ -33,7 +34,8 @@ const DEFAULT_CONFIG: CronConfig = {
         'inbox-import':        { enabled: false, intervalMinutes: 30 },
         'recurrence-generate': { enabled: false, intervalMinutes: 1440 },
         'pamp-check':          { enabled: false, intervalMinutes: 15 },
-        'embedding-sync':      { enabled: true, intervalMinutes: 1440 },
+        'embedding-sync':      { enabled: true,  intervalMinutes: 1440 },
+        'temporal-archive':    { enabled: true,  intervalMinutes: 1440 },
     },
 };
 
@@ -106,6 +108,19 @@ const JOB_DEFS: CronJobDef[] = [
             if (!entityIndex.isBuilt) return 'skipped (entity index not built)';
             const result = await embeddingIndex.sync(entityIndex);
             return `${result.added} added, ${result.updated} updated, ${result.removed} removed`;
+        },
+    },
+    {
+        name: 'temporal-archive',
+        async run() {
+            const result = await runTemporalArchive();
+            if (result.archived === 0 && result.errors === 0) return 'nothing to archive';
+            const summary = `${result.archived} archived, ${result.skipped} current, ${result.errors} errors`;
+            if (result.details.length > 0) {
+                const items = result.details.map(d => `${d.type}/${d.title} (${d.anchorDate})`).join(', ');
+                return `${summary} — ${items}`;
+            }
+            return summary;
         },
     },
 ];

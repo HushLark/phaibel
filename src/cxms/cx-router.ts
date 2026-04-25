@@ -52,6 +52,11 @@ import {
 } from './problem-details.js';
 import { findFoundationRoot } from '../state/manager.js';
 import { debug } from '../utils/debug.js';
+import {
+    isNodeTemporallyRelevant,
+    getWindowBounds,
+    todayStr,
+} from '../entities/temporal-filter.js';
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
@@ -251,7 +256,7 @@ async function handleTagSearch(res: http.ServerResponse, tag: string): Promise<b
 // ── Date Queries ─────────────────────────────────────────────────────────────
 
 async function handleDateToday(res: http.ServerResponse): Promise<boolean> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayStr();
     const nodes = await getNodesForDateRange(today, today);
     jsonResponse(res, 200, { date: today, count: nodes.length, nodes });
     return true;
@@ -267,22 +272,44 @@ async function handleDateRange(res: http.ServerResponse, start: string, end: str
     return true;
 }
 
+/**
+ * Return nodes whose anchor date falls within [start, end].
+ * When a type has a TemporalConfig, the query range is first intersected with
+ * the type's window of importance so stale nodes are never surfaced.
+ */
 async function getNodesForDateRange(start: string, end: string): Promise<Array<Record<string, unknown>>> {
     const types = await loadEntityTypes();
     const results: Array<Record<string, unknown>> = [];
+    const today = todayStr();
 
     for (const t of types) {
-        if (!t.calendarDateField) continue;
+        // Use temporal.field if configured, fall back to calendarDateField
+        const dateField = t.temporal?.field ?? t.calendarDateField;
+        if (!dateField) continue;
+
+        // Intersect the requested range with this type's window of importance
+        let effectiveStart = start;
+        let effectiveEnd   = end;
+        if (t.temporal) {
+            const win = getWindowBounds(t.temporal, today);
+            effectiveStart = effectiveStart > win.from ? effectiveStart : win.from;
+            effectiveEnd   = effectiveEnd   < win.to   ? effectiveEnd   : win.to;
+            if (effectiveStart > effectiveEnd) continue; // window excludes this range entirely
+        }
+
         const entities = await listEntities(t.name);
         for (const e of entities) {
-            const dateVal = String(e.meta[t.calendarDateField] || '').split('T')[0];
-            if (dateVal >= start && dateVal <= end) {
+            const dateVal = String(e.meta[dateField] || '').split('T')[0];
+            if (dateVal >= effectiveStart && dateVal <= effectiveEnd) {
                 results.push({
                     id: e.meta.id,
                     title: e.meta.title,
                     type: t.name,
                     date: dateVal,
-                    [t.calendarDateField]: e.meta[t.calendarDateField],
+                    [dateField]: e.meta[dateField],
+                    ...(t.temporal?.endField && e.meta[t.temporal.endField]
+                        ? { endDate: e.meta[t.temporal.endField] }
+                        : {}),
                 });
             }
         }
@@ -339,6 +366,7 @@ async function handleListTypes(res: http.ServerResponse): Promise<boolean> {
             fields: t.fields,
             completionField: t.completionField,
             calendarDateField: t.calendarDateField,
+            temporal: t.temporal ?? null,
         })),
     });
     return true;
@@ -399,6 +427,7 @@ async function handleCreateType(req: http.IncomingMessage, res: http.ServerRespo
         completionValue: body.completionValue,
         calendarDateField: body.calendarDateField,
         spawner: body.spawner,
+        temporal: body.temporal,
     };
 
     try {
@@ -479,10 +508,11 @@ async function handleListNodes(
         return true;
     }
 
-    // Query params: status, tag, limit, offset
+    // Query params: status, tag, window, limit, offset
     const statusFilter = url.searchParams.get('status');
-    const tagFilter = url.searchParams.get('tag');
-    const limit = parseInt(url.searchParams.get('limit') || '0', 10);
+    const tagFilter    = url.searchParams.get('tag');
+    const applyWindow  = url.searchParams.get('window') === 'true';
+    const limit  = parseInt(url.searchParams.get('limit')  || '0', 10);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
     let entities = await listEntities(typeName, tagFilter ? { tags: [tagFilter] } : undefined);
@@ -490,6 +520,15 @@ async function handleListNodes(
     // Status filter
     if (statusFilter) {
         entities = entities.filter(e => e.meta.status === statusFilter);
+    }
+
+    // Temporal window filter — only applied when ?window=true is passed,
+    // or when the type has a temporal config (always-on for temporal types)
+    if (typeConfig.temporal && (applyWindow || typeConfig.temporal.windowDaysBefore > 0 || typeConfig.temporal.windowDaysAfter > 0)) {
+        const today = todayStr();
+        entities = entities.filter(e =>
+            isNodeTemporallyRelevant(e.meta as Record<string, unknown>, typeConfig.temporal!, today),
+        );
     }
 
     const total = entities.length;

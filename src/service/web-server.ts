@@ -253,18 +253,25 @@ export class WebServer {
         if (req.method === 'GET' && url.pathname === '/api/calendars') {
             const cfg = await loadCalConfig();
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(cfg.calendars.map(c => ({ id: c.id, name: c.name }))));
+            res.end(JSON.stringify(cfg.calendars.map(c => ({
+                id: c.id, name: c.name,
+                windowDaysPast: c.windowDaysPast ?? 14,
+                windowDaysFuture: c.windowDaysFuture ?? 90,
+            }))));
             return;
         }
 
         if (req.method === 'POST' && url.pathname === '/api/calendars') {
             try {
-                const body = JSON.parse(await this.readBody(req)) as { name?: string; url?: string };
+                const body = JSON.parse(await this.readBody(req)) as { name?: string; url?: string; windowDaysPast?: number; windowDaysFuture?: number };
                 if (!body.name || !body.url) { res.writeHead(400); res.end(JSON.stringify({ error: 'name and url required' })); return; }
                 const cfg = await loadCalConfig();
                 const id = body.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
                 if (cfg.calendars.some(c => c.id === id)) { res.writeHead(409); res.end(JSON.stringify({ error: `Calendar "${body.name}" already exists` })); return; }
-                cfg.calendars.push({ id, name: body.name, url: body.url });
+                cfg.calendars.push({ id, name: body.name, url: body.url,
+                    ...(body.windowDaysPast   != null && { windowDaysPast:   body.windowDaysPast }),
+                    ...(body.windowDaysFuture != null && { windowDaysFuture: body.windowDaysFuture }),
+                });
                 await saveCalConfig(cfg);
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ ok: true, id, name: body.name }));
@@ -273,6 +280,22 @@ export class WebServer {
         }
 
         const calDeleteMatch = url.pathname.match(/^\/api\/calendars\/([^/]+)$/);
+        if (req.method === 'PATCH' && calDeleteMatch) {
+            try {
+                const id = decodeURIComponent(calDeleteMatch[1]);
+                const body = JSON.parse(await this.readBody(req)) as { windowDaysPast?: number; windowDaysFuture?: number };
+                const cfg = await loadCalConfig();
+                const cal = cfg.calendars.find(c => c.id === id);
+                if (!cal) { res.writeHead(404); res.end(JSON.stringify({ error: 'Not found' })); return; }
+                if (body.windowDaysPast   != null) cal.windowDaysPast   = body.windowDaysPast;
+                if (body.windowDaysFuture != null) cal.windowDaysFuture = body.windowDaysFuture;
+                await saveCalConfig(cfg);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true }));
+            } catch (err) { res.writeHead(400); res.end(JSON.stringify({ error: String(err) })); }
+            return;
+        }
+
         if (req.method === 'DELETE' && calDeleteMatch) {
             try {
                 const id = decodeURIComponent(calDeleteMatch[1]);

@@ -144,9 +144,11 @@ function buildTimelineGroups(calItems) {
       // Completable types — linger until done, can be overdue
       if (ci.meta && (ci.meta.status === 'done' || ci.meta.status === 'completed')) continue;
       const timeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
-      const item = { t: ci.title, kind: 'todo', time: timeVal ? fmtTime(timeVal) : null, rawTime: timeVal || null };
+      const isOverdue = isValidDate && date < todayStr;
+      const item = { t: ci.title, kind: 'todo', time: timeVal ? fmtTime(timeVal) : null, rawTime: timeVal || null,
+        overdueDate: isOverdue ? date : null };
       if (!isValidDate || date === todayStr) { buckets[dates[0]].push(item); }
-      else if (date < todayStr) { overdue.push(item); }
+      else if (isOverdue) { overdue.push(item); }
       else if (buckets[date]) { buckets[date].push(item); }
     } else {
       // Point-in-time types (events, milestones, etc.) — past items are simply gone, never overdue
@@ -793,7 +795,7 @@ function Timeline({ calItems, onSendMessage }) {
                     </span>
                     <div className="tl-main">
                       <div className="tl-t">{it.t}</div>
-                      {it.time && <div className="tl-meta"><span className="tl-time">{it.time}</span></div>}
+                      {(it.time || it.overdueDate) && <div className="tl-meta"><span className="tl-time">{it.overdueDate ? new Date(it.overdueDate + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'}) + (it.time ? ' · ' + it.time : '') : it.time}</span></div>}
                       {it.kind === "period" && it.endDate && <div className="tl-meta"><span className="tl-time">until {it.endDate}</span></div>}
                       {it.kind === "annual" && <div className="tl-meta"><span className="tl-time">{it.daysAway === 0 ? "today" : it.daysAway === 1 ? "tomorrow" : `in ${it.daysAway} days`}</span></div>}
                     </div>
@@ -1297,6 +1299,8 @@ function SettingsTab() {
   const [calendars, setCalendars] = useState([]);
   const [calName, setCalName] = useState("");
   const [calUrl, setCalUrl] = useState("");
+  const [calPast, setCalPast] = useState("14");
+  const [calFuture, setCalFuture] = useState("90");
   const [calSaving, setCalSaving] = useState(false);
   const [calError, setCalError] = useState(null);
 
@@ -1358,13 +1362,18 @@ function SettingsTab() {
       const r = await fetch("/api/calendars", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, url }),
+        body: JSON.stringify({ name, url,
+          windowDaysPast: parseInt(calPast, 10) || 14,
+          windowDaysFuture: parseInt(calFuture, 10) || 90,
+        }),
       });
       const d = await r.json();
       if (!r.ok) { setCalError(d.error || "Failed to save"); return; }
-      setCalendars(prev => [...prev, { id: d.id, name }]);
-      setCalName("");
-      setCalUrl("");
+      setCalendars(prev => [...prev, { id: d.id, name,
+        windowDaysPast: parseInt(calPast, 10) || 14,
+        windowDaysFuture: parseInt(calFuture, 10) || 90,
+      }]);
+      setCalName(""); setCalUrl(""); setCalPast("14"); setCalFuture("90");
     } catch (e) {
       setCalError(String(e));
     } finally {
@@ -1375,6 +1384,16 @@ function SettingsTab() {
   const removeCalendar = async (id) => {
     await fetch(`/api/calendars/${encodeURIComponent(id)}`, { method: "DELETE" });
     setCalendars(prev => prev.filter(c => c.id !== id));
+  };
+
+  const updateCalWindow = async (id, past, future) => {
+    await fetch(`/api/calendars/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ windowDaysPast: parseInt(past, 10), windowDaysFuture: parseInt(future, 10) }),
+    });
+    setCalendars(prev => prev.map(c => c.id === id ? { ...c,
+      windowDaysPast: parseInt(past, 10), windowDaysFuture: parseInt(future, 10) } : c));
   };
 
   const sections = [
@@ -1455,13 +1474,26 @@ function SettingsTab() {
               {calendars.length > 0 && (
                 <ul className="kv-list" style={{ marginBottom: "16px" }}>
                   {calendars.map(c => (
-                    <li key={c.id}>
-                      <span className="mono">{c.name}</span>
-                      <button
-                        className="btn ghost"
-                        style={{ fontSize: "10px", padding: "2px 8px", marginLeft: "auto", color: "var(--muted)" }}
-                        onClick={() => removeCalendar(c.id)}
-                      >Remove</button>
+                    <li key={c.id} style={{ flexDirection: "column", alignItems: "flex-start", gap: "6px" }}>
+                      <div style={{ display: "flex", width: "100%", alignItems: "center" }}>
+                        <span className="mono">{c.name}</span>
+                        <button
+                          className="btn ghost"
+                          style={{ fontSize: "10px", padding: "2px 8px", marginLeft: "auto", color: "var(--muted)" }}
+                          onClick={() => removeCalendar(c.id)}
+                        >Remove</button>
+                      </div>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "11.5px", color: "var(--ink-3)" }}>
+                        <span>Retention window:</span>
+                        <input type="number" min="0" defaultValue={c.windowDaysPast ?? 14}
+                          style={{ width: "52px", padding: "2px 4px", fontSize: "11.5px", background: "var(--paper-2)", border: "1px solid var(--ink-5)", borderRadius: "3px", color: "var(--ink-1)", textAlign: "center" }}
+                          onBlur={e => updateCalWindow(c.id, e.target.value, c.windowDaysFuture ?? 90)}
+                        /> <span>days past</span>
+                        <input type="number" min="1" defaultValue={c.windowDaysFuture ?? 90}
+                          style={{ width: "52px", padding: "2px 4px", fontSize: "11.5px", background: "var(--paper-2)", border: "1px solid var(--ink-5)", borderRadius: "3px", color: "var(--ink-1)", textAlign: "center" }}
+                          onBlur={e => updateCalWindow(c.id, c.windowDaysPast ?? 14, e.target.value)}
+                        /> <span>days future</span>
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -1469,24 +1501,25 @@ function SettingsTab() {
               {calendars.length === 0 && <p className="settings-hint dim" style={{ marginBottom: "16px" }}>No calendars added yet.</p>}
 
               <div className="eyebrow" style={{ marginBottom: "8px" }}>Add calendar</div>
+              <Field label="Name" value={calName} onChange={setCalName} placeholder="e.g. work, personal, family" />
               <Field
-                label="Name"
-                value={calName}
-                onChange={setCalName}
-                placeholder="e.g. work, personal, family"
-              />
-              <Field
-                label="Private ICS URL"
-                value={calUrl}
-                onChange={setCalUrl}
+                label="Private ICS URL" value={calUrl} onChange={setCalUrl}
                 placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
                 mono
                 hint="Google: Settings > your calendar > Secret address in iCal format. Outlook: Settings > View all Outlook settings > Calendar > Shared calendars > Publish."
               />
+              <div style={{ display: "flex", gap: "12px", alignItems: "center", margin: "8px 0 4px", fontSize: "12px", color: "var(--ink-3)" }}>
+                <span>Retention window:</span>
+                <input type="number" min="0" value={calPast} onChange={e => setCalPast(e.target.value)}
+                  style={{ width: "52px", padding: "3px 6px", fontSize: "12px", background: "var(--paper-2)", border: "1px solid var(--ink-5)", borderRadius: "3px", color: "var(--ink-1)", textAlign: "center" }}
+                /> <span>days past</span>
+                <input type="number" min="1" value={calFuture} onChange={e => setCalFuture(e.target.value)}
+                  style={{ width: "52px", padding: "3px 6px", fontSize: "12px", background: "var(--paper-2)", border: "1px solid var(--ink-5)", borderRadius: "3px", color: "var(--ink-1)", textAlign: "center" }}
+                /> <span>days future</span>
+              </div>
               {calError && <p style={{ color: "var(--oxblood)", fontSize: "11.5px", margin: "4px 0" }}>{calError}</p>}
               <button
-                className="btn"
-                onClick={addCalendar}
+                className="btn" onClick={addCalendar}
                 disabled={calSaving || !calName.trim() || !calUrl.trim()}
                 style={{ marginTop: "8px" }}
               >{calSaving ? "Saving…" : "Add Calendar"}</button>

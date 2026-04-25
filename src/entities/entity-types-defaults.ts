@@ -26,6 +26,14 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         completionField: 'status',
         completionValue: 'done',
         calendarDateField: 'dueDate',
+        temporal: {
+            anchor: 'date',
+            field: 'dueDate',
+            // Show overdue tasks up to 30 days back; upcoming up to 180 days ahead.
+            // No deleteAfterDays — tasks persist until explicitly completed or deleted.
+            windowDaysBefore: 30,
+            windowDaysAfter: 180,
+        },
     },
     {
         name: 'note',
@@ -34,6 +42,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         description: 'Free-form notes and references',
         defaultTags: ['note'],
         fields: [],
+        // Notes have no temporal anchor — always include in context.
     },
     {
         name: 'event',
@@ -47,6 +56,16 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             { key: 'location',  type: 'string',   label: 'Location',   required: false },
         ],
         calendarDateField: 'startDate',
+        temporal: {
+            anchor: 'datetime',
+            field: 'startDate',
+            durationField: 'duration',
+            // Show events from 3 days ago (for follow-ups) to 60 days ahead.
+            // Archive 14 days after the event date.
+            windowDaysBefore: 3,
+            windowDaysAfter: 60,
+            deleteAfterDays: 14,
+        },
     },
     {
         name: 'person',

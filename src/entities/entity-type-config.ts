@@ -57,6 +57,52 @@ export interface SpawnerConfig {
     childrenField?: string;         // for template mode: field holding child specs array
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPORAL CONFIG
+// Defines how a context type relates to time: which field holds the date,
+// how wide the window of importance is around that date, and when nodes
+// should be automatically archived after they expire.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type TemporalAnchor = 'date' | 'datetime' | 'daterange';
+
+export interface TemporalConfig {
+    /** Which temporal construct this type uses */
+    anchor: TemporalAnchor;
+
+    /** Frontmatter field holding the primary date or datetime value */
+    field: string;
+
+    /**
+     * For 'daterange': the end date/datetime field.
+     * Window relevance is measured from the START date (field), not end.
+     */
+    endField?: string;
+
+    /** For 'daterange': duration field, used when endField is absent */
+    durationField?: string;
+
+    /**
+     * Window of importance relative to today.
+     * A node is considered relevant when:
+     *   today ∈ [node.date − windowDaysBefore,  node.date + windowDaysAfter]
+     *
+     * Examples:
+     *   Executive calendar: windowDaysBefore=7,  windowDaysAfter=14
+     *   Soccer season:      windowDaysBefore=14, windowDaysAfter=120
+     *   TV show premiere:   windowDaysBefore=0,  windowDaysAfter=3
+     */
+    windowDaysBefore: number;
+    windowDaysAfter: number;
+
+    /**
+     * Days after the anchor date to move the node to .archive/.
+     * Undefined = never auto-archive.
+     * The archive cron job runs daily and moves expired nodes.
+     */
+    deleteAfterDays?: number;
+}
+
 export interface EntityTypeConfig {
     name: string;
     plural: string;
@@ -70,6 +116,12 @@ export interface EntityTypeConfig {
     calendarDateField?: string; // field key used for calendar start (date or datetime)
     calendarEndField?: string;  // field key for period end (date or datetime)
     calendarDurationField?: string; // field key for period duration (duration)
+    /** Temporal window configuration — drives relevance filtering and auto-archive */
+    temporal?: TemporalConfig;
+    /** @deprecated Use temporal.windowDaysBefore instead */
+    timeWindowDaysPast?: number;
+    /** @deprecated Use temporal.windowDaysAfter instead */
+    timeWindowDaysFuture?: number;
 }
 
 interface EntityTypesFile {
@@ -132,6 +184,10 @@ export async function loadEntityTypes(): Promise<EntityTypeConfig[]> {
             }
             if (saved.spawner === undefined && builtin.spawner) {
                 saved.spawner = builtin.spawner;
+                dirty = true;
+            }
+            if (saved.temporal === undefined && builtin.temporal) {
+                saved.temporal = builtin.temporal;
                 dirty = true;
             }
             // Sync field types from defaults (e.g. date → datetime migration)
