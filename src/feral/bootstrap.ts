@@ -33,6 +33,7 @@ import { ContextValueResultNodeCode } from './node-code/flow/context-value-resul
 import { ArrayIteratorNodeCode } from './node-code/flow/array-iterator-node-code.js';
 import { ThrowExceptionNodeCode } from './node-code/flow/throw-exception-node-code.js';
 import { SubProcessNodeCode } from './node-code/flow/sub-process-node-code.js';
+import { RunSkillNodeCode } from './node-code/flow/run-skill-node-code.js';
 import { SetContextValueNodeCode } from './node-code/data/set-context-value-node-code.js';
 import { SetContextTableNodeCode } from './node-code/data/set-context-table-node-code.js';
 import { CalculationNodeCode } from './node-code/data/calculation-node-code.js';
@@ -79,6 +80,8 @@ import { PromptSelectNodeCode } from './node-code/input/prompt-select-node-code.
 import { EntityCatalogSource } from './catalog/entity-catalog-source.js';
 import { OutputCatalogSource } from './catalog/output-catalog-source.js';
 import { UsageCatalogSource } from './catalog/usage-catalog-source.js';
+import { SkillCatalogSource } from './catalog/skill-catalog-source.js';
+import { loadSkillMetas } from '../skills/skill-manager.js';
 
 // ── System node codes (cross-platform) ──────────────────────────────────
 import { ListProcessesNodeCode } from './node-code/system/list-processes-node-code.js';
@@ -111,6 +114,7 @@ function getCrossPlatformNodeCodes(): NodeCode[] {
         new ArrayIteratorNodeCode(),
         new ThrowExceptionNodeCode(),
         new SubProcessNodeCode(),
+        new RunSkillNodeCode(),
         // Data
         new SetContextValueNodeCode(),
         new SetContextTableNodeCode(),
@@ -339,10 +343,11 @@ export async function bootstrapFeral(
             a2aClient.discoverAllAgents(),
         ]);
     }
-    const [catalogConfig, entityTypes, trackedModels] = await Promise.all([
+    const [catalogConfig, entityTypes, trackedModels, skillMetas] = await Promise.all([
         loadFeralCatalogConfig(),
         loadEntityTypes(),
         getTrackedModels(),
+        loadSkillMetas().catch(() => []),
     ]);
 
     // 3. Build catalog from sources (skip Node-only sources on mobile)
@@ -352,6 +357,7 @@ export async function bootstrapFeral(
         new EntityCatalogSource(entityTypes),
         new OutputCatalogSource(),
         new UsageCatalogSource(trackedModels),
+        new SkillCatalogSource(skillMetas),
     ];
     if (!isMobile) {
         catalogSources.push(...await getNodeOnlyCatalogSources(mcpTools, a2aAgents));
