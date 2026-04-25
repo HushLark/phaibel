@@ -81,7 +81,6 @@ import { EntityCatalogSource } from './catalog/entity-catalog-source.js';
 import { OutputCatalogSource } from './catalog/output-catalog-source.js';
 import { UsageCatalogSource } from './catalog/usage-catalog-source.js';
 import { SkillCatalogSource } from './catalog/skill-catalog-source.js';
-import { loadSkillMetas } from '../skills/skill-manager.js';
 
 // ── System node codes (cross-platform) ──────────────────────────────────
 import { ListProcessesNodeCode } from './node-code/system/list-processes-node-code.js';
@@ -343,12 +342,16 @@ export async function bootstrapFeral(
             a2aClient.discoverAllAgents(),
         ]);
     }
-    const [catalogConfig, entityTypes, trackedModels, skillMetas] = await Promise.all([
+    const [catalogConfig, entityTypes, trackedModels] = await Promise.all([
         loadFeralCatalogConfig(),
         loadEntityTypes(),
         getTrackedModels(),
-        loadSkillMetas().catch(() => []),
     ]);
+
+    // Skills: build the self-refreshing source and pre-warm the cache now
+    // so the first getCatalogNodes() call is never empty.
+    const skillCatalogSource = new SkillCatalogSource();
+    await skillCatalogSource.preload();
 
     // 3. Build catalog from sources (skip Node-only sources on mobile)
     const catalogSources = [
@@ -357,7 +360,7 @@ export async function bootstrapFeral(
         new EntityCatalogSource(entityTypes),
         new OutputCatalogSource(),
         new UsageCatalogSource(trackedModels),
-        new SkillCatalogSource(skillMetas),
+        skillCatalogSource,
     ];
     if (!isMobile) {
         catalogSources.push(...await getNodeOnlyCatalogSources(mcpTools, a2aAgents));
