@@ -135,13 +135,6 @@ const INTROSPECT_NODES: IntrospectEntry[] = [
         contextPath: 'token_usage',
     },
     {
-        key: 'get_mcp_skills',
-        name: 'Get MCP Skills',
-        description: 'Lists all tools available from connected MCP skill servers.',
-        target: 'mcp_skills',
-        contextPath: 'mcp_skills',
-    },
-    {
         key: 'get_a2a_agents',
         name: 'Get A2A Agents',
         description: 'Lists all discovered A2A agents with their skills.',

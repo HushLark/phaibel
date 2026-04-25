@@ -242,22 +242,6 @@ export class IntrospectionService {
         };
     }
 
-    // ── MCP Skills ───────────────────────────────────────────────────────
-
-    async getMcpSkills(): Promise<Array<{ skillId: string; name: string; description: string }>> {
-        try {
-            const { mcpManager } = await import('../skills/mcp-manager.js');
-            const tools = await mcpManager.discoverAllTools();
-            return tools.map(t => ({
-                skillId: t.skillId,
-                name: t.name,
-                description: t.description,
-            }));
-        } catch {
-            return [];
-        }
-    }
-
     // ── A2A Agents ───────────────────────────────────────────────────────
 
     async getA2aAgents(): Promise<Array<{ agentId: string; agentName: string; description: string; url: string }>> {

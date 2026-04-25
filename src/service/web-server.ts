@@ -30,7 +30,6 @@ import { handleAnalyticsRoute } from '../analytics/analytics-router.js';
 import { logAccess } from '../cxms/access-log.js';
 import { debug } from '../utils/debug.js';
 import { transcribeAudio } from '../llm/transcribe.js';
-import { handleMcpRequest } from './mcp-server.js';
 import { handleAgentCard, handleA2ARequest } from './a2a-server.js';
 import { PERSONALITIES } from '../personalities.js';
 import { initEntityTypes, loadEntityTypes, addEntityType } from '../entities/entity-type-config.js';
@@ -197,12 +196,6 @@ export class WebServer {
         // ── A2A Protocol ──────────────────────────────────────────────
         if (url.pathname === '/a2a' && req.method === 'POST') {
             await handleA2ARequest(req, res);
-            return;
-        }
-
-        // ── MCP Protocol (Streamable HTTP) ────────────────────────────
-        if (url.pathname === '/mcp') {
-            await handleMcpRequest(req, res);
             return;
         }
 

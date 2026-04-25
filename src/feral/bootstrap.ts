@@ -95,7 +95,7 @@ import { loadEntityTypes } from '../entities/entity-type-config.js';
 import { getTrackedModels } from '../llm/token-usage.js';
 
 // ── Node-only imports are loaded dynamically in getNodeOnlyNodeCodes() ───
-// Slack, MCP, A2A, PAMP, Scheduler, CLI, Introspect, ReadFile, WriteFile,
+// Slack, A2A, PAMP, Scheduler, CLI, Introspect, ReadFile, WriteFile,
 // WriteToRedis — these transitively depend on Node.js built-ins and must
 // NOT be statically imported so Metro (Expo) doesn't trace them.
 
@@ -186,7 +186,6 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         { ListSchedulerJobsNodeCode },
         { ToggleSchedulerJobNodeCode },
         { RunSchedulerJobNodeCode },
-        { McpCallToolNodeCode },
         { A2ASendTaskNodeCode },
         { FcpProbeNodeCode },
         { FcpFetchNodeCode },
@@ -209,7 +208,6 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         import('./node-code/scheduler/list-scheduler-jobs-node-code.js'),
         import('./node-code/scheduler/toggle-scheduler-job-node-code.js'),
         import('./node-code/scheduler/run-scheduler-job-node-code.js'),
-        import('./node-code/mcp/mcp-call-tool-node-code.js'),
         import('./node-code/a2a/a2a-send-task-node-code.js'),
         import('./node-code/context/fcp-probe-node-code.js'),
         import('./node-code/context/fcp-fetch-node-code.js'),
@@ -234,7 +232,6 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         new ListSchedulerJobsNodeCode(),
         new ToggleSchedulerJobNodeCode(),
         new RunSchedulerJobNodeCode(),
-        new McpCallToolNodeCode(),
         new A2ASendTaskNodeCode(),
         new FcpProbeNodeCode(),
         new FcpFetchNodeCode(),
@@ -247,7 +244,7 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
 /**
  * Node.js-only catalog sources. Uses dynamic imports for the same reason.
  */
-async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown[]) {
+async function getNodeOnlyCatalogSources(a2aAgents: unknown[]) {
     const [
         { SlackCatalogSource },
         { AgentCatalogSource },
@@ -255,7 +252,6 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         { IntrospectCatalogSource },
         { AnalyticsCatalogSource },
         { PampCatalogSource },
-        { McpCatalogSource },
         { A2ACatalogSource },
         { FcpCatalogSource },
         { CxfCatalogSource },
@@ -266,7 +262,6 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         import('./catalog/introspect-catalog-source.js'),
         import('./catalog/analytics-catalog-source.js'),
         import('./catalog/pamp-catalog-source.js'),
-        import('./catalog/mcp-catalog-source.js'),
         import('./catalog/a2a-catalog-source.js'),
         import('./catalog/fcp-catalog-source.js'),
         import('./catalog/cxf-catalog-source.js'),
@@ -279,7 +274,6 @@ async function getNodeOnlyCatalogSources(mcpTools: unknown[], a2aAgents: unknown
         new IntrospectCatalogSource(),
         new AnalyticsCatalogSource(),
         new PampCatalogSource(),
-        new McpCatalogSource(mcpTools as any),
         new A2ACatalogSource(a2aAgents as any),
         new FcpCatalogSource(),
         new CxfCatalogSource(),
@@ -302,7 +296,7 @@ export interface FeralRuntime {
 
 export interface BootstrapOptions {
     processSources?: ProcessSource[];
-    /** 'node' (default) includes all node codes; 'mobile' excludes CLI, Slack, MCP, A2A, PAMP, Scheduler, raw file I/O */
+    /** 'node' (default) includes all node codes; 'mobile' excludes CLI, Slack, A2A, PAMP, Scheduler, raw file I/O */
     platform?: 'node' | 'mobile';
 }
 
@@ -331,16 +325,11 @@ export async function bootstrapFeral(
         { getNodeCodes: () => allNodeCodes },
     ]);
 
-    // 2. Load catalog config, entity types, and optionally MCP/A2A (parallel)
-    let mcpTools: unknown[] = [];
+    // 2. Load catalog config, entity types, and optionally A2A (parallel)
     let a2aAgents: unknown[] = [];
     if (!isMobile) {
-        const { mcpManager } = await import('../skills/mcp-manager.js');
         const { a2aClient } = await import('../agents/a2a-client.js');
-        [mcpTools, a2aAgents] = await Promise.all([
-            mcpManager.discoverAllTools(),
-            a2aClient.discoverAllAgents(),
-        ]);
+        a2aAgents = await a2aClient.discoverAllAgents();
     }
     const [catalogConfig, entityTypes, trackedModels] = await Promise.all([
         loadFeralCatalogConfig(),
@@ -363,7 +352,7 @@ export async function bootstrapFeral(
         skillCatalogSource,
     ];
     if (!isMobile) {
-        catalogSources.push(...await getNodeOnlyCatalogSources(mcpTools, a2aAgents));
+        catalogSources.push(...await getNodeOnlyCatalogSources(a2aAgents));
     }
     const catalog = new Catalog(catalogSources);
 

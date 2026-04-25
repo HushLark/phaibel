@@ -145,7 +145,7 @@ ${chalk.cyan('Configuration')}
   ${chalk.bold('phaibel setup')}               Update your name, gender, and preferences
   ${chalk.bold('phaibel calendar add')} ${chalk.dim('<name> <ics-url>')}  Add a Google Calendar ICS feed
   ${chalk.bold('phaibel calendar sync')}       Sync calendar events into the vault
-  ${chalk.bold('phaibel skill')}               Manage MCP skill servers
+  ${chalk.bold('phaibel skill')}               Manage skills
   ${chalk.bold('phaibel fcp')} ${chalk.dim('list|add|probe|fetch')}    Manage federated context sources
 
 ${chalk.cyan('Examples')}

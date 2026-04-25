@@ -782,7 +782,7 @@ PROCESS FORMAT RULES:
 9. Prefer ACTION over QUESTIONS. Use sensible defaults (today's date, "medium" priority). Max one prompt node per process.
 10. If create_content_type is in your node list, you MUST use it. Create type FIRST, then create_entity. Don't use "note" as a generic bucket.
 11. Multiple create_entity nodes of same type work correctly — don't worry about context key collisions.
-12. For search_* nodes, set "query" in config. For MCP skill nodes, put tool parameters directly in config.
+12. For search_* nodes, set "query" in config.
 
 EXAMPLE PROCESSES:
 ${examplesStr}

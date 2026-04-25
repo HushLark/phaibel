@@ -21,7 +21,7 @@ const VALID_TARGETS = [
     'service', 'vault', 'cron_schedule',
     'entity_types', 'entity_stats',
     'queue', 'token_usage',
-    'mcp_skills', 'a2a_agents', 'recent_chats',
+    'a2a_agents', 'recent_chats',
 ] as const;
 type IntrospectTarget = (typeof VALID_TARGETS)[number];
 
@@ -53,7 +53,7 @@ export class IntrospectNodeCode extends AbstractNodeCode {
         super(
             'introspect',
             'Introspect',
-            'Queries the agent\'s own configuration — user profile, agent profile, personality, providers, capabilities, settings, service status, vault info, entity types/stats, queue, token usage, MCP skills, A2A agents, or recent chats.',
+            'Queries the agent\'s own configuration — user profile, agent profile, personality, providers, capabilities, settings, service status, vault info, entity types/stats, queue, token usage, A2A agents, or recent chats.',
             NodeCodeCategory.DATA,
         );
     }
@@ -92,7 +92,6 @@ export class IntrospectNodeCode extends AbstractNodeCode {
             case 'entity_stats':   return service.getEntityStats();
             case 'queue':          return service.getQueue();
             case 'token_usage':    return service.getTokenUsage();
-            case 'mcp_skills':     return service.getMcpSkills();
             case 'a2a_agents':     return service.getA2aAgents();
             case 'recent_chats':   return service.getRecentChats();
         }
