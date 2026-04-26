@@ -348,7 +348,7 @@ export class WebServer {
                 if (consumer) await recordSync(consumer);
 
                 res.writeHead(200, {
-                    'Content-Type': 'text/cxf; charset=utf-8',
+                    'Content-Type': 'application/ld+json; charset=utf-8',
                     'X-CXF-Export-Time': String(exportTime),
                     'X-CXF-Entity-Count': String(result.entityCount),
                     'X-CXF-Schema-Count': String(result.schemaCount),

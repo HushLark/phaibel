@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CXF Serializer — Persona-based tests
 //
-// Tests the CXF/1 serializer across 8 real-world user archetypes without
-// any LLM calls, vault I/O, or external dependencies.
+// Tests the CXF/2 JSON-LD serializer across 8 real-world user archetypes
+// without any LLM calls, vault I/O, or external dependencies.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { describe, it, expect } from 'vitest';
@@ -93,26 +93,34 @@ function personType(): EntityTypeConfig {
     };
 }
 
-function assertContains(doc: string, fragment: string, label = fragment) {
-    expect(doc, `Expected CXF document to contain: ${label}`).toContain(fragment);
+/** Parse the JSON-LD document. */
+function parse(doc: string): Record<string, unknown> {
+    return JSON.parse(doc);
 }
 
-function assertNotContains(doc: string, fragment: string, label = fragment) {
-    expect(doc, `Expected CXF document NOT to contain: ${label}`).not.toContain(fragment);
+/** Find a node in @graph by entity ID suffix. */
+function graphNode(doc: string, entityId: string): Record<string, unknown> | undefined {
+    const parsed = parse(doc);
+    const graph = parsed['@graph'] as Record<string, unknown>[];
+    return graph?.find(n => String(n['@id'] ?? '').endsWith(`:${entityId}`));
 }
 
-function lines(doc: string): string[] {
-    // Unfold continuation lines then split
-    return doc.replace(/\r\n[ \t]/g, '').split(/\r\n|\n/).filter(Boolean);
+/** Find all graph nodes of a given nativeType. */
+function graphNodesOfType(doc: string, nativeType: string): Record<string, unknown>[] {
+    const parsed = parse(doc);
+    const graph = parsed['@graph'] as Record<string, unknown>[];
+    return graph?.filter(n => n['cxf:nativeType'] === nativeType) ?? [];
 }
 
-function countOccurrences(doc: string, fragment: string): number {
-    return doc.split(fragment).length - 1;
+/** Find a schema entry by typeName. */
+function schemaFor(doc: string, typeName: string): Record<string, unknown> | undefined {
+    const parsed = parse(doc);
+    const schemas = parsed['cxf:schemas'] as Record<string, unknown>[] | undefined;
+    return schemas?.find(s => s['cxf:typeName'] === typeName);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERSONA 1 — SOCCER MOM
-// High event volume, many linked people, recurring tasks, location-heavy
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Persona: Soccer Mom', () => {
@@ -154,55 +162,63 @@ describe('Persona: Soccer Mom', () => {
     const types = [eventType(), taskType(), noteType(), personType()];
     const nodes = [match, snacks, teamNote, jamie, sam, coach];
 
-    it('emits VEVENT for match', () => {
+    it('emits cxf:Event for match', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'BEGIN:VEVENT');
-        assertContains(document, 'SUMMARY:U12 Match vs Westside');
-        assertContains(document, 'DTSTART:20260425T140000Z');
-        assertContains(document, 'DURATION:PT1H30M');
-        assertContains(document, 'LOCATION:Riverside Park\\, Field 3');
-        assertContains(document, 'CATEGORIES:soccer,u12');
+        const n = graphNode(document, 'event-soccer-u12-001');
+        expect(n?.['@type']).toBe('cxf:Event');
+        expect(n?.['schema:name']).toBe('U12 Match vs Westside');
+        expect(n?.['schema:startDate']).toBe('2026-04-25T14:00:00Z');
+        expect(n?.['schema:duration']).toBe('PT1H30M');
+        expect(n?.['schema:location']).toBe('Riverside Park, Field 3');
+        expect(n?.['schema:keywords']).toEqual(['soccer', 'u12']);
     });
 
-    it('expands person links as ATTENDEE with correct roles', () => {
+    it('expands person links as cxf:attendees with correct roles', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        // team-member → REQ-PARTICIPANT
-        assertContains(document, 'CN=Jamie Torres');
-        assertContains(document, 'ROLE=REQ-PARTICIPANT');
-        assertContains(document, 'mailto:jamie@example.com');
-        assertContains(document, 'X-CXF-PERSON-ID=person-jamie-torres-ab12');
-        // assigned-to → CHAIR (coach)
-        assertContains(document, 'CN=Coach Nick');
-        assertContains(document, 'ROLE=CHAIR');
-        assertContains(document, 'mailto:nick@westside.fc');
+        const n = graphNode(document, 'event-soccer-u12-001');
+        const attendees = n?.['cxf:attendees'] as Record<string, unknown>[];
+        expect(attendees).toBeDefined();
+
+        const jamie = attendees.find(a => a['cxf:personId'] === 'person-jamie-torres-ab12');
+        expect(jamie?.['cxf:role']).toBe('REQ-PARTICIPANT');
+        expect(jamie?.['schema:email']).toBe('jamie@example.com');
+        expect(jamie?.['schema:name']).toBe('Jamie Torres');
+
+        const coachEntry = attendees.find(a => a['cxf:personId'] === 'person-coach-nick-ef56');
+        expect(coachEntry?.['cxf:role']).toBe('CHAIR');
+        expect(coachEntry?.['schema:email']).toBe('nick@westside.fc');
     });
 
     it('uses synthetic email for person without email', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'mailto:person-sam-reeves-cd34@cxf.local');
+        const n = graphNode(document, 'event-soccer-u12-001');
+        const attendees = n?.['cxf:attendees'] as Record<string, unknown>[];
+        const sam = attendees.find(a => a['cxf:personId'] === 'person-sam-reeves-cd34');
+        expect(sam?.['schema:email']).toBe('person-sam-reeves-cd34@cxf.local');
     });
 
-    it('emits VTODO for task with correct status and priority', () => {
+    it('emits cxf:Task for task with status and priority', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'BEGIN:VTODO');
-        assertContains(document, 'SUMMARY:Bring snacks for post-game');
-        assertContains(document, 'STATUS:NEEDS-ACTION');
-        assertContains(document, 'PRIORITY:5'); // medium
-        assertContains(document, 'DUE:20260425');
+        const n = graphNode(document, 'task-snacks-002');
+        expect(n?.['@type']).toBe('cxf:Task');
+        expect(n?.['schema:name']).toBe('Bring snacks for post-game');
+        expect(n?.['cxf:status']).toBe('open');
+        expect(n?.['cxf:priority']).toBe('medium');
+        expect(n?.['schema:dueDate']).toBe('2026-04-25');
     });
 
-    it('emits VJOURNAL for note', () => {
+    it('emits cxf:Note for note', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'BEGIN:VJOURNAL');
-        assertContains(document, 'SUMMARY:U12 Team Roster Notes');
+        const n = graphNode(document, 'note-team-roster-003');
+        expect(n?.['@type']).toBe('cxf:Note');
+        expect(n?.['schema:name']).toBe('U12 Team Roster Notes');
     });
 
-    it('includes VSCHEMA for all types with nodes', () => {
+    it('includes cxf:schemas for all types with nodes', () => {
         const { document, schemaCount } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'BEGIN:VSCHEMA');
-        assertContains(document, 'X-CXF-TYPE-NAME:event');
-        assertContains(document, 'X-CXF-TYPE-NAME:task');
-        assertContains(document, 'X-CXF-TYPE-NAME:note');
+        expect(schemaFor(document, 'event')).toBeDefined();
+        expect(schemaFor(document, 'task')).toBeDefined();
+        expect(schemaFor(document, 'note')).toBeDefined();
         expect(schemaCount).toBeGreaterThanOrEqual(3);
     });
 
@@ -214,7 +230,6 @@ describe('Persona: Soccer Mom', () => {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERSONA 2 — CEO
-// Goals, todonts, high-priority tasks, people with roles
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Persona: CEO', () => {
@@ -258,60 +273,61 @@ describe('Persona: CEO', () => {
     const types = [taskType(), goalType(), todontType(), personType()];
     const nodes = [boardDeck, buildTeam, reviewBob, micromanage, bob];
 
-    it('emits VTODO for goals', () => {
+    it('goal emits cxf:Task with cxf:nativeType=goal', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'SUMMARY:Build a great engineering team');
-        assertContains(document, 'X-CXF-TYPE:goal');
-        assertContains(document, 'STATUS:IN-PROCESS'); // active → IN-PROCESS
+        const n = graphNode(document, 'goal-great-team-e5f6');
+        expect(n?.['@type']).toBe('cxf:Task');
+        expect(n?.['cxf:nativeType']).toBe('goal');
+        expect(n?.['cxf:status']).toBe('active');
     });
 
-    it('emits critical priority as PRIORITY:1', () => {
+    it('critical priority preserved as-is', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'PRIORITY:1');
+        const n = graphNode(document, 'task-board-deck-001');
+        expect(n?.['cxf:priority']).toBe('critical');
     });
 
-    it('todont uses IN-PROCESS status by default', () => {
+    it('todont preserves status natively', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'X-CXF-TYPE:todont');
-        assertContains(document, 'STATUS:IN-PROCESS');
+        const n = graphNode(document, 'todont-micromanage-i9j0');
+        expect(n?.['cxf:nativeType']).toBe('todont');
+        expect(n?.['cxf:status']).toBe('in-progress');
     });
 
-    it('todont includes reason field', () => {
+    it('todont includes reason in cxf:fields', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'X-CXF-FIELD-REASON:Kills team autonomy');
+        const n = graphNode(document, 'todont-micromanage-i9j0');
+        const fields = n?.['cxf:fields'] as Record<string, unknown> | undefined;
+        expect(fields?.reason).toBe('Kills team autonomy and slows delivery velocity.');
     });
 
-    it('todont is NOT always CANCELLED', () => {
+    it('person link on task emits attendee with CHAIR role', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        // Find the todont component and check its STATUS is not CANCELLED
-        const todontStart = document.indexOf('X-CXF-TYPE:todont');
-        const snippet = document.slice(Math.max(0, todontStart - 200), todontStart + 50);
-        expect(snippet).not.toContain('STATUS:CANCELLED');
+        const n = graphNode(document, 'task-board-deck-001');
+        const attendees = n?.['cxf:attendees'] as Record<string, unknown>[];
+        const bobEntry = attendees?.find(a => a['cxf:personId'] === 'person-bob-smith-c3d4');
+        expect(bobEntry?.['cxf:role']).toBe('CHAIR');
+        expect(bobEntry?.['schema:email']).toBe('bob@acme.com');
     });
 
-    it('person links on task emit ATTENDEE as CHAIR', () => {
+    it('non-person link emits cxf:links entry', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'CN=Bob Smith');
-        assertContains(document, 'ROLE=CHAIR');
-        assertContains(document, 'mailto:bob@acme.com');
+        const n = graphNode(document, 'task-review-bob-a1b2');
+        const links = n?.['cxf:links'] as Record<string, unknown>[];
+        const goalLink = links?.find(l => l['cxf:label'] === 'relates-to');
+        expect(goalLink).toBeDefined();
+        expect(String(goalLink?.['cxf:target'])).toContain('goal-great-team-e5f6');
     });
 
-    it('non-person link on task emits X-CXF-LINK', () => {
+    it('@id uses urn:cxf:{vaultId}:{entityId} format', () => {
         const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'X-CXF-LINK');
-        assertContains(document, 'LABEL=relates-to');
-    });
-
-    it('includes correct UID format {id}@{vaultId}', () => {
-        const { document } = serializeToCxf(nodes, types, [], BASE_OPTS);
-        assertContains(document, 'UID:task-board-deck-001@test-vault-01');
-        assertContains(document, 'UID:goal-great-team-e5f6@test-vault-01');
+        const n = graphNode(document, 'task-board-deck-001');
+        expect(n?.['@id']).toBe('urn:cxf:test-vault-01:task-board-deck-001');
     });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERSONA 3 — ENGINEERING MANAGER
-// Blocked tasks, person links with multiple roles, mixed priorities
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Persona: Engineering Manager', () => {
@@ -332,27 +348,29 @@ describe('Persona: Engineering Manager', () => {
         meta: { created: '2026-04-12T00:00:00Z', status: 'done', priority: 'high' },
     });
 
-    it('blocked task maps to IN-PROCESS + X-CXF-STATUS-EXT:blocked', () => {
+    it('blocked status preserved as-is in cxf:status', () => {
         const { document } = serializeToCxf([blockedTask, alice], [taskType(), personType()], [], BASE_OPTS);
-        assertContains(document, 'STATUS:IN-PROCESS');
-        assertContains(document, 'X-CXF-STATUS-EXT:blocked');
+        const n = graphNode(document, 'task-deploy-prod-b001');
+        expect(n?.['cxf:status']).toBe('blocked');
     });
 
-    it('done task maps to STATUS:COMPLETED', () => {
+    it('done status preserved as-is', () => {
         const { document } = serializeToCxf([doneTask], [taskType()], [], BASE_OPTS);
-        assertContains(document, 'STATUS:COMPLETED');
+        const n = graphNode(document, 'task-pr-review-b002');
+        expect(n?.['cxf:status']).toBe('done');
     });
 
-    it('"responsible" link label maps to ROLE=CHAIR', () => {
+    it('"responsible" link label maps to CHAIR role', () => {
         const { document } = serializeToCxf([blockedTask, alice], [taskType(), personType()], [], BASE_OPTS);
-        assertContains(document, 'ROLE=CHAIR');
-        assertContains(document, 'CN=Alice Dev');
+        const n = graphNode(document, 'task-deploy-prod-b001');
+        const attendees = n?.['cxf:attendees'] as Record<string, unknown>[];
+        const aliceEntry = attendees?.find(a => a['schema:name'] === 'Alice Dev');
+        expect(aliceEntry?.['cxf:role']).toBe('CHAIR');
     });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERSONA 4 — BUSY PARENT
-// Mix of events, tasks, notes; personal and school tags; no priorities set
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Persona: Busy Parent', () => {
@@ -374,44 +392,39 @@ describe('Persona: Busy Parent', () => {
         meta: { created: '2026-04-15T00:00:00Z' },
     });
 
-    it('event without duration emits only DTSTART', () => {
+    it('event without duration emits only schema:startDate', () => {
         const { document } = serializeToCxf([dentist], [eventType()], [], BASE_OPTS);
-        assertContains(document, 'BEGIN:VEVENT');
-        assertContains(document, 'DTSTART:20260510T090000Z');
-        assertContains(document, 'LOCATION:City Dental');
-        assertNotContains(document, 'DURATION:');
+        const n = graphNode(document, 'event-dentist-001');
+        expect(n?.['schema:startDate']).toBe('2026-05-10T09:00:00Z');
+        expect(n?.['schema:location']).toBe('City Dental');
+        expect(n?.['schema:duration']).toBeUndefined();
     });
 
-    it('task without priority emits PRIORITY:0 (undefined)', () => {
+    it('task without priority has no cxf:priority field', () => {
         const { document } = serializeToCxf([packLunch], [taskType()], [], BASE_OPTS);
-        assertContains(document, 'PRIORITY:0');
+        const n = graphNode(document, 'task-pack-lunch-002');
+        expect(n?.['cxf:priority']).toBeUndefined();
     });
 
-    it('note gets VJOURNAL with DTSTART derived from createdAt', () => {
+    it('note emits cxf:Note with dateCreated', () => {
         const { document } = serializeToCxf([schoolNote], [noteType()], [], BASE_OPTS);
-        assertContains(document, 'BEGIN:VJOURNAL');
-        assertContains(document, 'DTSTART:20260415');
+        const n = graphNode(document, 'note-school-update-003');
+        expect(n?.['@type']).toBe('cxf:Note');
+        expect(n?.['schema:dateCreated']).toBe('2026-04-15T00:00:00Z');
     });
 
-    it('CATEGORIES includes all tags', () => {
+    it('tags appear in schema:keywords', () => {
         const { document } = serializeToCxf([dentist], [eventType()], [], BASE_OPTS);
-        assertContains(document, 'CATEGORIES:family,health');
+        const n = graphNode(document, 'event-dentist-001');
+        expect(n?.['schema:keywords']).toEqual(['family', 'health']);
     });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PERSONA 5 — RESEARCHER / ACADEMIC
-// Heavy notes, custom entity types, long body content
+// PERSONA 5 — RESEARCHER
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Persona: Researcher', () => {
-    const paperNote = node({
-        id: 'note-llm-survey-001', type: 'note', title: 'Survey of LLM architectures',
-        tags: ['ai', 'research'],
-        bodySnippet: 'Transformers have dominated NLP since 2017. Key papers: BERT (2018), GPT-2 (2019), GPT-3 (2020). The attention mechanism allows models to focus on relevant tokens regardless of distance.',
-        meta: { created: '2026-03-01T00:00:00Z' },
-    });
-
     const researchType: EntityTypeConfig = {
         name: 'research', plural: 'research', directory: 'research',
         fields: [
@@ -431,39 +444,42 @@ describe('Persona: Researcher', () => {
         },
     });
 
-    it('custom type emits VCONTEXT', () => {
+    it('custom type emits cxf:Context with correct nativeType', () => {
         const { document } = serializeToCxf([researchEntity], [researchType], [], BASE_OPTS);
-        assertContains(document, 'BEGIN:VCONTEXT');
-        assertContains(document, 'X-CXF-TYPE:research');
-        assertContains(document, 'END:VCONTEXT');
+        const n = graphNode(document, 'research-llm-perf-001');
+        expect(n?.['@type']).toBe('cxf:Context');
+        expect(n?.['cxf:nativeType']).toBe('research');
     });
 
-    it('custom fields emitted as X-CXF-FIELD-*', () => {
+    it('custom fields appear in cxf:fields', () => {
         const { document } = serializeToCxf([researchEntity], [researchType], [], BASE_OPTS);
-        assertContains(document, 'X-CXF-FIELD-HYPOTHESIS:');
-        assertContains(document, 'Larger models are not always better');
+        const n = graphNode(document, 'research-llm-perf-001');
+        const fields = n?.['cxf:fields'] as Record<string, unknown> | undefined;
+        expect(fields?.hypothesis).toBe('Larger models are not always better on specialized tasks.');
     });
 
-    it('VSCHEMA for custom type includes field definitions', () => {
+    it('cxf:schemas for custom type includes field definitions', () => {
         const { document } = serializeToCxf([researchEntity], [researchType], [], BASE_OPTS);
-        assertContains(document, 'X-CXF-TYPE-NAME:research');
-        assertContains(document, 'X-CXF-FIELD;KEY=status');
-        assertContains(document, 'X-CXF-FIELD;KEY=hypothesis');
+        const s = schemaFor(document, 'research');
+        expect(s?.['cxf:typeName']).toBe('research');
+        const fields = s?.['cxf:fields'] as Record<string, unknown>[];
+        expect(fields?.some(f => f['cxf:key'] === 'hypothesis')).toBe(true);
+        expect(fields?.some(f => f['cxf:key'] === 'status')).toBe(true);
     });
 
-    it('note body appears in DESCRIPTION', () => {
-        const noteWithBody = { ...paperNote, bodySnippet: 'Transformers have dominated NLP since 2017.' };
-        const { document } = serializeToCxf(
-            [{ ...noteWithBody, meta: { ...noteWithBody.meta, body: noteWithBody.bodySnippet } }],
-            [noteType()], [], BASE_OPTS
-        );
-        assertContains(document, 'DESCRIPTION:');
+    it('note body appears in schema:description', () => {
+        const paperNote = node({
+            id: 'note-llm-survey-001', type: 'note', title: 'Survey of LLM architectures',
+            meta: { created: '2026-03-01T00:00:00Z', body: 'Transformers have dominated NLP since 2017.' },
+        });
+        const { document } = serializeToCxf([paperNote], [noteType()], [], BASE_OPTS);
+        const n = graphNode(document, 'note-llm-survey-001');
+        expect(n?.['schema:description']).toContain('Transformers have dominated');
     });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERSONA 6 — FREELANCER
-// Client management, invoices, project goals with custom types
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Persona: Freelancer', () => {
@@ -494,33 +510,38 @@ describe('Persona: Freelancer', () => {
         },
     });
 
-    it('client entity emits VCONTEXT with correct type', () => {
+    it('client entity emits cxf:Context with correct type and name', () => {
         const { document } = serializeToCxf([acme], [clientType], [], BASE_OPTS);
-        assertContains(document, 'BEGIN:VCONTEXT');
-        assertContains(document, 'X-CXF-TYPE:client');
-        assertContains(document, 'SUMMARY:Acme Corp');
-        assertContains(document, 'CATEGORIES:saas,enterprise');
+        const n = graphNode(document, 'client-acme-co-001');
+        expect(n?.['@type']).toBe('cxf:Context');
+        expect(n?.['cxf:nativeType']).toBe('client');
+        expect(n?.['schema:name']).toBe('Acme Corp');
+        expect(n?.['schema:keywords']).toEqual(['saas', 'enterprise']);
     });
 
-    it('client schema is emitted with field definitions', () => {
+    it('client schema includes description and field definitions', () => {
         const { document } = serializeToCxf([acme], [clientType], [], BASE_OPTS);
-        assertContains(document, 'X-CXF-TYPE-NAME:client');
-        assertContains(document, 'X-CXF-DESCRIPTION:Freelance clients and accounts');
-        assertContains(document, 'KEY=budget;TYPE=NUMBER');
-        assertContains(document, 'KEY=status;TYPE=ENUM;VALUES=prospect,active,completed,churned');
+        const s = schemaFor(document, 'client');
+        expect(s?.['cxf:description']).toBe('Freelance clients and accounts');
+        const fields = s?.['cxf:fields'] as Record<string, unknown>[];
+        const budgetField = fields?.find(f => f['cxf:key'] === 'budget');
+        expect(budgetField?.['cxf:type']).toBe('number');
+        const statusField = fields?.find(f => f['cxf:key'] === 'status');
+        expect(statusField?.['cxf:values']).toEqual(['prospect', 'active', 'completed', 'churned']);
     });
 
-    it('non-person link on task emits X-CXF-LINK with label', () => {
+    it('non-person link on task emits cxf:links with correct label', () => {
         const { document } = serializeToCxf([invoiceTask, acme], [taskType(), clientType], [], BASE_OPTS);
-        assertContains(document, 'X-CXF-LINK');
-        assertContains(document, 'LABEL=belongs-to');
-        assertContains(document, 'client-acme-co-001@test-vault-01');
+        const n = graphNode(document, 'task-invoice-q1-002');
+        const links = n?.['cxf:links'] as Record<string, unknown>[];
+        const acmeLink = links?.find(l => l['cxf:label'] === 'belongs-to');
+        expect(acmeLink).toBeDefined();
+        expect(String(acmeLink?.['cxf:target'])).toContain('client-acme-co-001');
     });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERSONA 7 — EXECUTIVE ASSISTANT
-// Many people, delegated tasks, observer and notifier roles
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Persona: Executive Assistant', () => {
@@ -546,35 +567,50 @@ describe('Persona: Executive Assistant', () => {
     it('assigned-to → CHAIR, attendee → OPT-PARTICIPANT, observer → NON-PARTICIPANT', () => {
         const { document } = serializeToCxf(
             [pressRelease, ceo, pr, board],
-            [taskType(), personType()], [], BASE_OPTS
+            [taskType(), personType()], [], BASE_OPTS,
         );
-        assertContains(document, 'CN=PR Manager');
-        assertContains(document, 'ROLE=CHAIR');
-        assertContains(document, 'CN=CEO');
-        assertContains(document, 'ROLE=OPT-PARTICIPANT');
-        assertContains(document, 'CN=Board Observer');
-        assertContains(document, 'ROLE=NON-PARTICIPANT');
+        const n = graphNode(document, 'task-press-release-001');
+        const attendees = n?.['cxf:attendees'] as Record<string, unknown>[];
+
+        const prEntry = attendees?.find(a => a['schema:name'] === 'PR Manager');
+        expect(prEntry?.['cxf:role']).toBe('CHAIR');
+
+        const ceoEntry = attendees?.find(a => a['schema:name'] === 'CEO');
+        expect(ceoEntry?.['cxf:role']).toBe('OPT-PARTICIPANT');
+
+        const boardEntry = attendees?.find(a => a['schema:name'] === 'Board Observer');
+        expect(boardEntry?.['cxf:role']).toBe('NON-PARTICIPANT');
     });
 
-    it('three attendees means three ATTENDEE lines', () => {
+    it('three person links produce three attendee entries', () => {
         const { document } = serializeToCxf(
             [pressRelease, ceo, pr, board],
-            [taskType(), personType()], [], BASE_OPTS
+            [taskType(), personType()], [], BASE_OPTS,
         );
-        expect(countOccurrences(document, 'BEGIN:ATTENDEE')).toBe(0); // not a block
-        expect(countOccurrences(document, 'ROLE=')).toBe(3);
+        const n = graphNode(document, 'task-press-release-001');
+        const attendees = n?.['cxf:attendees'] as Record<string, unknown>[];
+        expect(attendees?.length).toBe(3);
     });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERSONA 8 — STARTUP FOUNDER
-// Mix of everything: goals, todonts, events, notes, custom types
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe('Persona: Startup Founder', () => {
     const goal = node({
         id: 'goal-series-a-001', type: 'goal', title: 'Close Series A funding',
         meta: { created: '2026-01-01T00:00:00Z', status: 'active', priority: 'high' },
+    });
+
+    const pitchEvent = node({
+        id: 'event-pitch-day-001', type: 'event', title: 'Seed round pitch day',
+        meta: { created: '2026-04-01T00:00:00Z', startDate: '2026-05-01T09:00:00Z', location: 'VC HQ' },
+    });
+
+    const archivedGoal = node({
+        id: 'goal-old-pivot-002', type: 'goal', title: 'Old pivot strategy (deprecated)',
+        meta: { created: '2025-01-01T00:00:00Z', status: 'abandoned', archivedAt: '2026-01-15T00:00:00Z' },
     });
 
     const todontActiveDef = node({
@@ -592,40 +628,20 @@ describe('Persona: Startup Founder', () => {
         meta: { created: '2026-03-01T00:00:00Z', status: 'cancelled', reason: 'Old advice, no longer relevant.' },
     });
 
-    const pitchEvent = node({
-        id: 'event-pitch-day-001', type: 'event', title: 'Seed round pitch day',
-        meta: { created: '2026-04-01T00:00:00Z', startDate: '2026-05-01T09:00:00Z', location: 'VC HQ' },
-    });
-
-    const archivedGoal = node({
-        id: 'goal-old-pivot-002', type: 'goal', title: 'Old pivot strategy (deprecated)',
-        meta: { created: '2025-01-01T00:00:00Z', status: 'abandoned', archivedAt: '2026-01-15T00:00:00Z' },
-    });
-
-    it('active todont uses IN-PROCESS', () => {
-        const { document } = serializeToCxf([todontActiveDef], [todontType()], [], BASE_OPTS);
-        assertContains(document, 'STATUS:IN-PROCESS');
-        assertNotContains(document, 'STATUS:CANCELLED');
-    });
-
-    it('completed todont uses COMPLETED', () => {
-        const { document } = serializeToCxf([todontCompleted], [todontType()], [], BASE_OPTS);
-        assertContains(document, 'STATUS:COMPLETED');
-    });
-
-    it('cancelled todont uses CANCELLED', () => {
-        const { document } = serializeToCxf([todontCancelled], [todontType()], [], BASE_OPTS);
-        assertContains(document, 'STATUS:CANCELLED');
+    it('todont statuses preserved natively', () => {
+        const { document } = serializeToCxf([todontActiveDef, todontCompleted, todontCancelled], [todontType()], [], BASE_OPTS);
+        expect(graphNode(document, 'todont-pivot-too-early-001')?.['cxf:status']).toBe('in-progress');
+        expect(graphNode(document, 'todont-skip-tests-002')?.['cxf:status']).toBe('done');
+        expect(graphNode(document, 'todont-no-demos-003')?.['cxf:status']).toBe('cancelled');
     });
 
     it('archived entities excluded by default', () => {
         const opts = { ...BASE_OPTS, includeArchived: false };
         const { document, entityCount } = serializeToCxf(
             [goal, archivedGoal, pitchEvent],
-            [goalType(), eventType()], [], opts
+            [goalType(), eventType()], [], opts,
         );
-        assertNotContains(document, 'Old pivot strategy');
-        // 2 non-archived nodes
+        expect(graphNode(document, 'goal-old-pivot-002')).toBeUndefined();
         expect(entityCount).toBe(2);
     });
 
@@ -633,14 +649,14 @@ describe('Persona: Startup Founder', () => {
         const opts = { ...BASE_OPTS, includeArchived: true };
         const { document, entityCount } = serializeToCxf(
             [goal, archivedGoal, pitchEvent],
-            [goalType(), eventType()], [], opts
+            [goalType(), eventType()], [], opts,
         );
-        assertContains(document, 'Old pivot strategy');
-        assertContains(document, 'X-CXF-ARCHIVED:TRUE');
+        const n = graphNode(document, 'goal-old-pivot-002');
+        expect(n?.['cxf:archived']).toBe(true);
         expect(entityCount).toBe(3);
     });
 
-    it('tombstone emits X-CXF-DELETED:TRUE', () => {
+    it('tombstone emits cxf:deleted=true', () => {
         const tombstone: CxfTombstone = {
             entityId: 'goal-deleted-999',
             vaultId: BASE_OPTS.vaultId,
@@ -649,60 +665,48 @@ describe('Persona: Startup Founder', () => {
             updatedAtUnix: 1745222000,
         };
         const { document } = serializeToCxf([goal], [goalType()], [tombstone], BASE_OPTS);
-        assertContains(document, 'UID:goal-deleted-999@test-vault-01');
-        assertContains(document, 'X-CXF-DELETED:TRUE');
+        const n = graphNode(document, 'goal-deleted-999');
+        expect(n?.['@id']).toBe('urn:cxf:test-vault-01:goal-deleted-999');
+        expect(n?.['cxf:deleted']).toBe(true);
+        expect(n?.['cxf:archived']).toBe(false);
     });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RFC 5545 COMPLIANCE
+// JSON-LD STRUCTURE
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('RFC 5545 Compliance', () => {
-    it('document starts with BEGIN:VCALENDAR and ends with END:VCALENDAR', () => {
+describe('JSON-LD Structure', () => {
+    it('document is valid JSON with @context, cxf:version, and @graph', () => {
         const nodes = [node({ id: 'task-001', type: 'task', title: 'Simple task',
             meta: { created: '2026-04-01T00:00:00Z', status: 'open' } })];
         const { document } = serializeToCxf(nodes, [taskType()], [], BASE_OPTS);
-        expect(document.trimStart()).toMatch(/^BEGIN:VCALENDAR/);
-        expect(document.trimEnd()).toMatch(/END:VCALENDAR$/);
+        const parsed = parse(document);
+        expect(parsed['@context']).toBeDefined();
+        expect(parsed['cxf:version']).toBe('2');
+        expect(parsed['cxf:vaultId']).toBe('test-vault-01');
+        expect(parsed['cxf:exportTime']).toBe(1745222400);
+        expect(parsed['cxf:ownerName']).toBe('Test User');
+        expect(Array.isArray(parsed['@graph'])).toBe(true);
     });
 
-    it('includes required VCALENDAR header fields', () => {
+    it('@context includes cxf and schema namespaces', () => {
         const { document } = serializeToCxf([], [], [], BASE_OPTS);
-        assertContains(document, 'VERSION:2.0');
-        assertContains(document, 'CALSCALE:GREGORIAN');
-        assertContains(document, 'X-CXF-VERSION:1');
-        assertContains(document, 'X-CXF-VAULT:test-vault-01');
-        assertContains(document, 'X-CXF-EXPORT-TIME:1745222400');
-        assertContains(document, 'X-CXF-OWNER-NAME:Test User');
+        const ctx = parse(document)['@context'] as Record<string, unknown>;
+        expect(ctx['cxf']).toContain('cxf.phaibel.ai');
+        expect(ctx['schema']).toContain('schema.org');
     });
 
-    it('long lines are folded at 75 octets', () => {
-        const longTitle = 'A'.repeat(80);
-        const nodes = [node({ id: 'task-long-001', type: 'task', title: longTitle,
-            meta: { created: '2026-04-01T00:00:00Z' } })];
-        const { document } = serializeToCxf(nodes, [taskType()], [], BASE_OPTS);
-        const rawLines = document.split(/\r\n/);
-        for (const line of rawLines) {
-            expect(Buffer.byteLength(line, 'utf8')).toBeLessThanOrEqual(75);
-        }
-    });
-
-    it('PRODID is present', () => {
-        const { document } = serializeToCxf([], [], [], BASE_OPTS);
-        assertContains(document, 'PRODID:');
-    });
-
-    it('exclude_schema=false omits VSCHEMA blocks', () => {
+    it('includeSchema=false omits cxf:schemas', () => {
         const opts = { ...BASE_OPTS, includeSchema: false };
         const nodes = [node({ id: 'task-001', type: 'task', title: 'T',
             meta: { created: '2026-04-01T00:00:00Z' } })];
         const { document, schemaCount } = serializeToCxf(nodes, [taskType()], [], opts);
-        assertNotContains(document, 'BEGIN:VSCHEMA');
+        expect(parse(document)['cxf:schemas']).toBeUndefined();
         expect(schemaCount).toBe(0);
     });
 
-    it('exclude_graph=false omits ATTENDEE and X-CXF-LINK', () => {
+    it('includeGraph=false omits cxf:attendees and cxf:links', () => {
         const opts = { ...BASE_OPTS, includeGraph: false };
         const person = node({ id: 'person-001', type: 'person', title: 'Alice',
             meta: { created: '2026-04-01T00:00:00Z', email: 'alice@test.com' } });
@@ -713,7 +717,15 @@ describe('RFC 5545 Compliance', () => {
             },
         });
         const { document } = serializeToCxf([task, person], [taskType(), personType()], [], opts);
-        assertNotContains(document, 'ATTENDEE');
-        assertNotContains(document, 'X-CXF-LINK');
+        const n = graphNode(document, 'task-001');
+        expect(n?.['cxf:attendees']).toBeUndefined();
+        expect(n?.['cxf:links']).toBeUndefined();
+    });
+
+    it('empty export still produces valid JSON-LD with empty @graph', () => {
+        const { document } = serializeToCxf([], [], [], BASE_OPTS);
+        const parsed = parse(document);
+        expect(Array.isArray(parsed['@graph'])).toBe(true);
+        expect((parsed['@graph'] as unknown[]).length).toBe(0);
     });
 });

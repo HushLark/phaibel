@@ -30,7 +30,7 @@ export class CxfDiscoverNodeCode extends AbstractNodeCode {
     ];
 
     constructor() {
-        super('cxf_discover', 'CXF Discover', 'Discover the context types exposed by a remote CXF system by parsing its VSCHEMA blocks. No LLM required.', NodeCodeCategory.DATA);
+        super('cxf_discover', 'CXF Discover', 'Discover the context types exposed by a remote CXF system by parsing its JSON-LD schema. No LLM required.', NodeCodeCategory.DATA);
     }
 
     async process(context: Context): Promise<Result> {
@@ -46,10 +46,10 @@ export class CxfDiscoverNodeCode extends AbstractNodeCode {
             const baseUrl = getCxfUrl(system);
             const url = `${baseUrl}?include_schema=true&include_graph=false`;
             const body = await fetchText(url);
-            const types = parseVSchemas(body);
+            const types = parseSchemas(body);
 
             if (types.length === 0) {
-                return this.result('no_schema', `No VSCHEMA blocks found at ${url}.`);
+                return this.result('no_schema', `No schemas found at ${url}.`);
             }
 
             context.set(resultPath, { system: systemId, types });
@@ -92,52 +92,51 @@ interface DiscoveredType {
     fields: DiscoveredField[];
 }
 
-function parseVSchemas(cxfText: string): DiscoveredType[] {
+function parseSchemas(jsonText: string): DiscoveredType[] {
+    let doc: Record<string, unknown>;
+    try {
+        doc = JSON.parse(jsonText);
+    } catch {
+        return [];
+    }
+
+    const schemas = doc['cxf:schemas'];
+    if (!Array.isArray(schemas)) return [];
+
     const types: DiscoveredType[] = [];
-    // Unfold continuation lines (CRLF + space/tab)
-    const unfolded = cxfText.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
-    const blocks = unfolded.split(/BEGIN:VSCHEMA/);
+    for (const s of schemas as Record<string, unknown>[]) {
+        const name = s['cxf:typeName'];
+        const plural = s['cxf:plural'];
+        if (!name) continue;
 
-    for (let i = 1; i < blocks.length; i++) {
-        const block = blocks[i].split('END:VSCHEMA')[0];
-        const lines = block.split(/\r?\n/).filter(Boolean);
+        const type: DiscoveredType = {
+            name: String(name),
+            plural: plural ? String(plural) : String(name),
+            fields: [],
+        };
 
-        const type: DiscoveredType = { name: '', plural: '', fields: [] };
+        if (s['cxf:description']) type.description = String(s['cxf:description']);
 
-        for (const line of lines) {
-            if (line.startsWith('X-CXF-TYPE-NAME:')) type.name = line.slice('X-CXF-TYPE-NAME:'.length).trim();
-            else if (line.startsWith('X-CXF-PLURAL:')) type.plural = line.slice('X-CXF-PLURAL:'.length).trim();
-            else if (line.startsWith('X-CXF-DESCRIPTION:')) type.description = line.slice('X-CXF-DESCRIPTION:'.length).trim().replace(/\\n/g, '\n');
-            else if (line.startsWith('X-CXF-FIELD;')) {
-                const field = parseFieldLine(line);
-                if (field) type.fields.push(field);
+        const fields = s['cxf:fields'];
+        if (Array.isArray(fields)) {
+            for (const f of fields as Record<string, unknown>[]) {
+                const key = f['cxf:key'];
+                if (!key) continue;
+                const fd: DiscoveredField = {
+                    key: String(key),
+                    type: f['cxf:type'] ? String(f['cxf:type']) : 'text',
+                    label: f['cxf:label'] ? String(f['cxf:label']) : String(key),
+                    required: f['cxf:required'] === true,
+                };
+                if (Array.isArray(f['cxf:values'])) {
+                    fd.values = (f['cxf:values'] as unknown[]).map(String);
+                }
+                type.fields.push(fd);
             }
         }
 
-        if (type.name) types.push(type);
+        types.push(type);
     }
 
     return types;
-}
-
-function parseFieldLine(line: string): DiscoveredField | null {
-    // X-CXF-FIELD;KEY=foo;TYPE=TEXT;REQUIRED=TRUE;VALUES=a,b:Label
-    const semicolonPart = line.slice('X-CXF-FIELD;'.length);
-    const colonIdx = semicolonPart.indexOf(':');
-    if (colonIdx < 0) return null;
-    const params = semicolonPart.slice(0, colonIdx);
-    const label = semicolonPart.slice(colonIdx + 1);
-    const paramMap: Record<string, string> = {};
-    for (const p of params.split(';')) {
-        const [k, v] = p.split('=');
-        if (k && v !== undefined) paramMap[k] = v;
-    }
-    if (!paramMap.KEY) return null;
-    return {
-        key: paramMap.KEY,
-        type: paramMap.TYPE ?? 'TEXT',
-        label,
-        required: paramMap.REQUIRED === 'TRUE',
-        values: paramMap.VALUES ? paramMap.VALUES.split(',') : undefined,
-    };
 }

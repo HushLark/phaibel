@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// CXF Serializer — converts Phaibel entities to a CXF/1 document.
-// No LLM involvement. Implements CXF-SPEC.md §4–§8.
+// CXF Serializer — converts Phaibel entities to a CXF/2 JSON-LD document.
+// No LLM involvement. Transport layer only — protocol is unchanged.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { IndexNode } from '../entities/entity-index.js';
@@ -28,69 +28,30 @@ export interface CxfTombstone {
     updatedAtUnix: number;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// LINE FOLDING (RFC 5545 §3.1)
-// ─────────────────────────────────────────────────────────────────────────────
-
-function foldLine(line: string): string {
-    const LIMIT = 75;
-    if (Buffer.byteLength(line, 'utf8') <= LIMIT) return line;
-    const parts: string[] = [];
-    let current = '';
-    for (const char of line) {
-        if (Buffer.byteLength(current + char, 'utf8') > LIMIT) {
-            parts.push(current);
-            current = ' ' + char;
-        } else {
-            current += char;
-        }
-    }
-    if (current) parts.push(current);
-    return parts.join('\r\n');
-}
-
-function prop(name: string, value: string): string {
-    if (!value && value !== '0') return '';
-    return foldLine(`${name}:${value}`);
+export interface SerializeResult {
+    document: string;
+    entityCount: number;
+    schemaCount: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DATE HELPERS
+// JSON-LD CONTEXT
 // ─────────────────────────────────────────────────────────────────────────────
 
-function toIcsDate(iso: string): string {
-    // Returns YYYYMMDD for date-only, or YYYYMMDDTHHmmssZ for datetime
-    if (!iso) return '';
-    const d = iso.replace(/[-:]/g, '').replace('T', 'T').split('.')[0];
-    if (iso.length <= 10) return d.slice(0, 8);
-    return d.endsWith('Z') ? d : d + 'Z';
-}
+const CONTEXT = {
+    cxf: 'https://cxf.phaibel.ai/ns/',
+    schema: 'https://schema.org/',
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// STATUS / PRIORITY MAPPING
+// TYPE ROUTING
 // ─────────────────────────────────────────────────────────────────────────────
 
-function mapStatus(status: string | undefined, type: string): { icsStatus: string; ext: string } {
-    if (type === 'todont') {
-        const map: Record<string, string> = {
-            'open': 'NEEDS-ACTION', 'in-progress': 'IN-PROCESS',
-            'done': 'COMPLETED', 'blocked': 'IN-PROCESS', 'cancelled': 'CANCELLED',
-        };
-        return { icsStatus: map[status ?? 'in-progress'] ?? 'IN-PROCESS', ext: status === 'blocked' ? 'blocked' : '' };
-    }
-    const map: Record<string, string> = {
-        'open': 'NEEDS-ACTION', 'in-progress': 'IN-PROCESS',
-        'done': 'COMPLETED', 'blocked': 'IN-PROCESS',
-        'active': 'IN-PROCESS', 'completed': 'COMPLETED',
-        'paused': 'IN-PROCESS', 'abandoned': 'CANCELLED',
-    };
-    const ext = status === 'blocked' ? 'blocked' : status === 'paused' ? 'paused' : '';
-    return { icsStatus: map[status ?? 'open'] ?? 'NEEDS-ACTION', ext };
-}
-
-function mapPriority(priority: string | undefined): string {
-    const map: Record<string, string> = { critical: '1', high: '3', medium: '5', low: '9' };
-    return map[priority ?? ''] ?? '0';
+function jsonldType(phaibelType: string): string {
+    if (phaibelType === 'event') return 'cxf:Event';
+    if (phaibelType === 'note') return 'cxf:Note';
+    if (phaibelType === 'task' || phaibelType === 'goal' || phaibelType === 'todont') return 'cxf:Task';
+    return 'cxf:Context';
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,361 +70,168 @@ function roleFromLabel(label: string): string {
 
 interface EntityLink { target: string; label: string; }
 
-function buildAttendeeLines(
-    links: EntityLink[],
-    nodesByKey: Map<string, IndexNode>,
-    vaultId: string,
-): string {
-    return links
-        .filter(l => l.target.startsWith('person:'))
-        .map(l => {
-            const personNode = nodesByKey.get(l.target);
-            const personId = l.target.replace('person:', '');
-            const name = personNode?.title ?? personId;
-            const email = (personNode?.meta?.email as string | undefined) ?? `${personId}@cxf.local`;
-            const role = roleFromLabel(l.label);
-            return foldLine(
-                `ATTENDEE;CN=${name};ROLE=${role};PARTSTAT=NEEDS-ACTION;X-CXF-PERSON-ID=${personId}:mailto:${email}`
-            );
-        })
-        .filter(Boolean)
-        .join('\r\n');
-}
-
-function buildLinkLines(links: EntityLink[], vaultId: string): string {
-    return links
-        .filter(l => !l.target.startsWith('person:'))
-        .map(l => foldLine(`X-CXF-LINK;LABEL=${l.label};EDGE=link:${l.target}@${vaultId}`))
-        .join('\r\n');
+function extractLinks(meta: Record<string, unknown>): EntityLink[] {
+    const raw = meta.links;
+    if (!Array.isArray(raw)) return [];
+    return raw.filter(
+        (l): l is EntityLink =>
+            l && typeof l === 'object' && typeof l.target === 'string' && typeof l.label === 'string',
+    );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// VSCHEMA
+// SCHEMA BUILDER
 // ─────────────────────────────────────────────────────────────────────────────
 
 function fieldTypeToCxf(f: FieldDef): string {
     const map: Record<string, string> = {
-        string: 'TEXT', number: 'NUMBER', boolean: 'BOOLEAN',
-        date: 'DATE', datetime: 'DATETIME', duration: 'DURATION', time: 'TIME',
-        'date-fixed': 'DATE-FIXED', 'date-floating': 'DATE-FLOATING',
-        reference: 'REFERENCE',
-        enum: 'ENUM', array: 'ARRAY', object: 'OBJECT',
+        string: 'text', number: 'number', boolean: 'boolean',
+        date: 'date', datetime: 'datetime', duration: 'duration', time: 'time',
+        'date-fixed': 'date-fixed', 'date-floating': 'date-floating',
+        reference: 'reference',
+        enum: 'enum', array: 'array', object: 'object',
     };
-    return map[f.type] ?? 'TEXT';
+    return map[f.type] ?? 'text';
 }
 
-function buildVSchema(typeConfig: EntityTypeConfig): string {
-    const lines: string[] = [
-        'BEGIN:VSCHEMA',
-        prop('X-CXF-TYPE-NAME', typeConfig.name),
-        prop('X-CXF-PLURAL', typeConfig.plural),
-        typeConfig.description ? prop('X-CXF-DESCRIPTION', typeConfig.description.replace(/\n/g, '\\n')) : '',
-    ];
-    for (const f of typeConfig.fields) {
-        const required = f.required ? ';REQUIRED=TRUE' : '';
-        const values = f.values?.length ? `;VALUES=${f.values.join(',')}` : '';
-        const targetType = f.targetType ? `;TARGETTYPE=${f.targetType}` : '';
-        lines.push(foldLine(`X-CXF-FIELD;KEY=${f.key};TYPE=${fieldTypeToCxf(f)}${required}${values}${targetType}:${f.label ?? f.key}`));
-    }
-    lines.push('END:VSCHEMA');
-    return lines.filter(Boolean).join('\r\n');
-}
-
-/** Serialize fields with special types (reference, date-fixed, date-floating, time). */
-function buildSpecialFieldLines(
-    m: Record<string, unknown>,
-    typeConfig: EntityTypeConfig | undefined,
-    vaultId: string,
-    personNodesMap: Map<string, IndexNode>,
-): string {
-    if (!typeConfig) return '';
-    const lines: string[] = [];
-    for (const f of typeConfig.fields) {
-        const v = m[f.key];
-        if (v === undefined || v === null || v === '') continue;
-        const val = String(v);
-        if (f.type === 'reference') {
-            if (f.targetType === 'person') {
-                const personNode = personNodesMap.get(`person:${val}`);
-                const name = personNode?.title ?? val;
-                const email = (personNode?.meta?.email as string | undefined) ?? `${val}@cxf.local`;
-                lines.push(foldLine(`ATTENDEE;CN=${name};ROLE=REQ-PARTICIPANT;X-CXF-PERSON-ID=${val}:mailto:${email}`));
-            } else {
-                lines.push(foldLine(`X-CXF-LINK;TYPE=reference;TARGETTYPE=${f.targetType ?? ''};KEY=${f.key}:${val}@${vaultId}`));
-            }
-        } else if (f.type === 'date-fixed') {
-            lines.push(foldLine(`X-CXF-DATE-FIXED;KEY=${f.key}:${val}`));
-        } else if (f.type === 'date-floating') {
-            lines.push(foldLine(`X-CXF-DATE-FLOATING;KEY=${f.key}:${val}`));
-        } else if (f.type === 'time') {
-            const icsTime = val.replace(/:/g, '').padEnd(6, '00').slice(0, 6);
-            lines.push(foldLine(`X-CXF-FIELD-${f.key.toUpperCase()}:${icsTime}`));
-        }
-    }
-    return lines.filter(Boolean).join('\r\n');
+function buildSchema(typeConfig: EntityTypeConfig): Record<string, unknown> {
+    const schema: Record<string, unknown> = {
+        '@type': 'cxf:TypeSchema',
+        'cxf:typeName': typeConfig.name,
+        'cxf:plural': typeConfig.plural,
+    };
+    if (typeConfig.description) schema['cxf:description'] = typeConfig.description;
+    schema['cxf:fields'] = typeConfig.fields.map(f => {
+        const fd: Record<string, unknown> = {
+            'cxf:key': f.key,
+            'cxf:type': fieldTypeToCxf(f),
+            'cxf:label': f.label ?? f.key,
+        };
+        if (f.required) fd['cxf:required'] = true;
+        if (f.values?.length) fd['cxf:values'] = f.values;
+        if (f.targetType) fd['cxf:targetType'] = f.targetType;
+        return fd;
+    });
+    return schema;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// COMPONENT BUILDERS
+// NODE BUILDER
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildVTodo(
+// Fields already mapped to top-level schema.org or cxf: properties — skip in cxf:fields
+const MAPPED_KEYS = new Set([
+    'id', 'title', 'entityType', 'created', 'updated', 'tags', 'summary', 'body', 'links', 'archivedAt',
+    'startDate', 'endDate', 'dueDate', 'duration', 'location', 'status', 'priority',
+]);
+
+function buildNode(
     node: IndexNode,
     opts: CxfExportOpts,
-    links: EntityLink[],
-    nodesByKey: Map<string, IndexNode>,
-    archived: boolean,
-    deleted: boolean,
-): string {
-    const m = node.meta as Record<string, unknown>;
-    const { icsStatus, ext } = mapStatus(m.status as string | undefined, node.type);
-    const uid = `${node.id}@${opts.vaultId}`;
-    const lines: string[] = [
-        'BEGIN:VTODO',
-        prop('UID', uid),
-        prop('SUMMARY', node.title),
-        m.body ? prop('DESCRIPTION', String(m.body).replace(/\n/g, '\\n').slice(0, 65535)) : '',
-        m.startDate ? prop('DTSTART', toIcsDate(String(m.startDate))) : '',
-        m.dueDate ? prop('DUE', toIcsDate(String(m.dueDate))) : '',
-        prop('PRIORITY', mapPriority(m.priority as string | undefined)),
-        prop('STATUS', icsStatus),
-        ext ? prop('X-CXF-STATUS-EXT', ext) : '',
-        node.tags.length ? prop('CATEGORIES', node.tags.join(',')) : '',
-        prop('CREATED', toIcsDate(m.created as string ?? '')),
-        prop('LAST-MODIFIED', toIcsDate((m.updated ?? m.created) as string ?? '')),
-        opts.ownerName ? `ORGANIZER;CN=${opts.ownerName}:mailto:${opts.ownerEmail}` : '',
-    ];
-
-    if (opts.includeGraph) {
-        const attendees = buildAttendeeLines(links, nodesByKey, opts.vaultId);
-        if (attendees) lines.push(attendees);
-        const linkLines = buildLinkLines(links, opts.vaultId);
-        if (linkLines) lines.push(linkLines);
-    }
-
-    lines.push(
-        prop('X-CXF-ID', node.id),
-        prop('X-CXF-TYPE', node.type),
-        prop('X-CXF-VAULT', opts.vaultId),
-        node.type === 'todont' && m.reason ? prop('X-CXF-FIELD-REASON', String(m.reason)) : '',
-        archived ? 'X-CXF-ARCHIVED:TRUE' : '',
-        deleted ? 'X-CXF-DELETED:TRUE' : '',
-        'END:VTODO',
-    );
-    return lines.filter(Boolean).join('\r\n');
-}
-
-function buildVEvent(
-    node: IndexNode,
-    opts: CxfExportOpts,
-    links: EntityLink[],
-    nodesByKey: Map<string, IndexNode>,
-    archived: boolean,
-    deleted: boolean,
-): string {
-    const m = node.meta as Record<string, unknown>;
-    const uid = `${node.id}@${opts.vaultId}`;
-    const lines: string[] = [
-        'BEGIN:VEVENT',
-        prop('UID', uid),
-        prop('SUMMARY', node.title),
-        m.body ? prop('DESCRIPTION', String(m.body).replace(/\n/g, '\\n').slice(0, 65535)) : '',
-        m.startDate ? prop('DTSTART', toIcsDate(String(m.startDate))) : '',
-        m.endDate ? prop('DTEND', toIcsDate(String(m.endDate))) : '',
-        m.duration ? prop('DURATION', String(m.duration)) : '',
-        m.location ? prop('LOCATION', String(m.location).replace(/,/g, '\\,')) : '',
-        node.tags.length ? prop('CATEGORIES', node.tags.join(',')) : '',
-        prop('CREATED', toIcsDate(m.created as string ?? '')),
-        prop('LAST-MODIFIED', toIcsDate((m.updated ?? m.created) as string ?? '')),
-        opts.ownerName ? `ORGANIZER;CN=${opts.ownerName}:mailto:${opts.ownerEmail}` : '',
-    ];
-
-    if (opts.includeGraph) {
-        const attendees = buildAttendeeLines(links, nodesByKey, opts.vaultId);
-        if (attendees) lines.push(attendees);
-        const linkLines = buildLinkLines(links, opts.vaultId);
-        if (linkLines) lines.push(linkLines);
-    }
-
-    lines.push(
-        prop('X-CXF-ID', node.id),
-        prop('X-CXF-TYPE', node.type),
-        prop('X-CXF-VAULT', opts.vaultId),
-        archived ? 'X-CXF-ARCHIVED:TRUE' : '',
-        deleted ? 'X-CXF-DELETED:TRUE' : '',
-        'END:VEVENT',
-    );
-    return lines.filter(Boolean).join('\r\n');
-}
-
-function buildVJournal(
-    node: IndexNode,
-    opts: CxfExportOpts,
-    links: EntityLink[],
-    nodesByKey: Map<string, IndexNode>,
-    archived: boolean,
-    deleted: boolean,
-): string {
-    const m = node.meta as Record<string, unknown>;
-    const uid = `${node.id}@${opts.vaultId}`;
-    const lines: string[] = [
-        'BEGIN:VJOURNAL',
-        prop('UID', uid),
-        prop('SUMMARY', node.title),
-        m.body ? prop('DESCRIPTION', String(m.body).replace(/\n/g, '\\n').slice(0, 65535)) : '',
-        prop('DTSTART', toIcsDate(m.created as string ?? '')),
-        node.tags.length ? prop('CATEGORIES', node.tags.join(',')) : '',
-        prop('CREATED', toIcsDate(m.created as string ?? '')),
-        prop('LAST-MODIFIED', toIcsDate((m.updated ?? m.created) as string ?? '')),
-    ];
-
-    if (opts.includeGraph) {
-        const linkLines = buildLinkLines(links, opts.vaultId);
-        if (linkLines) lines.push(linkLines);
-    }
-
-    lines.push(
-        prop('X-CXF-ID', node.id),
-        prop('X-CXF-TYPE', node.type),
-        prop('X-CXF-VAULT', opts.vaultId),
-        archived ? 'X-CXF-ARCHIVED:TRUE' : '',
-        deleted ? 'X-CXF-DELETED:TRUE' : '',
-        'END:VJOURNAL',
-    );
-    return lines.filter(Boolean).join('\r\n');
-}
-
-function buildVContext(
-    node: IndexNode,
-    opts: CxfExportOpts,
-    links: EntityLink[],
     nodesByKey: Map<string, IndexNode>,
     archived: boolean,
     deleted: boolean,
     typeConfig?: EntityTypeConfig,
-): string {
+): Record<string, unknown> {
     const m = node.meta as Record<string, unknown>;
-    const uid = `${node.id}@${opts.vaultId}`;
-    const lines: string[] = [
-        'BEGIN:VCONTEXT',
-        prop('UID', uid),
-        prop('SUMMARY', node.title),
-        m.body ? prop('DESCRIPTION', String(m.body).replace(/\n/g, '\\n').slice(0, 65535)) : '',
-        node.tags.length ? prop('CATEGORIES', node.tags.join(',')) : '',
-        prop('CREATED', toIcsDate(m.created as string ?? '')),
-        prop('LAST-MODIFIED', toIcsDate((m.updated ?? m.created) as string ?? '')),
-        prop('X-CXF-ID', node.id),
-        prop('X-CXF-TYPE', node.type),
-        prop('X-CXF-VAULT', opts.vaultId),
-    ];
 
-    // Special-typed fields (reference, date-fixed, date-floating, time)
+    const out: Record<string, unknown> = {
+        '@id': `urn:cxf:${opts.vaultId}:${node.id}`,
+        '@type': jsonldType(node.type),
+        'schema:name': node.title,
+        'cxf:nativeType': node.type,
+    };
+
+    if (m.body) out['schema:description'] = String(m.body);
+    if (m.startDate) out['schema:startDate'] = String(m.startDate);
+    if (m.endDate) out['schema:endDate'] = String(m.endDate);
+    if (m.dueDate) out['schema:dueDate'] = String(m.dueDate);
+    if (m.duration) out['schema:duration'] = String(m.duration);
+    if (m.location) out['schema:location'] = String(m.location);
+    if (m.status) out['cxf:status'] = String(m.status);
+    if (m.priority) out['cxf:priority'] = String(m.priority);
+    if (m.created) out['schema:dateCreated'] = String(m.created);
+    const updated = m.updated ?? m.created;
+    if (updated) out['schema:dateModified'] = String(updated);
+    if (node.tags.length) out['schema:keywords'] = node.tags;
+
+    out['cxf:archived'] = archived;
+    out['cxf:deleted'] = deleted;
+
+    if (opts.includeGraph) {
+        const links = extractLinks(m);
+
+        const personLinks = links.filter(l => l.target.startsWith('person:'));
+        if (personLinks.length) {
+            out['cxf:attendees'] = personLinks.map(l => {
+                const personNode = nodesByKey.get(l.target);
+                const personId = l.target.replace('person:', '');
+                return {
+                    'cxf:personId': personId,
+                    'cxf:role': roleFromLabel(l.label),
+                    'schema:name': personNode?.title ?? personId,
+                    'schema:email': (personNode?.meta?.email as string | undefined) ?? `${personId}@cxf.local`,
+                };
+            });
+        }
+
+        const entityLinks = links.filter(l => !l.target.startsWith('person:'));
+        if (entityLinks.length) {
+            out['cxf:links'] = entityLinks.map(l => ({
+                'cxf:label': l.label,
+                'cxf:target': `urn:cxf:${opts.vaultId}:${l.target}`,
+            }));
+        }
+    }
+
+    // Custom fields — everything not already mapped to a top-level property
     const specialFieldKeys = new Set(
         (typeConfig?.fields ?? [])
-            .filter(f => f.type === 'reference' || f.type === 'date-fixed' || f.type === 'date-floating' || f.type === 'time')
-            .map(f => f.key)
+            .filter(f => ['reference', 'date-fixed', 'date-floating', 'time'].includes(f.type))
+            .map(f => f.key),
     );
-    const specialLines = buildSpecialFieldLines(m, typeConfig, opts.vaultId, nodesByKey);
-    if (specialLines) lines.push(specialLines);
 
-    // Emit remaining non-system fields as X-CXF-FIELD-*
-    const systemKeys = new Set(['id', 'title', 'entityType', 'created', 'updated', 'tags', 'summary', 'body', 'links']);
+    const customFields: Record<string, unknown> = {};
+
     for (const [k, v] of Object.entries(m)) {
-        if (systemKeys.has(k) || specialFieldKeys.has(k) || v === undefined || v === null || v === '') continue;
-        const val = typeof v === 'object' ? JSON.stringify(v) : String(v);
-        lines.push(foldLine(`X-CXF-FIELD-${k.toUpperCase()}:${val}`));
+        if (MAPPED_KEYS.has(k) || v === undefined || v === null || v === '') continue;
+        if (specialFieldKeys.has(k)) continue;
+        customFields[k] = v;
     }
 
-    if (opts.includeGraph) {
-        const attendees = buildAttendeeLines(links, nodesByKey, opts.vaultId);
-        if (attendees) lines.push(attendees);
-        const linkLines = buildLinkLines(links, opts.vaultId);
-        if (linkLines) lines.push(linkLines);
-    }
-
-    lines.push(
-        archived ? 'X-CXF-ARCHIVED:TRUE' : '',
-        deleted ? 'X-CXF-DELETED:TRUE' : '',
-        'END:VCONTEXT',
-    );
-    return lines.filter(Boolean).join('\r\n');
-}
-
-function buildTombstone(t: CxfTombstone, opts: CxfExportOpts): string {
-    const uid = `${t.entityId}@${opts.vaultId}`;
-    return [
-        'BEGIN:VCONTEXT',
-        prop('UID', uid),
-        prop('SUMMARY', t.title),
-        prop('LAST-MODIFIED', toIcsDate(new Date(t.updatedAtUnix * 1000).toISOString())),
-        prop('X-CXF-ID', t.entityId),
-        prop('X-CXF-VAULT', opts.vaultId),
-        t.type === 'deleted' ? 'X-CXF-DELETED:TRUE' : 'X-CXF-ARCHIVED:TRUE',
-        'END:VCONTEXT',
-    ].join('\r\n');
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// ROUTER
-// ─────────────────────────────────────────────────────────────────────────────
-
-const VTODO_TYPES = new Set(['task', 'goal', 'todont']);
-const VEVENT_TYPES = new Set(['event']);
-const VJOURNAL_TYPES = new Set(['note']);
-
-function entityToComponent(
-    node: IndexNode,
-    opts: CxfExportOpts,
-    nodesByKey: Map<string, IndexNode>,
-    archived: boolean,
-    deleted: boolean,
-    typeConfig?: EntityTypeConfig,
-): string {
-    const links = extractLinks(node.meta);
-    if (VTODO_TYPES.has(node.type)) return buildVTodo(node, opts, links, nodesByKey, archived, deleted);
-    if (VEVENT_TYPES.has(node.type)) {
-        // Inject calendarEndField / calendarDurationField from typeConfig for non-default event types
-        const tc = typeConfig;
-        const m = node.meta as Record<string, unknown>;
-        if (tc?.calendarEndField && !m.endDate) {
-            (m as Record<string, unknown>)._cxfEndDate = m[tc.calendarEndField];
+    // Special-typed fields (reference, date-fixed, date-floating, time)
+    if (typeConfig) {
+        for (const f of typeConfig.fields) {
+            const v = m[f.key];
+            if (v === undefined || v === null || v === '') continue;
+            if (f.type === 'reference' && f.targetType !== 'person') {
+                customFields[f.key] = `urn:cxf:${opts.vaultId}:${String(v)}`;
+            } else if (f.type === 'date-fixed' || f.type === 'date-floating' || f.type === 'time') {
+                customFields[f.key] = String(v);
+            }
         }
-        if (tc?.calendarDurationField && !m.duration) {
-            (m as Record<string, unknown>)._cxfDuration = m[tc.calendarDurationField];
-        }
-        return buildVEvent(node, opts, links, nodesByKey, archived, deleted);
     }
-    if (VJOURNAL_TYPES.has(node.type)) return buildVJournal(node, opts, links, nodesByKey, archived, deleted);
-    // For VCONTEXT types, emit DTSTART/DTEND if calendarDateField/calendarEndField is set
-    if (typeConfig?.calendarDateField) {
-        const m = node.meta as Record<string, unknown>;
-        const start = m[typeConfig.calendarDateField];
-        const end = typeConfig.calendarEndField ? m[typeConfig.calendarEndField] : undefined;
-        const dur = typeConfig.calendarDurationField ? m[typeConfig.calendarDurationField] : undefined;
-        if (start) (m as Record<string, unknown>)._cxfStart = start;
-        if (end) (m as Record<string, unknown>)._cxfEnd = end;
-        if (dur) (m as Record<string, unknown>)._cxfDuration = dur;
-    }
-    return buildVContext(node, opts, links, nodesByKey, archived, deleted, typeConfig);
+
+    if (Object.keys(customFields).length) out['cxf:fields'] = customFields;
+
+    return out;
 }
 
-function extractLinks(meta: Record<string, unknown>): EntityLink[] {
-    const raw = meta.links;
-    if (!Array.isArray(raw)) return [];
-    return raw
-        .filter((l): l is EntityLink => l && typeof l === 'object' && typeof l.target === 'string' && typeof l.label === 'string')
-        .map(l => ({ target: l.target, label: l.label }));
+function buildTombstoneNode(t: CxfTombstone, opts: CxfExportOpts): Record<string, unknown> {
+    return {
+        '@id': `urn:cxf:${opts.vaultId}:${t.entityId}`,
+        '@type': 'cxf:Context',
+        'schema:name': t.title,
+        'cxf:nativeType': 'tombstone',
+        'schema:dateModified': new Date(t.updatedAtUnix * 1000).toISOString(),
+        'cxf:archived': t.type === 'archived',
+        'cxf:deleted': t.type === 'deleted',
+    };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN EXPORT
 // ─────────────────────────────────────────────────────────────────────────────
-
-export interface SerializeResult {
-    document: string;
-    entityCount: number;
-    schemaCount: number;
-}
 
 export function serializeToCxf(
     nodes: IndexNode[],
@@ -471,56 +239,50 @@ export function serializeToCxf(
     tombstones: CxfTombstone[],
     opts: CxfExportOpts,
 ): SerializeResult {
-    // Build a fast lookup map for person resolution
     const nodesByKey = new Map<string, IndexNode>();
     for (const n of nodes) nodesByKey.set(`${n.type}:${n.id}`, n);
 
-    const components: string[] = [];
-
-    // VSCHEMA blocks
     const typeNames = new Set(nodes.map(n => n.type));
+    const typeConfigByName = new Map(entityTypes.map(t => [t.name, t]));
+
     const schemasToEmit = opts.includeSchema
         ? entityTypes.filter(t => typeNames.has(t.name))
         : [];
-    for (const t of schemasToEmit) {
-        components.push(buildVSchema(t));
-    }
 
-    // Build type config lookup for richer per-field serialization
-    const typeConfigByName = new Map(entityTypes.map(t => [t.name, t]));
+    const graph: Record<string, unknown>[] = [];
+    let includedCount = 0;
 
-    // Entity components
     for (const node of nodes) {
         const archived = !!(node.meta.archivedAt as string | undefined);
         if (archived && !opts.includeArchived) continue;
+        includedCount++;
         const tc = typeConfigByName.get(node.type);
-        components.push(entityToComponent(node, opts, nodesByKey, archived, false, tc));
+        graph.push(buildNode(node, opts, nodesByKey, archived, false, tc));
     }
 
-    // Tombstones
     for (const t of tombstones) {
-        components.push(buildTombstone(t, opts));
+        includedCount++;
+        graph.push(buildTombstoneNode(t, opts));
     }
 
-    const header = [
-        'BEGIN:VCALENDAR',
-        'VERSION:2.0',
-        `PRODID:-//Phaibel//Phaibel CXF v1//EN`,
-        'CALSCALE:GREGORIAN',
-        'METHOD:PUBLISH',
-        prop('X-CXF-VERSION', '1'),
-        prop('X-CXF-VAULT', opts.vaultId),
-        prop('X-CXF-EXPORT-TIME', String(opts.exportTime)),
-        prop('X-CXF-OWNER-NAME', opts.ownerName),
-        prop('X-CXF-OWNER-EMAIL', opts.ownerEmail),
-    ].filter(Boolean).join('\r\n');
+    const doc: Record<string, unknown> = {
+        '@context': CONTEXT,
+        'cxf:version': '2',
+        'cxf:vaultId': opts.vaultId,
+        'cxf:exportTime': opts.exportTime,
+        'cxf:ownerName': opts.ownerName,
+        'cxf:ownerEmail': opts.ownerEmail,
+    };
 
-    const body = components.join('\r\n');
-    const document = `${header}\r\n${body}\r\nEND:VCALENDAR`;
+    if (schemasToEmit.length) {
+        doc['cxf:schemas'] = schemasToEmit.map(buildSchema);
+    }
+
+    doc['@graph'] = graph;
 
     return {
-        document,
-        entityCount: nodes.length + tombstones.length,
+        document: JSON.stringify(doc, null, 2),
+        entityCount: includedCount,
         schemaCount: schemasToEmit.length,
     };
 }

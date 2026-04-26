@@ -112,84 +112,72 @@ function fetchWithHeaders(url: string): Promise<{ body: string; exportTime: numb
     });
 }
 
-function parseCxfNodes(cxfText: string): CxfParsedNode[] {
-    const nodes: CxfParsedNode[] = [];
-    // Unfold continuation lines
-    const unfolded = cxfText.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
-
-    const componentTypes = ['VTODO', 'VEVENT', 'VJOURNAL', 'VCONTEXT'];
-    for (const compType of componentTypes) {
-        const blocks = unfolded.split(`BEGIN:${compType}`);
-        for (let i = 1; i < blocks.length; i++) {
-            const block = blocks[i].split(`END:${compType}`)[0];
-            const node = parseComponent(block, compType);
-            if (node) nodes.push(node);
-        }
+function parseCxfNodes(jsonText: string): CxfParsedNode[] {
+    let doc: Record<string, unknown>;
+    try {
+        doc = JSON.parse(jsonText);
+    } catch {
+        return [];
     }
 
-    return nodes;
+    const graph = doc['@graph'];
+    if (!Array.isArray(graph)) return [];
+
+    return graph
+        .map((entry: unknown) => parseJsonLdNode(entry as Record<string, unknown>))
+        .filter((n): n is CxfParsedNode => n !== null);
 }
 
-function parseComponent(block: string, _compType: string): CxfParsedNode | null {
-    const lines = block.split(/\r?\n/).filter(Boolean);
+function parseJsonLdNode(entry: Record<string, unknown>): CxfParsedNode | null {
+    const id = entry['@id'] as string | undefined;
+    if (!id) return null;
+
+    // @id format: urn:cxf:{vaultId}:{entityId}
+    const urnParts = id.startsWith('urn:cxf:') ? id.slice('urn:cxf:'.length) : id;
+    const colonIdx = urnParts.indexOf(':');
+    const vaultId = colonIdx >= 0 ? urnParts.slice(0, colonIdx) : '';
+    const entityId = colonIdx >= 0 ? urnParts.slice(colonIdx + 1) : urnParts;
+
     const node: CxfParsedNode = {
-        uid: '', entityId: '', vaultId: '', type: '', title: '',
-        tags: [], archived: false, deleted: false, fields: {}, links: [],
+        uid: id,
+        entityId,
+        vaultId,
+        type: String(entry['cxf:nativeType'] ?? ''),
+        title: String(entry['schema:name'] ?? ''),
+        tags: [],
+        archived: entry['cxf:archived'] === true,
+        deleted: entry['cxf:deleted'] === true,
+        fields: {},
+        links: [],
     };
 
-    for (const line of lines) {
-        if (line.startsWith('UID:')) {
-            node.uid = line.slice(4);
-            const atIdx = node.uid.lastIndexOf('@');
-            if (atIdx >= 0) {
-                node.entityId = node.uid.slice(0, atIdx);
-                node.vaultId = node.uid.slice(atIdx + 1);
-            } else {
-                node.entityId = node.uid;
+    if (entry['cxf:status']) node.status = String(entry['cxf:status']);
+
+    const keywords = entry['schema:keywords'];
+    if (Array.isArray(keywords)) node.tags = keywords.map(String);
+
+    if (entry['schema:dateCreated']) node.created = String(entry['schema:dateCreated']);
+    if (entry['schema:dateModified']) node.updated = String(entry['schema:dateModified']);
+
+    const customFields = entry['cxf:fields'];
+    if (customFields && typeof customFields === 'object') {
+        for (const [k, v] of Object.entries(customFields as Record<string, unknown>)) {
+            if (v !== null && v !== undefined) {
+                node.fields[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
             }
-        } else if (line.startsWith('SUMMARY:')) {
-            node.title = line.slice(8);
-        } else if (line.startsWith('STATUS:')) {
-            node.status = line.slice(7);
-        } else if (line.startsWith('CATEGORIES:')) {
-            node.tags = line.slice(11).split(',').map(t => t.trim()).filter(Boolean);
-        } else if (line.startsWith('CREATED:')) {
-            node.created = line.slice(8);
-        } else if (line.startsWith('LAST-MODIFIED:')) {
-            node.updated = line.slice(14);
-        } else if (line.startsWith('X-CXF-TYPE:')) {
-            node.type = line.slice(11);
-        } else if (line.startsWith('X-CXF-ARCHIVED:TRUE')) {
-            node.archived = true;
-        } else if (line.startsWith('X-CXF-DELETED:TRUE')) {
-            node.deleted = true;
-        } else if (line.startsWith('X-CXF-FIELD-')) {
-            const rest = line.slice('X-CXF-FIELD-'.length);
-            const colonIdx = rest.indexOf(':');
-            if (colonIdx >= 0) {
-                node.fields[rest.slice(0, colonIdx).toLowerCase()] = rest.slice(colonIdx + 1);
-            }
-        } else if (line.startsWith('X-CXF-LINK;')) {
-            const link = parseLinkLine(line);
-            if (link) node.links.push(link);
         }
     }
 
-    if (!node.uid) return null;
-    return node;
-}
-
-function parseLinkLine(line: string): { target: string; label: string } | null {
-    // X-CXF-LINK;LABEL=relates-to;EDGE=link:goal-abc@vault-id
-    const rest = line.slice('X-CXF-LINK;'.length);
-    const colonIdx = rest.indexOf(':');
-    if (colonIdx < 0) return null;
-    const params = rest.slice(0, colonIdx);
-    const target = rest.slice(colonIdx + 1);
-    const paramMap: Record<string, string> = {};
-    for (const p of params.split(';')) {
-        const eqIdx = p.indexOf('=');
-        if (eqIdx >= 0) paramMap[p.slice(0, eqIdx)] = p.slice(eqIdx + 1);
+    const cxfLinks = entry['cxf:links'];
+    if (Array.isArray(cxfLinks)) {
+        for (const l of cxfLinks as Record<string, unknown>[]) {
+            const label = l['cxf:label'];
+            const target = l['cxf:target'];
+            if (label && target) {
+                node.links.push({ label: String(label), target: String(target) });
+            }
+        }
     }
-    return { target, label: paramMap.LABEL ?? 'link' };
+
+    return node;
 }
