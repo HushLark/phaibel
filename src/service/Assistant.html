@@ -586,9 +586,15 @@ function App() {
     root.style.setProperty("--row-pad", d.rowPad);
   }, [tweaks]);
 
-  // auto-scroll
+  // auto-scroll — follow the chat only when the user is within 10% of the bottom
   useEffect(() => {
-    if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+    const el = threadRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const threshold = el.scrollHeight * 0.10;
+    if (distFromBottom <= threshold) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages.length, thinking]);
 
   const handleSend = () => {
