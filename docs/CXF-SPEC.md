@@ -1,459 +1,372 @@
-# Context Exchange Format (CXF/1)
+# Context Exchange Format (CXF/2)
 
-**Version:** 1.0  
+**Version:** 2.0  
 **Status:** Draft  
-**Extends:** iCalendar RFC 5545  
-**MIME Type:** `text/cxf`  
-**File Extension:** `.cxf`  
+**MIME Type:** `application/ld+json`  
+**File Extension:** `.cxf.json`  
 **Authors:** Clift Labs / Phaibel  
 
 ---
 
 ## Abstract
 
-**CXF (Context Exchange Format)** is a superset of iCalendar (RFC 5545) that extends it to carry any typed context node and a typed, labeled knowledge graph. A CXF document is valid iCalendar: legacy calendar clients silently skip the new components; CXF-aware consumers get the full graph.
+**CXF (Context Exchange Format)** is a JSON-LD document format for exchanging typed context nodes and a labeled knowledge graph between systems. CXF/2 replaces the iCalendar-based CXF/1 transport with a clean JSON-LD wire format while preserving the full protocol (discovery, push/pull, incremental sync, tombstones).
 
-CXF adds three things iCalendar does not have:
+A CXF/2 document is a valid JSON-LD `@graph` document using two namespaces:
 
-1. **`VSCHEMA`** — declares the field schema for a context type so consumers can interpret custom data without out-of-band coordination.
-2. **`VCONTEXT`** — carries an instance of any context type that is not natively a VEVENT, VTODO, or VJOURNAL.
-3. **`X-CXF-LINK`** — a property on every component that encodes a typed, labeled outbound edge to another component.
+- `cxf:` — `https://cxf.phaibel.ai/ns/` — CXF-specific properties
+- `schema:` — `https://schema.org/` — standard vocabulary for common fields
 
-Standard iCalendar components (VEVENT, VTODO, VJOURNAL) are used for their native types and are extended with CXF properties. Everything else — goals, people, todonts, recipes, flights, any user-defined type — travels as VCONTEXT.
+The document is self-describing: type schemas are embedded in `cxf:schemas`, the full entity graph is in `@graph`, and all protocol state is carried in HTTP headers.
 
 ---
 
 ## 1. Design Goals
 
-1. **RFC 5545 compatible.** Any CXF document is parseable by a standard iCalendar library. Unknown components and X- properties are silently skipped per §3.8.8.1 of RFC 5545.
-2. **Self-describing.** VSCHEMA components tell consumers the field types and constraints for every VCONTEXT type in the document. No out-of-band schema registry required.
-3. **Graph-native.** Links between nodes are first-class. Every component can declare outbound edges with a label. The full knowledge graph is reconstructable from a single CXF document.
-4. **Any type.** User-defined context types (recipe, flight, medication, vehicle) travel as VCONTEXT without any schema changes in the format itself.
-5. **Incrementally adoptable.** A producer can start with standard iCalendar and add CXF properties and components progressively.
+1. **Self-describing.** `cxf:schemas` tells consumers the field types and constraints for every custom type. No out-of-band registry required.
+2. **Graph-native.** Links between nodes are first-class. Every node carries `cxf:links` (entity edges) and `cxf:attendees` (person edges). The full knowledge graph is reconstructable from a single document.
+3. **Any type.** User-defined context types (recipe, flight, medication, vehicle) travel as `cxf:Context` nodes without format changes.
+4. **Standard vocabulary.** Common fields (`name`, `description`, `startDate`, `keywords`, etc.) use `schema.org` predicates for interoperability with JSON-LD tooling.
+5. **Native values.** Status and priority are stored as-is — no lossy ICS mapping round-trips.
 
 ---
 
 ## 2. Document Structure
 
-A CXF document is a VCALENDAR block. The envelope carries producer identity, format version, and owner metadata. Inside it, components appear in this order (order is advisory, not required):
+A CXF/2 document is a JSON object with these top-level keys:
 
-```
-BEGIN:VCALENDAR
-  [Envelope properties]
-  [VSCHEMA blocks — one per context type]
-  [VEVENT blocks]
-  [VTODO blocks]
-  [VJOURNAL blocks]
-  [VCONTEXT blocks]
-END:VCALENDAR
-```
-
-### 2.1 Envelope Properties
-
-```
-BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Producer//Product Name//EN
-X-CXF-VERSION:1
-X-CXF-EXPORT-TIME:20260421T090000Z
-X-CXF-VAULT-ID:{opaque stable identifier for the originating vault}
-X-CXF-OWNER-NAME:{human name of the vault owner}
-X-CXF-OWNER-EMAIL:{email — omit if private}
-X-CXF-ENTITY-COUNT:{total number of components}
+```json
+{
+  "@context": { "cxf": "https://cxf.phaibel.ai/ns/", "schema": "https://schema.org/" },
+  "cxf:version": "2",
+  "cxf:vaultId": "<stable vault identifier>",
+  "cxf:exportTime": 1745222400,
+  "cxf:ownerName": "<vault owner name>",
+  "cxf:ownerEmail": "<owner email — omit if private>",
+  "cxf:schemas": [ ... ],
+  "@graph": [ ... ]
+}
 ```
 
-| Property | Required | Description |
+### 2.1 Envelope Fields
+
+| Field | Required | Description |
 |---|---|---|
-| `VERSION` | yes | Must be `2.0` (RFC 5545) |
-| `PRODID` | yes | RFC 5545 producer identifier |
-| `X-CXF-VERSION` | yes | CXF version. Must be `1` for this spec. |
-| `X-CXF-EXPORT-TIME` | yes | Unix timestamp (seconds) of export. Used as the `since` cursor for incremental sync. |
-| `X-CXF-VAULT-ID` | yes | Stable opaque identifier for the source vault. Consumers use this to namespace UIDs. |
-| `X-CXF-OWNER-NAME` | no | Human-readable vault owner name. |
-| `X-CXF-OWNER-EMAIL` | no | Owner email. Omit if the producer treats it as private. |
-| `X-CXF-ENTITY-COUNT` | no | Total component count (excluding VSCHEMA). Useful for progress reporting. |
+| `@context` | yes | JSON-LD context declaring `cxf:` and `schema:` namespaces |
+| `cxf:version` | yes | Format version. Must be `"2"` for this spec. |
+| `cxf:vaultId` | yes | Stable opaque identifier for the source vault. Consumers use this to namespace entity IDs. |
+| `cxf:exportTime` | yes | Unix timestamp (seconds) of export. Used as the `since` cursor for incremental sync. |
+| `cxf:ownerName` | no | Human-readable vault owner name. |
+| `cxf:ownerEmail` | no | Owner email. Omit if the producer treats it as private. |
+| `cxf:schemas` | no | Array of `cxf:TypeSchema` objects. Present when `include_schema=true` (default). |
+| `@graph` | yes | Array of entity nodes. May be empty. |
 
 ---
 
-## 3. Universal Component Properties
+## 3. Entity Nodes
 
-Every component — VEVENT, VTODO, VJOURNAL, and VCONTEXT — MUST carry these CXF properties in addition to the RFC 5545 required fields:
+Every entity in `@graph` has this structure:
+
+```json
+{
+  "@id": "urn:cxf:{vaultId}:{entityId}",
+  "@type": "cxf:Task | cxf:Event | cxf:Note | cxf:Context",
+  "cxf:nativeType": "{original type slug}",
+  "schema:name": "{title}",
+  "schema:description": "{markdown body — optional}",
+  "schema:dateCreated": "{ISO-8601}",
+  "schema:dateModified": "{ISO-8601}",
+  "schema:keywords": ["{tag}", "..."],
+  "cxf:status": "{native status value}",
+  "cxf:priority": "{native priority value}",
+  "cxf:archived": false,
+  "cxf:deleted": false,
+  "cxf:attendees": [ ... ],
+  "cxf:links": [ ... ],
+  "cxf:fields": { ... }
+}
+```
+
+### 3.1 Universal Node Properties
 
 | Property | Required | Description |
 |---|---|---|
-| `UID` | yes | `{entity_id}@{vault_id}` — globally unique, stable across exports |
-| `CREATED` | yes | ISO-8601 creation timestamp |
-| `LAST-MODIFIED` | yes | ISO-8601 last modification timestamp. Used for incremental sync. |
-| `CATEGORIES` | no | Comma-separated tags |
-| `X-CXF-ID` | yes | The raw entity ID within the vault |
-| `X-CXF-TYPE` | yes | The context type slug (e.g. `task`, `goal`, `person`, `recipe`) |
-| `X-CXF-VAULT-ID` | no | Repeats the vault ID from the envelope. Useful when merging documents. |
-| `X-CXF-LINK` | no | Zero or more outbound graph edges. See §6. |
-| `X-CXF-STATUS-EXT` | no | Extended status when ICS STATUS values are insufficient. See §4.1. |
+| `@id` | yes | `urn:cxf:{vaultId}:{entityId}` — globally unique, stable across exports |
+| `@type` | yes | JSON-LD type. One of `cxf:Task`, `cxf:Event`, `cxf:Note`, `cxf:Context` |
+| `cxf:nativeType` | yes | The original Phaibel type slug (e.g. `task`, `goal`, `todont`, `person`, `client`) |
+| `schema:name` | yes | Entity title |
+| `schema:description` | no | Markdown body content |
+| `schema:dateCreated` | no | ISO-8601 creation timestamp |
+| `schema:dateModified` | no | ISO-8601 last modification timestamp. Used for incremental sync. |
+| `schema:keywords` | no | Array of tag strings |
+| `cxf:archived` | yes | Boolean. `true` if the entity has been archived (soft-deleted) |
+| `cxf:deleted` | yes | Boolean. `true` if the entity has been hard-deleted (tombstone) |
+| `cxf:status` | no | Native status value (e.g. `open`, `in-progress`, `done`, `blocked`, `active`) |
+| `cxf:priority` | no | Native priority value (e.g. `low`, `medium`, `high`, `critical`) |
+| `cxf:attendees` | no | Array of person-link objects. Present when `include_graph=true` and person links exist. |
+| `cxf:links` | no | Array of entity edge objects. Present when `include_graph=true` and non-person links exist. |
+| `cxf:fields` | no | Object of custom type fields not mapped to a standard property. |
 
----
+### 3.2 Type-Specific Properties
 
-## 4. Standard Components with CXF Extensions
+**Tasks and goals** (`cxf:Task`):
 
-### 4.1 VTODO — Tasks, Goals, Todonts
-
-Use VTODO for any entity representing work, intent, or a constraint on behaviour.
-
-```
-BEGIN:VTODO
-UID:{id}@{vault_id}
-SUMMARY:{title}
-DESCRIPTION:{markdown body}
-DTSTART:{startDate — YYYYMMDD or ISO datetime}
-DUE:{dueDate — YYYYMMDD}
-PRIORITY:{1=critical | 3=high | 5=medium | 9=low}
-STATUS:{NEEDS-ACTION | IN-PROCESS | COMPLETED | CANCELLED}
-CATEGORIES:{comma,separated,tags}
-CREATED:{ISO-8601}
-LAST-MODIFIED:{ISO-8601}
-ORGANIZER;CN={ownerName}:mailto:{ownerEmail}
-[ATTENDEE lines — see §5]
-X-CXF-ID:{entity_id}
-X-CXF-TYPE:{task | goal | todont | custom_type}
-[X-CXF-FIELD-* — custom fields — see §7]
-[X-CXF-LINK — graph edges — see §6]
-[X-CXF-STATUS-EXT:{blocked | paused | deferred} — when STATUS alone is insufficient]
-END:VTODO
-```
-
-**Status mapping:**
-
-| Context value | ICS STATUS | X-CXF-STATUS-EXT |
-|---|---|---|
-| open | NEEDS-ACTION | — |
-| in-progress | IN-PROCESS | — |
-| done | COMPLETED | — |
-| blocked | IN-PROCESS | blocked |
-| paused | IN-PROCESS | paused |
-
-**Todonts:** A todont is a negative intent — something to deliberately NOT do. It uses `X-CXF-TYPE:todont` and carries a standard STATUS that reflects its actual state. The default STATUS is IN-PROCESS (actively managing the avoidance). NEEDS-ACTION means the commitment hasn't been acted on yet, COMPLETED means the pattern has been broken, CANCELLED means the todont was retired. The `X-CXF-FIELD-REASON` property carries the rationale.
-
-**Priority mapping:**
-
-| Context | ICS PRIORITY |
+| Property | Description |
 |---|---|
-| critical | 1 |
-| high | 3 |
-| medium | 5 |
-| low | 9 |
-| *(unset)* | 0 (undefined) |
+| `schema:dueDate` | Due date as ISO date string (`YYYY-MM-DD`) |
+| `schema:startDate` | Start date |
 
-### 4.2 VEVENT — Calendar Events
+**Events** (`cxf:Event`):
 
-```
-BEGIN:VEVENT
-UID:{id}@{vault_id}
-SUMMARY:{title}
-DESCRIPTION:{markdown body}
-DTSTART:{startDate — ISO datetime with UTC offset}
-DURATION:{e.g. PT1H30M}
-LOCATION:{location}
-CATEGORIES:{comma,separated,tags}
-CREATED:{ISO-8601}
-LAST-MODIFIED:{ISO-8601}
-ORGANIZER;CN={ownerName}:mailto:{ownerEmail}
-[ATTENDEE lines — see §5]
-X-CXF-ID:{entity_id}
-X-CXF-TYPE:event
-[X-CXF-FIELD-* — custom fields]
-[X-CXF-LINK — graph edges]
-END:VEVENT
-```
+| Property | Description |
+|---|---|
+| `schema:startDate` | Event start as ISO datetime |
+| `schema:endDate` | Event end as ISO datetime |
+| `schema:duration` | ISO-8601 duration (e.g. `PT1H30M`) |
+| `schema:location` | Location string |
 
-### 4.3 VJOURNAL — Notes
+**Notes** (`cxf:Note`):
 
-```
-BEGIN:VJOURNAL
-UID:{id}@{vault_id}
-SUMMARY:{title}
-DESCRIPTION:{markdown body}
-DTSTART:{createdAt — YYYYMMDD}
-CATEGORIES:{comma,separated,tags}
-CREATED:{ISO-8601}
-LAST-MODIFIED:{ISO-8601}
-X-CXF-ID:{entity_id}
-X-CXF-TYPE:note
-[X-CXF-FIELD-* — custom fields]
-[X-CXF-LINK — graph edges]
-END:VJOURNAL
-```
+No additional properties beyond the universal set.
+
+**Custom types** (`cxf:Context`):
+
+Custom fields appear in `cxf:fields`. All standard date/time fields are still mapped to `schema:` properties when present.
+
+### 3.3 Type Routing Rules
+
+Producers MUST apply this routing when serialising a context node:
+
+| `cxf:nativeType` | `@type` |
+|---|---|
+| `event` | `cxf:Event` |
+| `task` | `cxf:Task` |
+| `goal` | `cxf:Task` |
+| `todont` | `cxf:Task` |
+| `note` | `cxf:Note` |
+| all other types | `cxf:Context` |
+
+Consumers MUST check `cxf:nativeType` alongside `@type` to discriminate between `task`, `goal`, and `todont` — all three share the `cxf:Task` JSON-LD type.
 
 ---
 
-## 5. People as ATTENDEE
+## 4. People as Attendees
 
-When a context node of any type has a link to a `person` entity, that person is resolved to an `ATTENDEE` property on the linking component. Persons are **never** exported as standalone components — they exist only as ATTENDEE records (and optionally as VCONTEXT — see §5.2).
+When an entity has links to `person` entities, those links are resolved into the `cxf:attendees` array. Each entry:
 
-### 5.1 ATTENDEE Format
-
-```
-ATTENDEE;CN={person_title};ROLE={role};PARTSTAT=NEEDS-ACTION;
- X-CXF-PERSON-ID={person_entity_id}:mailto:{email or id@cxf.local}
+```json
+{
+  "cxf:personId": "{person entity ID}",
+  "cxf:role": "CHAIR | OPT-PARTICIPANT | NON-PARTICIPANT | REQ-PARTICIPANT",
+  "schema:name": "{person display name}",
+  "schema:email": "{email or id@cxf.local}"
+}
 ```
 
 **Role mapping from link label:**
 
-| Link label | ICS ROLE |
+| Link label | Role |
 |---|---|
-| assigned-to, owner, responsible, lead | CHAIR |
-| team-member, participant, player, member, attendee | REQ-PARTICIPANT |
-| invited, optional | OPT-PARTICIPANT |
-| observer, cc, notify, watcher | NON-PARTICIPANT |
-| *(any other)* | REQ-PARTICIPANT |
+| `assigned-to`, `owner`, `responsible`, `lead` | `CHAIR` |
+| `team-member`, `participant`, `player`, `member`, `attendee` | `REQ-PARTICIPANT` |
+| `invited`, `optional` | `OPT-PARTICIPANT` |
+| `observer`, `cc`, `notify`, `watcher` | `NON-PARTICIPANT` |
+| *(any other)* | `REQ-PARTICIPANT` |
 
 **Email resolution:**
 1. Use `meta.email` on the person entity if present.
 2. Otherwise synthesize `{person_id}@cxf.local` as a stable placeholder.
 
-Consumers MUST use `X-CXF-PERSON-ID` as the canonical identity key, not the email address. The `@cxf.local` suffix is a placeholder — it is not a real email and MUST NOT be used to send mail.
-
-### 5.2 People as VCONTEXT (optional)
-
-Producers MAY export person entities as VCONTEXT components in addition to resolving them as ATTENDEEs. This lets consumers build a contact graph independently of task/event association.
-
-```
-BEGIN:VCONTEXT
-UID:{person_id}@{vault_id}
-X-CXF-TYPE:person
-SUMMARY:{full name}
-DESCRIPTION:{markdown notes about the person}
-CREATED:{ISO-8601}
-LAST-MODIFIED:{ISO-8601}
-X-CXF-FIELD-LASTNAME:{lastName}
-X-CXF-FIELD-TYPE:{colleague | friend | family | ...}
-X-CXF-FIELD-EMAIL:{email}
-[X-CXF-LINK — graph edges to tasks, events, etc.]
-END:VCONTEXT
-```
+Consumers MUST use `cxf:personId` as the canonical identity key, not the email. The `@cxf.local` suffix is a placeholder — it is not a real email.
 
 ---
 
-## 6. Graph Edges — X-CXF-LINK
+## 5. Graph Edges
 
-Every component can carry zero or more `X-CXF-LINK` properties encoding outbound edges in the knowledge graph. The edge target is the UID of another component in the same document (or a known external vault).
+Non-person links appear in the `cxf:links` array. Each entry:
 
-### 6.1 Format
-
+```json
+{
+  "cxf:label": "{relation label}",
+  "cxf:target": "urn:cxf:{vaultId}:{entityId}"
+}
 ```
-X-CXF-LINK;LABEL={relation_label};EDGE={edge_kind}:{target_uid}
-```
 
-| Parameter | Required | Values | Description |
-|---|---|---|---|
-| `LABEL` | yes | any string | The relationship label. E.g. `assigned-to`, `blocks`, `relates-to`, `part-of`, `contributes-to`. |
-| `EDGE` | no | `link` \| `mention` \| `reference` | The edge kind. Default: `link`. |
+`cxf:target` is the full URN of the referenced entity, using the same `urn:cxf:{vaultId}:{entityId}` format as `@id`.
 
-**Edge kinds:**
+### 5.1 Common Link Labels
 
-| Kind | Meaning |
+| Label | Meaning |
 |---|---|
-| `link` | Explicit, intentional relationship declared in frontmatter. Highest fidelity. |
-| `mention` | Person mentioned inline in the body via `@slug` syntax. Implicit. |
-| `reference` | Entity referenced inline via `type:slug` syntax. Implicit. |
+| `relates-to` | General association |
+| `contributes-to` | Source contributes toward target |
+| `blocks` | Source is blocking target |
+| `part-of` | Source is a component of target |
+| `belongs-to` | Source belongs to target (e.g. task belongs to client) |
 
-### 6.2 Examples
+Any string is a valid label. Labels are case-sensitive.
 
-```
-X-CXF-LINK;LABEL=contributes-to;EDGE=link:goal-build-team-e5f6@vault1
-X-CXF-LINK;LABEL=blocks;EDGE=link:task-deploy-infra-a1b2@vault1
-X-CXF-LINK;LABEL=assigned-to;EDGE=link:person-bob-smith-c3d4@vault1
-X-CXF-LINK;LABEL=mentioned;EDGE=mention:person-alice-jones-g7h8@vault1
-```
-
-### 6.3 Graph reconstruction
+### 5.2 Graph Reconstruction
 
 A consumer builds the full graph by:
-1. Indexing all components by UID.
-2. For each component, iterating `X-CXF-LINK` properties.
-3. Resolving the target UID to a component.
-4. Creating a directed edge `(source_id) -[LABEL/EDGE]-> (target_id)`.
+1. Indexing all nodes by `@id`.
+2. For each node, iterating `cxf:links` entries.
+3. Resolving `cxf:target` to a node in the index.
+4. Creating a directed edge `(source) -[cxf:label]-> (target)`.
+
+Person edges from `cxf:attendees` are similarly directed, keyed by `cxf:personId`.
 
 The graph is directed. Producers emit edges from the perspective of the source entity. Consumers who need bidirectional traversal invert the edges in their own store.
 
 ---
 
-## 7. VSCHEMA — Type Schema Declaration
+## 6. Type Schemas
 
-VSCHEMA declares the schema for a context type. Producers SHOULD include one VSCHEMA per distinct `X-CXF-TYPE` value that appears in the document. Consumers use VSCHEMA to understand the meaning and type of `X-CXF-FIELD-*` properties.
+`cxf:schemas` is an array of type schema objects. Producers SHOULD include one schema per distinct `cxf:nativeType` that appears in `@graph`. Consumers use schemas to understand the meaning and type of entries in `cxf:fields`.
 
+```json
+{
+  "@type": "cxf:TypeSchema",
+  "cxf:typeName": "{type slug}",
+  "cxf:plural": "{plural slug}",
+  "cxf:description": "{optional human description}",
+  "cxf:fields": [
+    {
+      "cxf:key": "{field key}",
+      "cxf:type": "{field type}",
+      "cxf:label": "{display label}",
+      "cxf:required": false,
+      "cxf:values": ["{enum value}", "..."],
+      "cxf:targetType": "{referenced type slug}"
+    }
+  ]
+}
 ```
-BEGIN:VSCHEMA
-X-CXF-TYPE-NAME:{type_slug}
-X-CXF-PLURAL:{plural_slug}
-X-CXF-DESCRIPTION:{human description of what this type represents}
-X-CXF-BUILT-IN:{TRUE | FALSE}
-X-CXF-FIELD;KEY={key};TYPE={field_type};REQUIRED={TRUE|FALSE}[;VALUES={a\,b\,c}][;DEFAULT={v}]:{field_label}
-[additional X-CXF-FIELD lines...]
-X-CXF-COMPLETION-FIELD:{field_key — field that marks this type as "done", if any}
-X-CXF-COMPLETION-VALUE:{value of the completion field when done, e.g. "done"}
-X-CXF-CALENDAR-DATE-FIELD:{field_key — field treated as the primary date for calendar display}
-END:VSCHEMA
-```
 
-### 7.1 Field Types
+### 6.1 Field Types
 
-| CXF type | Description |
+| `cxf:type` | Description |
 |---|---|
-| `string` | Free-form text |
+| `text` | Free-form text |
 | `number` | Numeric value |
 | `boolean` | `true` or `false` |
 | `date` | `YYYY-MM-DD` |
 | `datetime` | ISO-8601 with UTC offset |
 | `duration` | ISO-8601 duration (e.g. `PT1H30M`) |
-| `enum` | One of a fixed set of values declared in `VALUES` |
-| `array` | JSON-encoded array of strings |
-| `object` | JSON-encoded object |
+| `time` | `HH:MM` time of day |
+| `date-fixed` | Date anchored to a calendar date |
+| `date-floating` | Date without timezone |
+| `enum` | One of a fixed set declared in `cxf:values` |
+| `array` | JSON array |
+| `object` | JSON object |
+| `reference` | Link to another entity of type `cxf:targetType` |
 
-### 7.2 Example VSCHEMA for `goal`
+### 6.2 Example Schema
 
-```
-BEGIN:VSCHEMA
-X-CXF-TYPE-NAME:goal
-X-CXF-PLURAL:goals
-X-CXF-DESCRIPTION:Long-term aspirations and objectives
-X-CXF-BUILT-IN:FALSE
-X-CXF-FIELD;KEY=status;TYPE=enum;VALUES=active\,achieved\,abandoned\,paused;
- REQUIRED=TRUE;DEFAULT=active:Status
-X-CXF-FIELD;KEY=priority;TYPE=enum;VALUES=low\,medium\,high\,critical;
- REQUIRED=FALSE;DEFAULT=medium:Priority
-X-CXF-FIELD;KEY=target_date;TYPE=date;REQUIRED=FALSE:Target Date
-X-CXF-FIELD;KEY=milestones;TYPE=array;REQUIRED=FALSE:Milestones
-X-CXF-COMPLETION-FIELD:status
-X-CXF-COMPLETION-VALUE:achieved
-END:VSCHEMA
+```json
+{
+  "@type": "cxf:TypeSchema",
+  "cxf:typeName": "goal",
+  "cxf:plural": "goals",
+  "cxf:description": "Long-term aspirations and objectives",
+  "cxf:fields": [
+    {
+      "cxf:key": "status",
+      "cxf:type": "enum",
+      "cxf:label": "Status",
+      "cxf:required": true,
+      "cxf:values": ["active", "achieved", "abandoned", "paused"]
+    },
+    {
+      "cxf:key": "priority",
+      "cxf:type": "enum",
+      "cxf:label": "Priority",
+      "cxf:values": ["low", "medium", "high", "critical"]
+    },
+    {
+      "cxf:key": "target_date",
+      "cxf:type": "date",
+      "cxf:label": "Target Date"
+    }
+  ]
+}
 ```
 
 ---
 
-## 8. VCONTEXT — Custom Context Nodes
+## 7. CRUD Lifecycle
 
-VCONTEXT carries any entity that is not natively a VEVENT, VTODO, or VJOURNAL. This includes goals, todonts, people, and any user-defined type.
+CXF communicates the full lifecycle of every entity through `schema:dateModified` timestamps and two boolean flags. Consumers detect changes by requesting `?since={last_cursor}`.
 
-```
-BEGIN:VCONTEXT
-UID:{entity_id}@{vault_id}
-SUMMARY:{title}
-DESCRIPTION:{markdown body — may be empty}
-CREATED:{ISO-8601}
-LAST-MODIFIED:{ISO-8601}
-CATEGORIES:{comma,separated,tags}
-X-CXF-ID:{entity_id}
-X-CXF-TYPE:{type_slug}
-X-CXF-FIELD-{KEY}:{value}
-[additional X-CXF-FIELD-* lines]
-[ATTENDEE lines — if this type can have person links, e.g. a team]
-[X-CXF-LINK lines]
-END:VCONTEXT
-```
+### 7.1 Create and Update
 
-### 8.1 Custom Field Encoding
+A new entity appears in the next export after it is created. An updated entity appears in any incremental export where `schema:dateModified > since`. No special flag is needed — presence in the response with a newer `schema:dateModified` is the signal.
 
-Each field defined in VSCHEMA maps to a `X-CXF-FIELD-{KEY}` property on VCONTEXT. Key is uppercased.
-
-```
-X-CXF-FIELD-STATUS:active
-X-CXF-FIELD-PRIORITY:high
-X-CXF-FIELD-TARGET_DATE:20261231
-X-CXF-FIELD-MILESTONES:["Q2 hiring complete","Q3 team health >80%"]
-```
-
-For `array` and `object` types, the value is JSON-encoded and the entire property is folded per RFC 5545 line-length rules.
-
-### 8.2 Type Routing Rules
-
-Producers MUST apply this routing when serialising a context node:
-
-| Condition | ICS Component |
-|---|---|
-| `entity_type == "event"` | VEVENT |
-| `entity_type == "task"` | VTODO |
-| `entity_type == "note"` | VJOURNAL |
-| `entity_type == "todont"` | VTODO with `X-CXF-TYPE:todont` and standard STATUS |
-| all other types | VCONTEXT with `X-CXF-TYPE:{type}` |
-
-This routing is fixed. Producers MUST NOT use VCONTEXT for events, tasks, or notes. Consumers MUST check `X-CXF-TYPE` alongside the component type when discriminating todont from task.
-
----
-
-## 9. CRUD Lifecycle
-
-CXF communicates the full lifecycle of every entity through `LAST-MODIFIED` timestamps and two state properties. Consumers detect changes by requesting `?since={last_cursor}` — any entity whose state changed after that cursor will appear in the response.
-
-### 9.1 Create and Update
-
-A new entity appears in the next export after it is created. An updated entity appears in any incremental export where `LAST-MODIFIED > since`. No special flag is needed — presence in the response with a newer `LAST-MODIFIED` is the signal.
-
-### 9.2 Archive (Soft Delete)
+### 7.2 Archive (Soft Delete)
 
 Archiving hides an entity from active use but preserves it in the vault. Consumers should move the entity to an archived/inactive state, not destroy it.
 
-```
-X-CXF-ARCHIVED:TRUE
-LAST-MODIFIED:{unix timestamp of archival}
+```json
+{
+  "cxf:archived": true
+}
 ```
 
-- VEVENT/VTODO/VJOURNAL: no change to STATUS (the entity's final status is preserved)
-- VCONTEXT: `X-CXF-ARCHIVED:TRUE` alone is sufficient
-- Archived entities continue to appear in full exports (`GET /api/cxf`) unless the consumer passes `?exclude_archived=true`
-- Archived entities appear in incremental exports for the sync cycle when they were archived, then only in full exports
+- Archived entities continue to appear in full exports unless the consumer passes `?exclude_archived=true`.
+- Archived entities appear in incremental exports for the sync cycle when they were archived, then only in full exports.
 
-### 9.3 Delete (Hard Delete)
+### 7.3 Delete (Hard Delete)
 
 A hard delete permanently removes an entity. Consumers MUST treat this as a destroy signal.
 
+```json
+{
+  "cxf:deleted": true
+}
 ```
-X-CXF-DELETED:TRUE
-LAST-MODIFIED:{unix timestamp of deletion}
-```
 
-- VEVENT/VTODO/VJOURNAL: also set `STATUS:CANCELLED` for ICS parser compatibility
-- VCONTEXT: `X-CXF-DELETED:TRUE` alone is sufficient
-- Deleted entities MUST appear in every incremental export until the producer's sync state confirms all registered consumers have received the tombstone (`lastSyncAt > deletedAt` for each `consumer` entry in `cxf-sync.json`)
-- After that confirmation, the component MAY be omitted from all future exports
+- Deleted entities MUST appear in every incremental export until the producer's sync state confirms all registered consumers have received the tombstone (`lastSyncAt > deletedAt` for each consumer entry in `cxf-sync.json`).
+- After that confirmation, the node MAY be omitted from all future exports.
 
-### 9.4 State Summary
+### 7.4 State Summary
 
-| Lifecycle event | `X-CXF-ARCHIVED` | `X-CXF-DELETED` | Consumer action |
+| Lifecycle event | `cxf:archived` | `cxf:deleted` | Consumer action |
 |---|---|---|---|
-| Created | — | — | Upsert |
-| Updated | — | — | Upsert |
-| Archived | TRUE | — | Soft delete / move to archive |
-| Restored from archive | *(property removed)* | — | Upsert (re-activate) |
-| Hard deleted | — | TRUE | Destroy |
+| Created | `false` | `false` | Upsert |
+| Updated | `false` | `false` | Upsert |
+| Archived | `true` | `false` | Soft delete / move to archive |
+| Restored from archive | `false` | `false` | Upsert (re-activate) |
+| Hard deleted | `false` | `true` | Destroy |
 
-Producers MUST NOT set both `X-CXF-ARCHIVED` and `X-CXF-DELETED` on the same component.
+Producers MUST NOT set both `cxf:archived` and `cxf:deleted` to `true` on the same node.
 
 ---
 
-## 10. Transport — The CXF Endpoint
+## 8. Transport — The CXF Endpoint
 
 A producer exposes a single HTTP endpoint:
 
 ```
 GET /api/cxf
-Content-Type: text/cxf; charset=utf-8
+Content-Type: application/ld+json; charset=utf-8
 ```
 
-### 10.1 Query Parameters
+### 8.1 Query Parameters
 
 | Parameter | Description | Example |
 |---|---|---|
-| `types` | Comma-separated type slugs. Default: all. | `types=task,goal,event` |
-| `since` | Unix timestamp (seconds). Returns only nodes with `LAST-MODIFIED ≥ since`. | `since=1745222400` |
+| `types` | Comma-separated type slugs (matches `cxf:nativeType`). Default: all. | `types=task,goal,event` |
+| `since` | Unix timestamp (seconds). Returns only nodes with `schema:dateModified ≥ since`. | `since=1745222400` |
 | `consumer` | Opaque consumer identifier. When provided, the producer records the sync time. | `consumer=cos-01` |
-| `include_schema` | `true` (default) or `false`. Whether to include VSCHEMA blocks. | `include_schema=false` |
-| `include_graph` | `true` (default) or `false`. Whether to include `X-CXF-LINK` properties. | `include_graph=false` |
+| `include_schema` | `true` (default) or `false`. Whether to include `cxf:schemas`. | `include_schema=false` |
+| `include_graph` | `true` (default) or `false`. Whether to include `cxf:attendees` and `cxf:links`. | `include_graph=false` |
+| `exclude_archived` | `true` or `false` (default). Exclude archived entities. | `exclude_archived=true` |
 | `tags` | Comma-separated tags (AND filter). | `tags=work,urgent` |
 
-### 10.2 Response Headers
+### 8.2 Response Headers
 
 ```
-Content-Type: text/cxf; charset=utf-8
+Content-Type: application/ld+json; charset=utf-8
 X-CXF-Export-Time: 1745222400
 X-CXF-Entity-Count: 214
 X-CXF-Schema-Count: 8
@@ -461,9 +374,9 @@ X-CXF-Schema-Count: 8
 
 `X-CXF-Export-Time` is a Unix timestamp (seconds). Consumers MUST use this value — not their own clock — as the `since` cursor for the next request. This prevents missed updates due to clock skew.
 
-### 10.3 Producer Sync State
+### 8.3 Producer Sync State
 
-Phaibel (and any CXF producer) tracks the last successful sync time per consumer in `.phaibel/cxf-sync.json`:
+The producer tracks the last successful sync time per consumer in `.phaibel/cxf-sync.json`:
 
 ```json
 {
@@ -482,11 +395,9 @@ When a request includes `?consumer={id}`, the producer:
 2. Sets `firstSyncAt` on the first request from that consumer.
 3. Increments `syncCount`.
 
-This state is used for tombstone management (§9): a deleted entity must be included in every export until `lastSyncAt > deletedAt` for all registered consumers, after which it may be dropped.
+This state is used for tombstone management (§7.3): a deleted entity must be included in every export until `lastSyncAt > deletedAt` for all registered consumers, after which it may be dropped.
 
-If `?since=` is omitted, the producer MAY use the stored `lastSyncAt` for the named consumer as an implicit cursor. This allows a consumer to resume without tracking its own state.
-
-### 10.4 Incremental Sync (Recommended Pattern for COS)
+### 8.4 Incremental Sync Pattern
 
 ```
 1. First run:    GET /api/cxf?consumer=cos-01
@@ -495,272 +406,313 @@ If `?since=` is omitted, the producer MAY use the stored `lastSyncAt` for the na
 2. Subsequent:   GET /api/cxf?since=1745222400&consumer=cos-01
                  → only nodes changed since that timestamp; use new X-CXF-Export-Time
 
-3. For each component:
-   a. Parse UID → entity_id@vault_id
-   b. Check LAST-MODIFIED vs stored; skip if unchanged
-   c. Check X-CXF-DELETED — if TRUE, destroy record and skip
-   d. Check X-CXF-ARCHIVED — if TRUE, soft-delete/archive record and skip
-   e. Route by X-CXF-TYPE → correct COS context type
-   f. Parse X-CXF-FIELD-* using VSCHEMA for types
-   g. Parse ATTENDEE → resolve/upsert people by X-CXF-PERSON-ID
-   h. Parse X-CXF-LINK → upsert graph edges
+3. For each node in @graph:
+   a. Extract @id → parse urn:cxf:{vaultId}:{entityId}
+   b. Check schema:dateModified vs stored; skip if unchanged
+   c. Check cxf:deleted — if true, destroy record and skip
+   d. Check cxf:archived — if true, soft-delete/archive record and skip
+   e. Route by cxf:nativeType → correct context type
+   f. Read cxf:fields using cxf:schemas for type information
+   g. Read cxf:attendees → resolve/upsert people by cxf:personId
+   h. Read cxf:links → upsert graph edges
    i. Upsert node record (re-activate if previously archived)
 ```
 
 ---
 
-## 11. Versioning and Compatibility
+## 9. Versioning and Compatibility
 
-- `X-CXF-VERSION:1` is the only defined version.
-- Consumers MUST ignore unknown X-CXF- properties (forward compatibility).
-- Consumers MUST ignore unknown VSCHEMA and VCONTEXT components they cannot parse.
+- `cxf:version: "2"` is the current version.
+- Consumers MUST ignore unknown `cxf:` properties (forward compatibility).
+- Consumers MUST ignore unknown `@type` values they cannot process.
 - Producers MUST NOT remove properties defined in this spec without a version bump.
-- Future versions will use `X-CXF-VERSION:2`, etc. Consumers SHOULD reject documents with versions they do not support.
+- Future versions will use `cxf:version: "3"`, etc. Consumers SHOULD reject documents with versions they do not support.
 
 ---
 
-## 12. Line Folding
+## 10. Full Worked Example
 
-RFC 5545 §3.1: lines longer than 75 octets MUST be folded at a CRLF followed by a single space. This applies to:
+A vault with five entities and a knowledge graph:
 
-- `DESCRIPTION` fields with markdown body content
-- `X-CXF-FIELD-*` with JSON array/object values
-- `ATTENDEE` with multiple parameters
-
-CXF-aware parsers MUST unfold lines before tokenising. Most iCalendar libraries handle this automatically.
+```json
+{
+  "@context": {
+    "cxf": "https://cxf.phaibel.ai/ns/",
+    "schema": "https://schema.org/"
+  },
+  "cxf:version": "2",
+  "cxf:vaultId": "vault-gary-clift-01",
+  "cxf:exportTime": 1745480400,
+  "cxf:ownerName": "Gary Clift",
+  "cxf:ownerEmail": "gary@clift-labs.com",
+  "cxf:schemas": [
+    {
+      "@type": "cxf:TypeSchema",
+      "cxf:typeName": "goal",
+      "cxf:plural": "goals",
+      "cxf:description": "Long-term aspirations and objectives",
+      "cxf:fields": [
+        { "cxf:key": "status", "cxf:type": "enum", "cxf:label": "Status",
+          "cxf:values": ["active", "achieved", "abandoned", "paused"] },
+        { "cxf:key": "priority", "cxf:type": "enum", "cxf:label": "Priority",
+          "cxf:values": ["low", "medium", "high", "critical"] }
+      ]
+    },
+    {
+      "@type": "cxf:TypeSchema",
+      "cxf:typeName": "todont",
+      "cxf:plural": "todonts",
+      "cxf:description": "Things to deliberately NOT do",
+      "cxf:fields": [
+        { "cxf:key": "reason", "cxf:type": "text", "cxf:label": "Reason" }
+      ]
+    }
+  ],
+  "@graph": [
+    {
+      "@id": "urn:cxf:vault-gary-clift-01:task-review-bob-a1b2",
+      "@type": "cxf:Task",
+      "cxf:nativeType": "task",
+      "schema:name": "Review Bob's performance",
+      "schema:description": "Prepare constructive feedback for Bob's Q2 review.\n\nKey themes: delivery consistency, communication across teams.",
+      "schema:dueDate": "2026-04-30",
+      "cxf:status": "open",
+      "cxf:priority": "high",
+      "schema:dateCreated": "2026-04-10T09:00:00Z",
+      "schema:dateModified": "2026-04-20T14:00:00Z",
+      "schema:keywords": ["hr", "management", "q2"],
+      "cxf:archived": false,
+      "cxf:deleted": false,
+      "cxf:attendees": [
+        {
+          "cxf:personId": "person-bob-smith-c3d4",
+          "cxf:role": "CHAIR",
+          "schema:name": "Bob Smith",
+          "schema:email": "bob@acme.com"
+        }
+      ],
+      "cxf:links": [
+        {
+          "cxf:label": "relates-to",
+          "cxf:target": "urn:cxf:vault-gary-clift-01:goal-great-team-e5f6"
+        }
+      ]
+    },
+    {
+      "@id": "urn:cxf:vault-gary-clift-01:goal-great-team-e5f6",
+      "@type": "cxf:Task",
+      "cxf:nativeType": "goal",
+      "schema:name": "Build a great engineering team",
+      "schema:description": "Focus on hiring, culture, growth paths, and reducing attrition.",
+      "cxf:archived": false,
+      "cxf:deleted": false,
+      "schema:dateCreated": "2026-01-01T00:00:00Z",
+      "schema:dateModified": "2026-04-15T10:00:00Z",
+      "schema:keywords": ["leadership", "hiring", "annual"],
+      "cxf:fields": {
+        "status": "active",
+        "priority": "high"
+      }
+    },
+    {
+      "@id": "urn:cxf:vault-gary-clift-01:event-soccer-u12-g7h8",
+      "@type": "cxf:Event",
+      "cxf:nativeType": "event",
+      "schema:name": "Under-12 Soccer Match vs Westside",
+      "schema:description": "Regular season match. Arrive 30 min early for warm-up.",
+      "schema:startDate": "2026-04-25T14:00:00Z",
+      "schema:duration": "PT1H30M",
+      "schema:location": "Riverside Park, Field 3",
+      "cxf:archived": false,
+      "cxf:deleted": false,
+      "schema:dateCreated": "2026-04-01T08:00:00Z",
+      "schema:dateModified": "2026-04-18T09:00:00Z",
+      "schema:keywords": ["family", "kids", "soccer"],
+      "cxf:attendees": [
+        {
+          "cxf:personId": "person-jamie-torres-ab12",
+          "cxf:role": "REQ-PARTICIPANT",
+          "schema:name": "Jamie Torres",
+          "schema:email": "person-jamie-torres-ab12@cxf.local"
+        },
+        {
+          "cxf:personId": "person-sam-reeves-cd34",
+          "cxf:role": "REQ-PARTICIPANT",
+          "schema:name": "Sam Reeves",
+          "schema:email": "person-sam-reeves-cd34@cxf.local"
+        }
+      ]
+    },
+    {
+      "@id": "urn:cxf:vault-gary-clift-01:todont-micromanage-i9j0",
+      "@type": "cxf:Task",
+      "cxf:nativeType": "todont",
+      "schema:name": "Don't micromanage delivery timelines",
+      "schema:description": "Reduces team autonomy and signals distrust. Coach instead.",
+      "cxf:status": "in-progress",
+      "cxf:archived": false,
+      "cxf:deleted": false,
+      "schema:dateCreated": "2026-02-10T09:00:00Z",
+      "schema:dateModified": "2026-02-10T09:00:00Z",
+      "schema:keywords": ["leadership", "behaviour"],
+      "cxf:fields": {
+        "reason": "Kills team autonomy and slows delivery velocity."
+      },
+      "cxf:links": [
+        {
+          "cxf:label": "relates-to",
+          "cxf:target": "urn:cxf:vault-gary-clift-01:goal-great-team-e5f6"
+        }
+      ]
+    },
+    {
+      "@id": "urn:cxf:vault-gary-clift-01:note-q3-strategy-k1l2",
+      "@type": "cxf:Note",
+      "cxf:nativeType": "note",
+      "schema:name": "Thoughts on Q3 strategy",
+      "schema:description": "## Q3 Direction\n\nFocus on consolidation over new features. Three themes:\n\n1. Team stability\n2. Technical debt\n3. Customer retention",
+      "cxf:archived": false,
+      "cxf:deleted": false,
+      "schema:dateCreated": "2026-04-18T11:00:00Z",
+      "schema:dateModified": "2026-04-18T11:30:00Z",
+      "schema:keywords": ["strategy", "q3", "planning"],
+      "cxf:links": [
+        {
+          "cxf:label": "relates-to",
+          "cxf:target": "urn:cxf:vault-gary-clift-01:goal-great-team-e5f6"
+        }
+      ]
+    }
+  ]
+}
+```
 
 ---
 
-## 13. Full Worked Example
+## 11. Parser Implementation Guide
 
-A vault with five entities and a knowledge graph between them:
+### Minimum viable CXF/2 parser
 
 ```
-BEGIN:VCALENDAR
-VERSION:2.0
-PRODID:-//Phaibel//Phaibel Agent v5//EN
-X-CXF-VERSION:1
-X-CXF-EXPORT-TIME:20260421T090000Z
-X-CXF-VAULT-ID:vault-gary-clift-01
-X-CXF-OWNER-NAME:Gary Clift
-X-CXF-OWNER-EMAIL:gary@clift-labs.com
-X-CXF-ENTITY-COUNT:5
-
-BEGIN:VSCHEMA
-X-CXF-TYPE-NAME:goal
-X-CXF-PLURAL:goals
-X-CXF-DESCRIPTION:Long-term aspirations and objectives
-X-CXF-BUILT-IN:FALSE
-X-CXF-FIELD;KEY=status;TYPE=enum;VALUES=active\,achieved\,abandoned;
- REQUIRED=TRUE;DEFAULT=active:Status
-X-CXF-FIELD;KEY=priority;TYPE=enum;VALUES=low\,medium\,high\,critical;
- REQUIRED=FALSE:Priority
-X-CXF-COMPLETION-FIELD:status
-X-CXF-COMPLETION-VALUE:achieved
-END:VSCHEMA
-
-BEGIN:VSCHEMA
-X-CXF-TYPE-NAME:todont
-X-CXF-PLURAL:todonts
-X-CXF-DESCRIPTION:Things to deliberately NOT do
-X-CXF-BUILT-IN:FALSE
-X-CXF-FIELD;KEY=reason;TYPE=string;REQUIRED=FALSE:Reason
-END:VSCHEMA
-
-BEGIN:VSCHEMA
-X-CXF-TYPE-NAME:person
-X-CXF-PLURAL:people
-X-CXF-DESCRIPTION:People — contacts\, colleagues\, family\, friends
-X-CXF-BUILT-IN:FALSE
-X-CXF-FIELD;KEY=lastName;TYPE=string;REQUIRED=FALSE:Last Name
-X-CXF-FIELD;KEY=type;TYPE=string;REQUIRED=FALSE:Relationship Type
-X-CXF-FIELD;KEY=email;TYPE=string;REQUIRED=FALSE:Email
-END:VSCHEMA
-
-BEGIN:VTODO
-UID:task-review-bob-a1b2@vault-gary-clift-01
-SUMMARY:Review Bob's performance
-DESCRIPTION:Prepare constructive feedback for Bob's Q2 review.\n\nKey
- themes: delivery consistency\, communication across teams.
-DUE:20260430
-PRIORITY:3
-STATUS:NEEDS-ACTION
-CREATED:20260410T090000Z
-LAST-MODIFIED:20260420T140000Z
-CATEGORIES:hr,management,q2
-ORGANIZER;CN=Gary Clift:mailto:gary@clift-labs.com
-ATTENDEE;CN=Bob Smith;ROLE=CHAIR;PARTSTAT=NEEDS-ACTION;
- X-CXF-PERSON-ID=bob-smith-c3d4:mailto:bob@acme.com
-X-CXF-ID:task-review-bob-a1b2
-X-CXF-TYPE:task
-X-CXF-LINK;LABEL=relates-to;EDGE=link:
- goal-great-team-e5f6@vault-gary-clift-01
-END:VTODO
-
-BEGIN:VCONTEXT
-UID:goal-great-team-e5f6@vault-gary-clift-01
-SUMMARY:Build a great engineering team
-DESCRIPTION:Focus on hiring\, culture\, growth paths\, and reducing
- attrition. Target team health score >80% by year end.
-CREATED:20260101T000000Z
-LAST-MODIFIED:20260415T100000Z
-CATEGORIES:leadership,hiring,annual
-X-CXF-ID:goal-great-team-e5f6
-X-CXF-TYPE:goal
-X-CXF-FIELD-STATUS:active
-X-CXF-FIELD-PRIORITY:high
-X-CXF-LINK;LABEL=relates-to;EDGE=link:
- task-review-bob-a1b2@vault-gary-clift-01
-END:VCONTEXT
-
-BEGIN:VEVENT
-UID:event-soccer-u12-g7h8@vault-gary-clift-01
-SUMMARY:Under-12 Soccer Match vs Westside
-DESCRIPTION:Regular season match. Arrive 30 min early for warm-up.
-DTSTART:20260425T140000-06:00
-DURATION:PT1H30M
-LOCATION:Riverside Park\, Field 3
-CREATED:20260401T080000Z
-LAST-MODIFIED:20260418T090000Z
-CATEGORIES:family,kids,soccer
-ORGANIZER;CN=Gary Clift:mailto:gary@clift-labs.com
-ATTENDEE;CN=Jamie Torres;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;
- X-CXF-PERSON-ID=jamie-torres-ab12:
- mailto:jamie-torres-ab12@cxf.local
-ATTENDEE;CN=Sam Reeves;ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;
- X-CXF-PERSON-ID=sam-reeves-cd34:
- mailto:sam-reeves-cd34@cxf.local
-X-CXF-ID:event-soccer-u12-g7h8
-X-CXF-TYPE:event
-X-CXF-FIELD-TEAM-SIZE:20
-END:VEVENT
-
-BEGIN:VTODO
-UID:todont-micromanage-i9j0@vault-gary-clift-01
-SUMMARY:Don't micromanage delivery timelines
-DESCRIPTION:Reduces team autonomy and signals distrust. Coach instead.
-STATUS:IN-PROCESS
-CREATED:20260210T090000Z
-LAST-MODIFIED:20260210T090000Z
-CATEGORIES:leadership,behaviour
-X-CXF-ID:todont-micromanage-i9j0
-X-CXF-TYPE:todont
-X-CXF-FIELD-REASON:Kills team autonomy and slows delivery velocity.
-X-CXF-LINK;LABEL=relates-to;EDGE=link:
- goal-great-team-e5f6@vault-gary-clift-01
-END:VTODO
-
-BEGIN:VJOURNAL
-UID:note-q3-strategy-k1l2@vault-gary-clift-01
-SUMMARY:Thoughts on Q3 strategy
-DESCRIPTION:## Q3 Direction\n\nFocus on consolidation over new
- features. Three themes:\n\n1. Team stability\n2. Technical debt
- \n3. Customer retention
-DTSTART:20260418
-CREATED:20260418T110000Z
-LAST-MODIFIED:20260418T113000Z
-CATEGORIES:strategy,q3,planning
-X-CXF-ID:note-q3-strategy-k1l2
-X-CXF-TYPE:note
-X-CXF-LINK;LABEL=relates-to;EDGE=link:
- goal-great-team-e5f6@vault-gary-clift-01
-END:VJOURNAL
-
-END:VCALENDAR
+1. Parse the JSON document.
+2. Verify cxf:version === "2"; reject otherwise.
+3. Extract cxf:schemas → build type schema registry keyed by cxf:typeName.
+4. For each node in @graph:
+   a. Read @id → split "urn:cxf:{vaultId}:{entityId}"
+   b. Read cxf:nativeType → look up schema in registry
+   c. Read cxf:deleted — if true, destroy record and skip
+   d. Read cxf:archived — if true, soft-delete/archive record and skip
+   e. Read schema:dateModified → compare to stored; skip if unchanged
+   f. Read cxf:attendees → build person records (key: cxf:personId)
+   g. Read cxf:fields → apply schema types for casting
+   h. Read cxf:links → store as directed graph edges
+5. Upsert all records and edges.
+6. Record X-CXF-Export-Time response header (Unix seconds) as the new cursor.
 ```
+
+### Edge Cases
+
+- **Missing `cxf:schemas`:** Treat all `cxf:fields` values as their JSON native types.
+- **Unknown `cxf:nativeType`:** Store as generic `cxf:Context` without type-specific processing.
+- **Circular links:** Valid. The graph may have cycles. Consumers must handle cycles in traversal.
+- **Missing `schema:email` on attendee:** Use `cxf:personId` as the identity key; synthesize `{personId}@cxf.local` as a display placeholder.
+- **Tombstone nodes:** A node with `cxf:deleted: true` may have minimal fields (`@id`, `schema:name`, `schema:dateModified`). The only required action is to destroy the corresponding record.
 
 ---
 
-## 14. Parser Implementation Guide
-
-### Minimum viable CXF parser
-
-```
-1. Parse the VCALENDAR block using any RFC 5545 library.
-2. Extract VSCHEMA components → build type schema registry.
-3. For each remaining component:
-   a. Determine routing: VEVENT / VTODO / VJOURNAL / VCONTEXT
-   b. Read UID → split on "@" to get entity_id and vault_id
-   c. Read X-CXF-TYPE → look up schema in registry
-   d. Read X-CXF-DELETED — if TRUE, destroy record; read X-CXF-ARCHIVED — if TRUE, soft-delete
-   e. Read LAST-MODIFIED → compare to stored; skip if unchanged
-   f. Read ATTENDEE lines → build person records (key: X-CXF-PERSON-ID)
-   g. Read X-CXF-FIELD-* → apply schema types for casting
-   h. Read X-CXF-LINK → store as directed graph edges
-4. Upsert all records and edges.
-5. Record X-CXF-Export-Time (Unix seconds) as the new incremental cursor.
-```
-
-### Edge cases
-
-- **Missing VSCHEMA**: Consumer should treat all `X-CXF-FIELD-*` values as strings.
-- **Unknown X-CXF-TYPE**: Store as generic VCONTEXT without type-specific processing.
-- **Circular links**: Valid. The graph may have cycles (e.g. two goals that relate-to each other). Consumer must handle cycles in traversal.
-- **ATTENDEE without X-CXF-PERSON-ID**: Consumer may still ingest using CN + email as identity, but should flag as unresolvable.
-- **Folded JSON in X-CXF-FIELD-***: Unfold the full property value before JSON parsing.
-
----
-
-## 15. Relationship to ICS and FCP
+## 12. Relationship to FCP
 
 CXF and FCP are complementary:
 
 | | FCP | CXF |
 |---|---|---|
 | **Transport** | HTTP probe/fetch | HTTP GET (pull) |
-| **Format** | JSON | iCalendar extension |
+| **Format** | JSON | JSON-LD |
 | **Primary use** | Real-time query-driven context retrieval | Bulk export / sync |
-| **Graph** | Via `links[]` in fetch response | Via `X-CXF-LINK` |
-| **Schema** | Discovered via `/fcp/manifest` | Embedded as VSCHEMA |
+| **Graph** | Via `links[]` in fetch response | Via `cxf:links` + `cxf:attendees` |
+| **Schema** | Discovered via `/fcp/manifest` | Embedded as `cxf:schemas` |
 | **Incremental** | Via `keywords` + `time_range` | Via `?since={unix_seconds}` cursor |
 | **Best for** | Chat-time context retrieval | ETL, backup, bulk import |
 
-A system can implement both. FCP is the real-time read protocol; CXF is the bulk exchange format. COS uses CXF for its initial data load and delta sync, and FCP for query-time context retrieval.
+A system can implement both. FCP is the real-time read protocol; CXF is the bulk exchange format.
 
 ---
 
-## 16. Conformance
+## 13. Conformance
 
-A producer is CXF/1 conformant if:
+A producer is CXF/2 conformant if:
 
-1. Every produced document contains `X-CXF-VERSION:1`.
-2. Every component carries `X-CXF-ID`, `X-CXF-TYPE`, `CREATED`, and `LAST-MODIFIED`.
-3. Type routing rules in §8.2 are respected.
-4. A VSCHEMA is present for every distinct `X-CXF-TYPE` that appears in the document.
-5. `X-CXF-PERSON-ID` is present on every ATTENDEE property.
-6. `X-CXF-DELETED:TRUE` is emitted in every incremental export until all registered consumers have acknowledged the deletion via `cxf-sync.json`.
-7. `X-CXF-ARCHIVED:TRUE` is emitted in the incremental export cycle when an entity is archived, and in all subsequent full exports.
-8. `X-CXF-ARCHIVED` and `X-CXF-DELETED` are never both set on the same component.
-7. The document is parseable by a compliant RFC 5545 library (all CXF-specific content is X- properties or named components that RFC 5545 permits).
+1. Every produced document contains `"cxf:version": "2"`.
+2. Every node in `@graph` carries `@id`, `@type`, `cxf:nativeType`, `schema:name`, `cxf:archived`, and `cxf:deleted`.
+3. `@id` follows the `urn:cxf:{vaultId}:{entityId}` format.
+4. Type routing rules in §3.3 are respected.
+5. `cxf:schemas` is present for every distinct `cxf:nativeType` in the document when `include_schema=true`.
+6. `cxf:personId` is present on every `cxf:attendees` entry.
+7. `cxf:deleted: true` nodes are emitted in every incremental export until all registered consumers have acknowledged the deletion via `cxf-sync.json`.
+8. `cxf:archived` and `cxf:deleted` are never both `true` on the same node.
+9. The document is valid JSON parseable by any standard JSON library.
 
 ---
 
-## Appendix A — Reserved X-CXF- Property Names
+## Appendix A — Reserved `cxf:` Property Names
+
+### Envelope
 
 | Property | Description |
 |---|---|
-| `X-CXF-VERSION` | Envelope: CXF format version |
-| `X-CXF-EXPORT-TIME` | Envelope: export timestamp |
-| `X-CXF-VAULT-ID` | Envelope/component: vault identifier |
-| `X-CXF-OWNER-NAME` | Envelope: vault owner name |
-| `X-CXF-OWNER-EMAIL` | Envelope: vault owner email |
-| `X-CXF-ENTITY-COUNT` | Envelope: total component count |
-| `X-CXF-ID` | Component: raw entity ID |
-| `X-CXF-TYPE` | Component: context type slug |
-| `X-CXF-DELETED` | Component: hard delete tombstone |
-| `X-CXF-ARCHIVED` | Component: soft delete / archive flag |
-| `X-CXF-STATUS-EXT` | Component: extended status |
-| `X-CXF-LINK` | Component: graph edge (multiple) |
-| `X-CXF-PERSON-ID` | ATTENDEE parameter: person entity ID |
-| `X-CXF-FIELD-*` | Component: custom field value |
-| `X-CXF-TYPE-NAME` | VSCHEMA: type slug |
-| `X-CXF-PLURAL` | VSCHEMA: plural slug |
-| `X-CXF-DESCRIPTION` | VSCHEMA: type description |
-| `X-CXF-BUILT-IN` | VSCHEMA: whether this is a built-in type |
-| `X-CXF-FIELD` | VSCHEMA: field definition (multiple) |
-| `X-CXF-COMPLETION-FIELD` | VSCHEMA: field that signals completion |
-| `X-CXF-COMPLETION-VALUE` | VSCHEMA: value that signals completion |
-| `X-CXF-CALENDAR-DATE-FIELD` | VSCHEMA: primary calendar date field |
+| `cxf:version` | Format version (`"2"`) |
+| `cxf:vaultId` | Stable vault identifier |
+| `cxf:exportTime` | Export timestamp (Unix seconds) |
+| `cxf:ownerName` | Vault owner name |
+| `cxf:ownerEmail` | Vault owner email |
+| `cxf:schemas` | Array of type schema objects |
+
+### Node
+
+| Property | Description |
+|---|---|
+| `cxf:nativeType` | Original type slug |
+| `cxf:status` | Native status value |
+| `cxf:priority` | Native priority value |
+| `cxf:archived` | Soft delete flag (boolean) |
+| `cxf:deleted` | Hard delete / tombstone flag (boolean) |
+| `cxf:attendees` | Array of person-link objects |
+| `cxf:links` | Array of entity edge objects |
+| `cxf:fields` | Object of custom type fields |
+
+### Attendee
+
+| Property | Description |
+|---|---|
+| `cxf:personId` | Person entity ID (canonical identity key) |
+| `cxf:role` | Role (`CHAIR`, `REQ-PARTICIPANT`, `OPT-PARTICIPANT`, `NON-PARTICIPANT`) |
+
+### Link
+
+| Property | Description |
+|---|---|
+| `cxf:label` | Relationship label |
+| `cxf:target` | Target node URN (`urn:cxf:{vaultId}:{entityId}`) |
+
+### Schema (`cxf:TypeSchema`)
+
+| Property | Description |
+|---|---|
+| `cxf:typeName` | Type slug |
+| `cxf:plural` | Plural slug |
+| `cxf:description` | Human description |
+| `cxf:fields` | Array of field definition objects |
+
+### Field Definition
+
+| Property | Description |
+|---|---|
+| `cxf:key` | Field key |
+| `cxf:type` | Field type (see §6.1) |
+| `cxf:label` | Display label |
+| `cxf:required` | Boolean |
+| `cxf:values` | Array of enum values |
+| `cxf:targetType` | Referenced type slug (for `reference` fields) |
 
 ---
 
@@ -768,4 +720,5 @@ A producer is CXF/1 conformant if:
 
 | Version | Date | Notes |
 |---|---|---|
-| 1.0 | 2026-04-21 | Initial draft |
+| 1.0 | 2026-04-21 | Initial draft — iCalendar/RFC 5545 transport |
+| 2.0 | 2026-04-25 | Transport rewritten as JSON-LD; removed VCALENDAR/VSCHEMA/VCONTEXT/VTODO/VEVENT/VJOURNAL; native status/priority values; `cxf:` and `schema:` namespaces |
