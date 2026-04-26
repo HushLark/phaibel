@@ -123,7 +123,7 @@ function buildTimelineGroups(calItems) {
   for (const ci of calItems) {
     // Annual recurring dates — collect separately
     if (ci.recurrence) {
-      annualItems.push({ t: ci.title, kind: 'annual', date: ci.date, daysAway: ci.daysAway ?? 0, rule: ci.rule });
+      annualItems.push({ t: ci.title, kind: 'annual', date: ci.date, daysAway: ci.daysAway ?? 0, rule: ci.rule, entityType: ci.entityType });
       continue;
     }
 
@@ -132,7 +132,7 @@ function buildTimelineGroups(calItems) {
       const pStart = ci.date.includes('T') ? ymd(new Date(ci.date)) : ci.date.slice(0, 10);
       const pEnd = ci.endDate.includes('T') ? ymd(new Date(ci.endDate)) : ci.endDate.slice(0, 10);
       if (pStart <= todayStr && pEnd >= todayStr) {
-        periods.push({ t: ci.title, kind: 'period', startDate: pStart, endDate: pEnd });
+        periods.push({ t: ci.title, kind: 'period', startDate: pStart, endDate: pEnd, entityType: ci.entityType });
       }
       continue;
     }
@@ -145,8 +145,9 @@ function buildTimelineGroups(calItems) {
       if (ci.meta && (ci.meta.status === 'done' || ci.meta.status === 'completed')) continue;
       const timeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
       const isOverdue = isValidDate && date < todayStr;
+      const assignedTo = ci.meta?.assignedTo || ci.meta?.assigned_to || null;
       const item = { t: ci.title, kind: 'todo', time: timeVal ? fmtTime(timeVal) : null, rawTime: timeVal || null,
-        overdueDate: isOverdue ? date : null };
+        overdueDate: isOverdue ? date : null, entityType: ci.entityType, assignedTo: assignedTo ? String(assignedTo) : null };
       if (!isValidDate || date === todayStr) { buckets[dates[0]].push(item); }
       else if (isOverdue) { overdue.push(item); }
       else if (buckets[date]) { buckets[date].push(item); }
@@ -155,7 +156,7 @@ function buildTimelineGroups(calItems) {
       if (!isValidDate || date < todayStr) continue;
       const timeVal = ci.dateField ? ci.meta?.[ci.dateField] : ci.meta?.startDate;
       const kind = ci.entityType === 'event' ? 'meeting' : 'milestone';
-      const item = { t: ci.title, kind, time: timeVal ? fmtTime(timeVal) : null, rawTime: timeVal || null };
+      const item = { t: ci.title, kind, time: timeVal ? fmtTime(timeVal) : null, rawTime: timeVal || null, entityType: ci.entityType };
       if (buckets[date]) { buckets[date].push(item); }
     }
   }
@@ -795,9 +796,13 @@ function Timeline({ calItems, onSendMessage }) {
                     </span>
                     <div className="tl-main">
                       <div className="tl-t">{it.t}</div>
-                      {(it.time || it.overdueDate) && <div className="tl-meta"><span className="tl-time">{it.overdueDate ? new Date(it.overdueDate + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'}) + (it.time ? ' · ' + it.time : '') : it.time}</span></div>}
-                      {it.kind === "period" && it.endDate && <div className="tl-meta"><span className="tl-time">until {it.endDate}</span></div>}
-                      {it.kind === "annual" && <div className="tl-meta"><span className="tl-time">{it.daysAway === 0 ? "today" : it.daysAway === 1 ? "tomorrow" : `in ${it.daysAway} days`}</span></div>}
+                      <div className="tl-meta">
+                        {it.entityType && <span className="tl-type-pill">{it.entityType.charAt(0).toUpperCase() + it.entityType.slice(1)}</span>}
+                        {it.assignedTo && <span className="tl-delegate">↳ {it.assignedTo}</span>}
+                        {(it.time || it.overdueDate) && <span className="tl-time">{it.overdueDate ? new Date(it.overdueDate + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'}) + (it.time ? ' · ' + it.time : '') : it.time}</span>}
+                        {it.kind === "period" && it.endDate && <span className="tl-time">until {it.endDate}</span>}
+                        {it.kind === "annual" && <span className="tl-time">{it.daysAway === 0 ? "today" : it.daysAway === 1 ? "tomorrow" : `in ${it.daysAway} days`}</span>}
+                      </div>
                     </div>
                   </li>
                 ))
@@ -1901,7 +1906,7 @@ function GlobalStyle() {
     <style>{`
       .app {
         display: grid;
-        grid-template-columns: minmax(320px, 25%) 1fr;
+        grid-template-columns: minmax(360px, 40%) 1fr;
         height: 100vh;
         position: relative;
         z-index: 1;
@@ -2109,6 +2114,24 @@ function GlobalStyle() {
       .tl-time {
         color: var(--ink-3);
         font-weight: 500;
+      }
+      .tl-type-pill {
+        display: inline-block;
+        font-size: 9px;
+        font-weight: 600;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        padding: 1px 5px;
+        border-radius: 3px;
+        background: color-mix(in oklab, var(--ink-3) 12%, var(--paper));
+        color: var(--muted-2);
+        border: 1px solid var(--line);
+        font-family: var(--font-sans);
+        line-height: 1.6;
+      }
+      .tl-delegate {
+        color: var(--gold);
+        font-size: 10.5px;
       }
 
       /* Pinboard */
@@ -3231,7 +3254,7 @@ function GlobalStyle() {
       .mono { font-family: var(--font-mono); font-feature-settings: "tnum"; }
 
       @media (max-width: 1100px) {
-        .app { grid-template-columns: minmax(280px, 30%) 1fr; }
+        .app { grid-template-columns: minmax(320px, 36%) 1fr; }
       }
     `}</style>
   );
