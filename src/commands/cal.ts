@@ -21,6 +21,7 @@ import {
     entityFilename,
     trashEntity,
 } from '../entities/entity.js';
+import { getPlatform } from '../platform/index.js';
 import { getEntityType, addEntityType } from '../entities/entity-type-config.js';
 import { getEntityIndex } from '../entities/entity-index.js';
 
@@ -193,6 +194,7 @@ export interface SyncCalendarResult {
     updated: number;
     unchanged: number;
     pruned: number;
+    deduped: number;
 }
 
 const DEFAULT_WINDOW_PAST = 14;    // days
@@ -219,14 +221,61 @@ async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> 
     // 2. Parse — pass the full window so recurring events expand correctly
     const eventsInWindow = parseIcsFeed(icsText, windowStart, windowEnd);
 
-    // 3. Build UID map scoped to this calendar (or legacy events with no calendarId)
+    // 3. Build UID map scoped to this calendar (or legacy events with no calendarId).
+    //    Falls back to raw file regex for entities whose body parse failed (e.g. multi-line
+    //    location fields that break parseEntityBody). Tracks all entities per UID for dedup.
     const existingEntities = await listEntities('event', { metaOnly: true });
+    const { storage } = getPlatform();
     const uidMap = new Map<string, { filepath: string; meta: Record<string, unknown>; content: string }>();
+    const allByUid = new Map<string, Array<{ filepath: string; meta: Record<string, unknown>; content: string }>>();
+
     for (const ent of existingEntities) {
-        const uid = ent.meta.calendarUid as string | undefined;
-        const entCalId = ent.meta.calendarId as string | undefined;
-        if (uid && (entCalId === cal.id || !entCalId)) {
+        let uid = ent.meta.calendarUid as string | undefined;
+        const entCalId = (ent.meta.calendarId as string | undefined);
+
+        // If calendarUid is missing (body parse failed due to multi-line field values),
+        // grep the raw file so we can still find and de-duplicate these entities.
+        if (!uid) {
+            try {
+                const raw = await storage.readFile(ent.filepath, 'utf-8');
+                const uidMatch = raw.match(/^calendarUid:\s*(.+)$/m);
+                if (uidMatch) {
+                    uid = uidMatch[1].trim();
+                    ent.meta.calendarUid = uid;
+                    // Restore other domain fields that were lost due to parse failure
+                    const startM = raw.match(/^startDate:\s*(.+)$/m);
+                    const endM   = raw.match(/^endDate:\s*(.+)$/m);
+                    const locM   = raw.match(/^location:\s*(.+)$/m);
+                    const calIdM = raw.match(/^calendarId:\s*(.+)$/m);
+                    if (startM) ent.meta.startDate = startM[1].trim();
+                    if (endM)   ent.meta.endDate   = endM[1].trim();
+                    if (locM)   ent.meta.location  = locM[1].trim();
+                    if (calIdM) { ent.meta.calendarId = calIdM[1].trim(); }
+                }
+            } catch { /* unreadable file — skip */ }
+        }
+
+        if (!uid) continue;
+        const effectiveCalId = (ent.meta.calendarId as string | undefined);
+        if (effectiveCalId !== cal.id && effectiveCalId !== undefined) continue;
+
+        if (!allByUid.has(uid)) allByUid.set(uid, []);
+        allByUid.get(uid)!.push(ent);
+        // Keep the most recently updated entity for each UID in the active map
+        const existing = uidMap.get(uid);
+        if (!existing || String(ent.meta.updated ?? '') >= String(existing.meta.updated ?? '')) {
             uidMap.set(uid, ent);
+        }
+    }
+
+    // Dedup — trash older copies for UIDs that have accumulated duplicates
+    let deduped = 0;
+    for (const [uid, copies] of allByUid) {
+        if (copies.length <= 1) continue;
+        const keeper = uidMap.get(uid)!;
+        for (const dup of copies) {
+            if (dup.filepath === keeper.filepath) continue;
+            try { await trashEntity(dup.filepath); deduped++; } catch { /* already gone */ }
         }
     }
 
@@ -304,7 +353,7 @@ async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> 
         }
     }
 
-    return { created, updated, unchanged, pruned };
+    return { created, updated, unchanged, pruned, deduped };
 }
 
 /**
@@ -332,13 +381,14 @@ export async function syncCalendar(opts?: { calendarId?: string }): Promise<Sync
         targets = cfg.calendars;
     }
 
-    const totals: SyncCalendarResult = { created: 0, updated: 0, unchanged: 0, pruned: 0 };
+    const totals: SyncCalendarResult = { created: 0, updated: 0, unchanged: 0, pruned: 0, deduped: 0 };
     for (const cal of targets) {
         const result = await syncOneCalendar(cal);
         totals.created   += result.created;
         totals.updated   += result.updated;
         totals.unchanged += result.unchanged;
         totals.pruned    += result.pruned;
+        totals.deduped   += result.deduped;
     }
 
     return totals;
@@ -358,8 +408,9 @@ calCommand
 
         try {
             const result = await syncCalendar({ calendarId: name });
-            const pruneNote = result.pruned > 0 ? `, ${result.pruned} pruned` : '';
-            console.log(chalk.green(`\n  Sync complete: ${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged${pruneNote}.\n`));
+            const pruneNote  = result.pruned  > 0 ? `, ${result.pruned} pruned`   : '';
+            const dedupNote  = result.deduped > 0 ? `, ${result.deduped} deduped` : '';
+            console.log(chalk.green(`\n  Sync complete: ${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged${pruneNote}${dedupNote}.\n`));
         } catch (err) {
             console.log(chalk.red(`\n  ${err instanceof Error ? err.message : err}\n`));
         }

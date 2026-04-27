@@ -71,7 +71,9 @@ export function parseIcsFeed(
 
             // For recurring events, append the date to the UID so each occurrence
             // is stored as a separate vault entity without overwriting the others.
-            const instanceUid = event.rrule
+            // Check both the instance's event and the outer item for rrule — expandRecurringEvent
+            // sometimes returns instances where event.rrule is stripped.
+            const instanceUid = (item.rrule || event.rrule)
                 ? `${uid}_${start.toISOString().slice(0, 10).replace(/-/g, '')}`
                 : uid;
 
@@ -82,7 +84,8 @@ export function parseIcsFeed(
                 endDate,
             };
 
-            if (event.location) calEvent.location = str(event.location);
+            // Normalize location to a single line — multi-line locations break the body field parser
+            if (event.location) calEvent.location = str(event.location).replace(/\r?\n/g, ', ').replace(/,\s*,/g, ',').trim();
             if (event.description) calEvent.description = str(event.description).trim();
 
             events.push(calEvent);

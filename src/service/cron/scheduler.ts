@@ -74,7 +74,9 @@ const JOB_DEFS: CronJobDef[] = [
         name: 'cal-sync',
         async run() {
             const result = await syncCalendar();
-            return `${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged`;
+            const parts = [`${result.created} created`, `${result.updated} updated`, `${result.unchanged} unchanged`];
+            if (result.deduped > 0) parts.push(`${result.deduped} deduped`);
+            return parts.join(', ');
         },
     },
     {
