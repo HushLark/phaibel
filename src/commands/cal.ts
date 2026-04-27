@@ -24,6 +24,7 @@ import {
 import { getPlatform } from '../platform/index.js';
 import { getEntityType, addEntityType } from '../entities/entity-type-config.js';
 import { getEntityIndex } from '../entities/entity-index.js';
+import { deduplicateEntityType } from '../service/cron/entity-dedup.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIG HELPERS
@@ -220,7 +221,10 @@ async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> 
     // 2. Parse — pass the full window so recurring events expand correctly
     const eventsInWindow = parseIcsFeed(icsText, windowStart, windowEnd);
 
-    // 3. Build UID map scoped to this calendar (or legacy events with no calendarId).
+    // 3. Dedup first so the UID map is built from a clean slate (no collision from prior runs).
+    await deduplicateEntityType('event');
+
+    // 4. Build UID map scoped to this calendar (or legacy events with no calendarId).
     //    Falls back to raw file regex for entities whose body parse failed (e.g. multi-line
     //    location fields that break parseEntityBody). Tracks all entities per UID for dedup.
     const existingEntities = await listEntities('event', { metaOnly: true });
@@ -264,7 +268,7 @@ async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> 
         }
     }
 
-    // 4. Sync — upsert events within the window
+    // 5. Sync — upsert events within the window
     const eventsDir = await ensureEntityDir('event');
     const index = getEntityIndex();
     let created = 0, updated = 0, unchanged = 0;
@@ -313,7 +317,7 @@ async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> 
         }
     }
 
-    // 5. Prune — trash vault events for this calendar that are outside the window
+    // 6. Prune — trash vault events for this calendar that are outside the window
     let pruned = 0;
     for (const ent of existingEntities) {
         const entCalId = ent.meta.calendarId as string | undefined;
