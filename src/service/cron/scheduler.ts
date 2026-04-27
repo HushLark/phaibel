@@ -12,6 +12,7 @@ import { generateRecurrences } from '../../commands/recurrence.js';
 import { checkPampMail } from './pamp-checker.js';
 import { runTemporalArchive } from './temporal-archive.js';
 import { deduplicateEntities } from './entity-dedup.js';
+import { runScheduledDelete } from './scheduled-delete.js';
 import { getEntityIndex } from '../../entities/entity-index.js';
 import { getEmbeddingIndex } from '../../entities/embedding-index.js';
 import { getCronConfigPath, getVaultConfigDir } from '../../paths.js';
@@ -38,6 +39,7 @@ const DEFAULT_CONFIG: CronConfig = {
         'embedding-sync':      { enabled: true,  intervalMinutes: 1440 },
         'temporal-archive':    { enabled: true,  intervalMinutes: 1440 },
         'entity-dedup':        { enabled: true,  intervalMinutes: 1440 },
+        'scheduled-delete':    { enabled: true,  intervalMinutes: 1440 },
     },
 };
 
@@ -131,6 +133,15 @@ const JOB_DEFS: CronJobDef[] = [
             const result = await deduplicateEntities();
             if (result.deduped === 0) return `${result.scanned} scanned, nothing to dedup`;
             return `${result.scanned} scanned, ${result.deduped} deduped`;
+        },
+    },
+    {
+        name: 'scheduled-delete',
+        async run() {
+            const result = await runScheduledDelete();
+            if (result.deleted === 0) return `${result.scanned} scanned, nothing to delete`;
+            const details = result.details.map(d => `${d.type}/${d.title}`).join(', ');
+            return `${result.scanned} scanned, ${result.deleted} deleted — ${details}`;
         },
     },
 ];
