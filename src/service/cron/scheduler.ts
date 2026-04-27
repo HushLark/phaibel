@@ -11,6 +11,7 @@ import { processInbox } from '../../commands/inbox.js';
 import { generateRecurrences } from '../../commands/recurrence.js';
 import { checkPampMail } from './pamp-checker.js';
 import { runTemporalArchive } from './temporal-archive.js';
+import { deduplicateEntities } from './entity-dedup.js';
 import { getEntityIndex } from '../../entities/entity-index.js';
 import { getEmbeddingIndex } from '../../entities/embedding-index.js';
 import { getCronConfigPath, getVaultConfigDir } from '../../paths.js';
@@ -36,6 +37,7 @@ const DEFAULT_CONFIG: CronConfig = {
         'pamp-check':          { enabled: false, intervalMinutes: 15 },
         'embedding-sync':      { enabled: true,  intervalMinutes: 1440 },
         'temporal-archive':    { enabled: true,  intervalMinutes: 1440 },
+        'entity-dedup':        { enabled: true,  intervalMinutes: 1440 },
     },
 };
 
@@ -74,9 +76,7 @@ const JOB_DEFS: CronJobDef[] = [
         name: 'cal-sync',
         async run() {
             const result = await syncCalendar();
-            const parts = [`${result.created} created`, `${result.updated} updated`, `${result.unchanged} unchanged`];
-            if (result.deduped > 0) parts.push(`${result.deduped} deduped`);
-            return parts.join(', ');
+            return `${result.created} created, ${result.updated} updated, ${result.unchanged} unchanged`;
         },
     },
     {
@@ -123,6 +123,14 @@ const JOB_DEFS: CronJobDef[] = [
                 return `${summary} — ${items}`;
             }
             return summary;
+        },
+    },
+    {
+        name: 'entity-dedup',
+        async run() {
+            const result = await deduplicateEntities();
+            if (result.deduped === 0) return `${result.scanned} scanned, nothing to dedup`;
+            return `${result.scanned} scanned, ${result.deduped} deduped`;
         },
     },
 ];

@@ -10,7 +10,7 @@ import { getServiceClient } from '../client/index.js';
 
 const VALID_JOBS = [
     'cal-sync', 'inbox-import', 'recurrence-generate',
-    'pamp-check', 'embedding-sync',
+    'pamp-check', 'embedding-sync', 'temporal-archive', 'entity-dedup',
 ];
 
 function assertValidJob(name: string): void {
