@@ -20,6 +20,13 @@ global/
 # Eval results (generated, not source)
 evals/results/
 
+# Secrets — never commit these
+secrets.json
+*.pem
+*.key
+.env
+.env.*
+
 # OS files
 .DS_Store
 
