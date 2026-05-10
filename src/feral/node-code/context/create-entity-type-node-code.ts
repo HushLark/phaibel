@@ -142,7 +142,7 @@ export class CreateEntityTypeNodeCode extends AbstractNodeCode {
         const config: EntityTypeConfig = {
             name: typeName,
             plural,
-            directory: plural,
+            directory: `context-types/${typeName}`,
             description: schema.description ?? description,
             defaultTags: [typeName],
             fields: schema.fields,
