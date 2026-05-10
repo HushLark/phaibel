@@ -28,16 +28,27 @@ configCommand
 
         console.log(chalk.cyan('\n  Phaibel Configuration\n'));
 
-        // Providers
-        console.log(chalk.bold('API Keys:'));
-        const knownProviders = ['openai', 'anthropic', 'google', 'deepseek'];
-        for (const provider of knownProviders) {
-            const configured = configuredProviders.includes(provider);
-            const tick = configured ? chalk.green('✓') : chalk.gray('○');
-            const hint = configured ? '' : chalk.gray('  run: phaibel config add-provider ' + provider);
-            console.log(`  ${tick} ${provider}${hint}`);
+        // Provider mode
+        const usingSynaptic = configuredProviders.includes('synaptic');
+        if (usingSynaptic) {
+            console.log(chalk.bold('Provider:') + chalk.green('  Phaibel Account') + chalk.gray('  (run `phaibel logout` to switch to local)'));
+        } else {
+            console.log(chalk.bold('Provider:') + chalk.cyan('  Local (BYOK)') + chalk.gray('  (run `phaibel login` to connect a Phaibel account)'));
         }
         console.log('');
+
+        // Local API keys (only shown in local mode)
+        if (!usingSynaptic) {
+            console.log(chalk.bold('API Keys:'));
+            const knownProviders = ['openai', 'anthropic', 'google', 'deepseek'];
+            for (const provider of knownProviders) {
+                const configured = configuredProviders.includes(provider);
+                const tick = configured ? chalk.green('✓') : chalk.gray('○');
+                const hint = configured ? '' : chalk.gray('  run: phaibel config add-provider ' + provider);
+                console.log(`  ${tick} ${provider}${hint}`);
+            }
+            console.log('');
+        }
 
         // Effective capability → model mapping
         console.log(chalk.bold('Effective Capability → Model:'));

@@ -10,12 +10,16 @@ import { getLogsDir } from '../paths.js';
 
 export type ChatLogType =
     | 'start'
+    | 'intent'
+    | 'context_manifest'
+    | 'context_fetch'
     | 'node_selection'
     | 'process_match'
     | 'process_design'
     | 'process_result'
     | 'completion_check'
     | 'response'
+    | 'summary'
     | 'error'
     | 'reaction'
     | 'judge';

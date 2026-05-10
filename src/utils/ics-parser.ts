@@ -9,6 +9,22 @@
 
 import ical, { type VEvent } from 'node-ical';
 
+/** Convert a Date to an ISO 8601 string in the local timezone (e.g. 2026-05-06T12:30:00-06:00). */
+function toLocalIso(d: Date): string {
+    const off = d.getTimezoneOffset();
+    const sign = off <= 0 ? '+' : '-';
+    const oh = String(Math.floor(Math.abs(off) / 60)).padStart(2, '0');
+    const om = String(Math.abs(off) % 60).padStart(2, '0');
+    const tz = `${sign}${oh}:${om}`;
+    const Y = d.getFullYear();
+    const M = String(d.getMonth() + 1).padStart(2, '0');
+    const D = String(d.getDate()).padStart(2, '0');
+    const h = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const s = String(d.getSeconds()).padStart(2, '0');
+    return `${Y}-${M}-${D}T${h}:${min}:${s}${tz}`;
+}
+
 /** Extract a plain string from a node-ical ParameterValue (string | { val, params }). */
 function str(value: unknown): string {
     if (typeof value === 'string') return value;
@@ -64,9 +80,9 @@ export function parseIcsFeed(
 
             if (!start) continue;
 
-            const startDate = start instanceof Date ? start.toISOString() : new Date(String(start)).toISOString();
+            const startDate = start instanceof Date ? toLocalIso(start) : toLocalIso(new Date(String(start)));
             const endDate = end
-                ? (end instanceof Date ? end.toISOString() : new Date(String(end)).toISOString())
+                ? (end instanceof Date ? toLocalIso(end) : toLocalIso(new Date(String(end))))
                 : startDate;
 
             // For recurring events, append the date to the UID so each occurrence

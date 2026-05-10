@@ -31,14 +31,13 @@ export async function getModelForCapability(capability: LLMCapability): Promise<
 }
 
 /**
- * Get embeddings for an array of texts using the configured `embed` capability provider.
+ * Get embeddings for an array of texts.
+ * Uses the local all-MiniLM-L6-v2 model by default (no API key, no network after first download).
+ * Falls back to the configured `embed` provider if local embedding fails.
  */
-export async function getEmbeddings(texts: string[], dimensions = 256): Promise<number[][]> {
-    const provider = await getModelForCapability('embed');
-    if (!provider.embed) {
-        throw new Error('The configured embed provider does not support embeddings.');
-    }
-    return provider.embed(texts, { dimensions });
+export async function getEmbeddings(texts: string[], _dimensions = 384): Promise<number[][]> {
+    const { localEmbed } = await import('./providers/local-embed.js');
+    return localEmbed(texts);
 }
 
 // ── Cached values for system prompt ─────────────────────────────────────────

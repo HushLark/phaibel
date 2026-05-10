@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "days": {
+    "2026-05-10": {
+      "date": "2026-05-10",
+      "chats": 5,
+      "tokens": {
+        "input": 74497,
+        "output": 7834,
+        "total": 82331
+      },
+      "estimatedCostUsd": 0.188846,
+      "calls": 41,
+      "entities": {
+        "total": 0,
+        "byType": {},
+        "created": 2
+      }
+    }
+  }
+}

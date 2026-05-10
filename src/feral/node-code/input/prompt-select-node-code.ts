@@ -26,7 +26,7 @@ export class PromptSelectNodeCode extends AbstractNodeCode {
         {
             key: 'options',
             name: 'Options',
-            description: 'Comma-separated list of choices to present.',
+            description: 'Pipe-separated list of choices to present (use | not comma, since option labels may contain commas). Example: "Bob D (brother)|Bob E (Meridian Solutions)|Bob Martinez (Acme)"',
             type: 'string',
         },
         {
@@ -58,7 +58,9 @@ export class PromptSelectNodeCode extends AbstractNodeCode {
         const contextPath = this.getRequiredConfigValue('context_path', 'user_selection') as string;
 
         const prompt = this.interpolate(promptTemplate, context);
-        const choices = optionsRaw.split(',').map(s => s.trim()).filter(Boolean);
+        // Split on | first; fall back to comma only if no pipe present
+        const delimiter = optionsRaw.includes('|') ? '|' : ',';
+        const choices = optionsRaw.split(delimiter).map(s => s.trim()).filter(Boolean);
 
         const CANCEL_SENTINEL = '__cancel__';
         const askQuestion = context.get('_askQuestion') as ((q: string, opts?: string[]) => Promise<string>) | null;

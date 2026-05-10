@@ -103,6 +103,48 @@ export interface TemporalConfig {
     deleteAfterDays?: number;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// RELEVANCE CONFIG
+// Defines how non-temporal context types are scored for relevance.
+// Combines vector similarity, graph proximity, and interaction recency
+// into a composite score used during context gathering.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface RelevanceConfig {
+    /**
+     * Weights for composite relevance score (must sum to 1.0).
+     * Defaults applied when absent: semantic=0.4, recency=0.25, graphProximity=0.2,
+     * coOccurrence=0.1, centrality=0.05.
+     */
+    weights?: {
+        semantic?: number;        // vector cosine similarity to query
+        recency?: number;         // how recently the node was updated
+        graphProximity?: number;  // hop distance from other relevant nodes
+        coOccurrence?: number;    // edge count with other relevant nodes
+        centrality?: number;      // total degree (hub nodes score higher)
+    };
+
+    /**
+     * How quickly interaction recency decays.
+     * A node updated this many days ago scores 0.5 on the recency signal.
+     * Default: 30 days.
+     */
+    recencyHalfLifeDays?: number;
+
+    /**
+     * Maximum graph hops to traverse when computing proximity.
+     * Default: 2.
+     */
+    graphDepth?: number;
+
+    /**
+     * Edge labels to follow during graph proximity traversal.
+     * If absent, all edge types are followed.
+     * Example: ['employer', 'owns', 'member-of']
+     */
+    anchorRelationships?: string[];
+}
+
 export interface EntityTypeConfig {
     name: string;
     plural: string;
@@ -118,6 +160,8 @@ export interface EntityTypeConfig {
     calendarDurationField?: string; // field key for period duration (duration)
     /** Temporal window configuration — drives relevance filtering and auto-archive */
     temporal?: TemporalConfig;
+    /** Non-temporal relevance scoring configuration */
+    relevance?: RelevanceConfig;
     /** @deprecated Use temporal.windowDaysBefore instead */
     timeWindowDaysPast?: number;
     /** @deprecated Use temporal.windowDaysAfter instead */

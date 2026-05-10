@@ -44,8 +44,10 @@ export interface SyncResult {
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const MODEL = 'text-embedding-3-small';
-const DIMENSIONS = 256;
+import { LOCAL_EMBED_MODEL, LOCAL_EMBED_DIMENSIONS } from '../llm/providers/local-embed.js';
+
+const MODEL = LOCAL_EMBED_MODEL;
+const DIMENSIONS = LOCAL_EMBED_DIMENSIONS;
 const BATCH_SIZE = 100;
 const SIMILARITY_THRESHOLD = 0.5;
 

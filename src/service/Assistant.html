@@ -860,6 +860,7 @@ function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInp
     { key: "chat",      label: "Chat",      count: messages.length || null },
     { key: "people",    label: "People",    count: null },
     { key: "companies", label: "Companies", count: null },
+    { key: "analytics", label: "Analytics", count: null },
     { key: "settings",  label: "Settings",  count: null },
   ];
   return (
@@ -893,6 +894,7 @@ function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInp
       )}
       {activeTab === "people" && <PeopleTab sendMessage={sendMessage} />}
       {activeTab === "companies" && <CompaniesTab sendMessage={sendMessage} />}
+      {activeTab === "analytics" && <AnalyticsTab />}
       {activeTab === "settings" && <SettingsTab />}
     </main>
   );
@@ -1285,6 +1287,184 @@ const CAP_LABELS = {
   reason: "Reasoning", summarize: "Summarize", categorize: "Categorize",
   format: "Format", chat: "Chat", embed: "Embedding",
 };
+
+function AnalyticsTab() {
+  const [chats, setChats] = React.useState(null);
+  const [days, setDays] = React.useState(30);
+  const [detail, setDetail] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  React.useEffect(() => {
+    setLoading(true);
+    fetch(`/api/chat-logs?days=${days}`)
+      .then(r => r.json())
+      .then(data => { setChats(data); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [days]);
+
+  function openDetail(chatId) {
+    fetch(`/api/chat-logs/${chatId}`)
+      .then(r => r.json())
+      .then(entries => setDetail({ chatId, entries }));
+  }
+
+  if (detail) return <ChatDetail detail={detail} onBack={() => setDetail(null)} />;
+
+  return (
+    <div className="analytics-wrap">
+      <div className="analytics-header">
+        <h2 className="analytics-title">Chat Analytics</h2>
+        <div className="period-picker">
+          {[7, 30, 90].map(d => (
+            <button key={d} className={days === d ? 'active' : ''} onClick={() => setDays(d)}>{d}d</button>
+          ))}
+        </div>
+      </div>
+      {loading && <div className="loading-msg">Loading…</div>}
+      {chats && (
+        <table className="chat-log-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Input</th>
+              <th>Tokens in</th>
+              <th>Tokens out</th>
+              <th>Est. cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {chats.length === 0 && (
+              <tr><td colSpan="5" className="empty-cell">No chats in the last {days} days</td></tr>
+            )}
+            {chats.map(c => (
+              <tr key={c.chatId} onClick={() => openDetail(c.chatId)} className="clickable-row">
+                <td className="mono" style={{whiteSpace:'nowrap'}}>{new Date(c.ts).toLocaleString()}</td>
+                <td className="input-snippet">{c.userInput.slice(0, 70)}{c.userInput.length > 70 ? '…' : ''}</td>
+                <td className="mono">{Number(c.inputTokens).toLocaleString()}</td>
+                <td className="mono">{Number(c.outputTokens).toLocaleString()}</td>
+                <td className="mono">${Number(c.estimatedCostUsd).toFixed(4)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
+function CallRow({ call, index }) {
+  const [open, setOpen] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const prompt = call.prompt;
+  const msgs = prompt?.messages ?? [];
+
+  function handleCopy(e) {
+    e.stopPropagation();
+    const parts = [];
+    if (prompt?.system) parts.push(`=== SYSTEM ===\n${prompt.system}`);
+    for (const m of msgs) parts.push(`=== ${m.role.toUpperCase()} ===\n${String(m.content)}`);
+    if (call.response != null) parts.push(`=== RESPONSE ===\n${String(call.response)}`);
+    navigator.clipboard.writeText(parts.join('\n\n')).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }
+
+  return (
+    <div className="call-row">
+      <div className="call-row-header" onClick={() => setOpen(o => !o)}>
+        <span className="call-index mono">#{index + 1}</span>
+        <span className="call-model mono">{call.model}</span>
+        <span className="call-tokens mono">{Number(call.inputTokens).toLocaleString()} in / {Number(call.outputTokens).toLocaleString()} out</span>
+        <span className="call-cost mono">${Number(call.costUsd).toFixed(4)}</span>
+        <button className={`call-copy-btn${copied ? ' copied' : ''}`} onClick={handleCopy} title="Copy system, prompt &amp; response">{copied ? '✓ Copied' : 'Copy'}</button>
+        <span className="call-toggle">{open ? '▾' : '▸'}</span>
+      </div>
+      {open && (
+        <div className="call-detail">
+          {prompt?.system && (
+            <div className="call-section">
+              <div className="call-section-label">System prompt <span className="call-chars">({prompt.system.length.toLocaleString()} chars)</span></div>
+              <pre className="call-pre">{prompt.system}</pre>
+            </div>
+          )}
+          {msgs.length > 0 && (
+            <div className="call-section">
+              <div className="call-section-label">Messages ({msgs.length})</div>
+              {msgs.map((m, i) => (
+                <div key={i} className={`call-msg call-msg-${m.role}`}>
+                  <div className="call-msg-role">{m.role}</div>
+                  <pre className="call-pre call-pre-msg">{String(m.content)}</pre>
+                </div>
+              ))}
+            </div>
+          )}
+          {call.response != null && (
+            <div className="call-section">
+              <div className="call-section-label">Response <span className="call-chars">({String(call.response).length.toLocaleString()} chars)</span></div>
+              <pre className="call-pre call-pre-response">{call.response}</pre>
+            </div>
+          )}
+          {!prompt && call.response == null && (
+            <div style={{color:'var(--muted)',fontSize:'12px',padding:'8px 0'}}>No prompt/response data — this call predates call-level tracking.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChatDetail({ detail, onBack }) {
+  const start = detail.entries.find(e => e.type === 'start');
+  const summary = detail.entries.find(e => e.type === 'summary');
+  const calls = summary?.data?.calls ?? [];
+
+  return (
+    <div className="analytics-wrap">
+      <button className="back-btn" onClick={onBack}>← Back</button>
+      <div className="detail-title">Chat: <span className="mono">{detail.chatId}</span></div>
+      {start && (
+        <div className="detail-section">
+          <div className="detail-label">User input</div>
+          <div className="detail-value">{start.data.userInput}</div>
+          <div className="detail-time">{new Date(start.ts).toLocaleString()}</div>
+        </div>
+      )}
+      {calls.length > 0 && (
+        <div className="detail-section">
+          <div className="detail-label">LLM calls — {calls.length} calls · {Number(summary?.data?.inputTokens ?? 0).toLocaleString()} in / {Number(summary?.data?.outputTokens ?? 0).toLocaleString()} out · ${Number(summary?.data?.estimatedCostUsd ?? 0).toFixed(4)} total</div>
+          <div className="calls-list">
+            {calls.map((c, i) => <CallRow key={i} call={c} index={i} />)}
+          </div>
+        </div>
+      )}
+      {calls.length === 0 && summary == null && (
+        <div className="detail-section">
+          <div className="detail-label">Token data</div>
+          <div style={{color:'var(--muted)',fontSize:'13px'}}>No token summary — this chat predates token tracking.</div>
+        </div>
+      )}
+      <div className="detail-section">
+        <div className="detail-label">Pipeline log</div>
+        {detail.entries.filter(e => e.type !== 'summary').map((e, i) => (
+          <div key={i} className="log-entry">
+            <span className="log-type">{e.type}</span>
+            <span className="log-ts mono">{new Date(e.ts).toLocaleTimeString()}</span>
+            {e.type === 'response' && e.data.response && (
+              <div className="log-body">{String(e.data.response).slice(0, 300)}{String(e.data.response).length > 300 ? '…' : ''}</div>
+            )}
+            {e.type === 'node_selection' && e.data.nodes && (
+              <div className="log-body">{Array.isArray(e.data.nodes) ? e.data.nodes.join(', ') : ''}</div>
+            )}
+            {e.type === 'error' && e.data.message && (
+              <div className="log-body" style={{color:'var(--oxblood)'}}>{String(e.data.message)}</div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function SettingsTab() {
   const [section, setSection] = useState("profile");
@@ -2034,7 +2214,7 @@ function GlobalStyle() {
         display: grid;
         place-items: center;
         position: relative;
-        font-size: 12px;
+        font-size: 24px;
         font-variant-numeric: tabular-nums;
         color: var(--ink);
         border-radius: var(--radius-sm);
@@ -3262,6 +3442,62 @@ function GlobalStyle() {
       @media (max-width: 1100px) {
         .app { grid-template-columns: minmax(320px, 36%) 1fr; }
       }
+
+      /* ── Analytics tab ─────────────────────────────────────────────── */
+      .analytics-wrap { padding: 20px; overflow-y: auto; height: 100%; }
+      .analytics-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+      .analytics-title { margin: 0; font-size: 15px; font-weight: 600; }
+      .period-picker { display: flex; gap: 4px; }
+      .period-picker button { padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: none; cursor: pointer; font-size: 12px; color: var(--muted); }
+      .period-picker button.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+      .chat-log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      .chat-log-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+      .chat-log-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      .clickable-row:hover { background: var(--paper-2); cursor: pointer; }
+      .input-snippet { max-width: 280px; color: var(--ink); }
+      .empty-cell { color: var(--muted); padding: 20px 8px; }
+      .loading-msg { color: var(--muted); font-size: 13px; padding: 8px 0; }
+      .back-btn { background: none; border: 1px solid var(--line); border-radius: var(--radius); padding: 4px 10px; cursor: pointer; margin-bottom: 16px; font-size: 12px; color: var(--muted); }
+      .back-btn:hover { border-color: var(--ink); color: var(--ink); }
+      .detail-title { margin: 0 0 16px; font-size: 15px; font-weight: 600; }
+      .detail-section { margin-bottom: 20px; }
+      .detail-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 6px; }
+      .detail-value { font-size: 14px; }
+      .detail-time { font-size: 11px; color: var(--muted); margin-top: 4px; }
+      .calls-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      .calls-table th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 500; font-size: 11px; }
+      .calls-table td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+      .calls-table tfoot td { font-weight: 600; border-top: 2px solid var(--line); border-bottom: none; }
+      .log-entry { display: flex; align-items: baseline; gap: 8px; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 12px; flex-wrap: wrap; }
+      .log-type { background: var(--paper-2); border-radius: var(--radius-sm); padding: 1px 6px; font-size: 11px; color: var(--ink-3); flex-shrink: 0; }
+      .log-ts { color: var(--muted-2); font-size: 11px; }
+      .log-body { width: 100%; color: var(--muted); font-size: 12px; margin-top: 2px; line-height: 1.4; }
+
+      /* ── Call row drilldown ─────────────────────────────────────────── */
+      .calls-list { display: flex; flex-direction: column; gap: 4px; }
+      .call-row { border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+      .call-row-header { display: flex; align-items: center; gap: 12px; padding: 8px 12px; cursor: pointer; background: var(--paper-2); user-select: none; }
+      .call-row-header:hover { background: var(--paper-3); }
+      .call-copy-btn { margin-left: auto; padding: 2px 8px; font-size: 11px; background: transparent; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--muted); cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+      .call-copy-btn:hover { background: var(--paper-3); color: var(--ink); border-color: var(--muted-2); }
+      .call-copy-btn.copied { color: var(--sage); border-color: var(--sage); }
+      .call-index { color: var(--muted-2); font-size: 11px; min-width: 24px; }
+      .call-model { font-size: 12px; color: var(--ink); flex: 1; }
+      .call-tokens { font-size: 12px; color: var(--muted); }
+      .call-cost { font-size: 12px; color: var(--ink); }
+      .call-toggle { font-size: 11px; color: var(--muted); margin-left: 4px; }
+      .call-detail { padding: 12px 14px; background: var(--paper); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 14px; }
+      .call-section { display: flex; flex-direction: column; gap: 6px; }
+      .call-section-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+      .call-chars { font-weight: 400; text-transform: none; letter-spacing: 0; }
+      .call-pre { margin: 0; padding: 10px 12px; background: var(--ink); color: var(--paper); font-family: var(--font-mono); font-size: 11px; line-height: 1.5; border-radius: var(--radius); white-space: pre-wrap; word-break: break-word; max-height: 320px; overflow-y: auto; }
+      .call-pre-response { background: var(--ink-3); }
+      .call-msg { display: flex; flex-direction: column; gap: 3px; }
+      .call-msg-role { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+      .call-msg-user .call-msg-role { color: var(--gold); }
+      .call-msg-assistant .call-msg-role { color: var(--sage); }
+      .call-msg-system .call-msg-role { color: var(--muted); }
+      .call-pre-msg { max-height: 200px; }
     `}</style>
   );
 }

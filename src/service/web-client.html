@@ -1096,6 +1096,60 @@
     .personality-grid { grid-template-columns: 1fr; }
     .onboarding-overlay { padding: 20px 12px 40px; }
   }
+
+  /* ── Settings panel ─────────────────────────────────── */
+  .settings-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--dim); font-size: 16px; padding: 4px 6px;
+    border-radius: 4px; line-height: 1;
+  }
+  .settings-btn:hover { color: var(--cyan); background: rgba(0,212,255,0.08); }
+
+  .settings-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+    z-index: 200; display: flex; align-items: flex-start; justify-content: flex-end;
+  }
+  .settings-overlay.hidden { display: none; }
+
+  .settings-panel {
+    background: var(--panel); border-left: 1px solid var(--border);
+    width: 360px; max-width: 100vw; height: 100vh;
+    padding: 24px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px;
+  }
+  .settings-panel h2 { font-size: 14px; color: var(--cyan); text-transform: uppercase; letter-spacing: 1px; }
+  .settings-section { display: flex; flex-direction: column; gap: 10px; }
+  .settings-section label { font-size: 12px; color: var(--dim); }
+
+  .mode-toggle { display: flex; gap: 8px; }
+  .mode-btn {
+    flex: 1; padding: 8px; border: 1px solid var(--border); background: var(--bg);
+    color: var(--dim); cursor: pointer; border-radius: 4px; font-size: 12px;
+    font-family: inherit; transition: all 0.15s;
+  }
+  .mode-btn.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,212,255,0.08); }
+
+  .settings-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--border);
+    color: var(--text); padding: 8px 10px; border-radius: 4px; font-size: 12px;
+    font-family: inherit;
+  }
+  .settings-input:focus { outline: none; border-color: var(--cyan); }
+
+  .settings-save-btn {
+    padding: 9px 16px; background: var(--cyan); color: var(--bg);
+    border: none; border-radius: 4px; cursor: pointer; font-size: 12px;
+    font-family: inherit; font-weight: bold; align-self: flex-start;
+  }
+  .settings-save-btn:hover { background: var(--cyan-dim); }
+  .settings-close-btn {
+    background: none; border: none; color: var(--dim); cursor: pointer;
+    font-size: 18px; align-self: flex-end; padding: 0;
+  }
+  .settings-close-btn:hover { color: var(--text); }
+  .settings-status { font-size: 11px; color: var(--green); }
+  .settings-status.error { color: var(--red); }
+  .settings-hint { font-size: 11px; color: var(--dim); line-height: 1.5; }
+  .settings-hint a { color: var(--cyan); text-decoration: none; }
 </style>
 </head>
 <body>
@@ -1176,6 +1230,7 @@
     <div class="header-right">
       <span id="header-version" style="font-size:11px;color:var(--dim);margin-right:12px"></span>
       <div class="ws-status" id="ws-status"><span class="dot"></span>Connected</div>
+      <button class="settings-btn" id="settings-btn" title="Settings">⚙</button>
     </div>
   </div>
 
@@ -1194,6 +1249,43 @@
       <div id="pin-board">
         <div class="empty-state">Pin items from chat to keep them visible while you work.</div>
       </div>
+    </div>
+  </div>
+
+  <!-- Settings overlay -->
+  <div class="settings-overlay hidden" id="settings-overlay">
+    <div class="settings-panel">
+      <button class="settings-close-btn" id="settings-close">✕</button>
+      <h2>Settings</h2>
+
+      <div class="settings-section">
+        <label>LLM PROVIDER</label>
+        <div class="mode-toggle">
+          <button class="mode-btn" id="mode-synaptic" data-mode="synaptic">Phaibel Account</button>
+          <button class="mode-btn" id="mode-local" data-mode="local">Local (BYOK)</button>
+        </div>
+      </div>
+
+      <div class="settings-section" id="synaptic-fields">
+        <label>ENDPOINT</label>
+        <input class="settings-input" id="settings-endpoint" type="url" placeholder="https://synaptic.hushlark.ai">
+        <label>API TOKEN</label>
+        <input class="settings-input" id="settings-token" type="password" placeholder="Your Synaptic API token">
+        <p class="settings-hint">
+          Don't have an account? <a href="https://hushlark.ai" target="_blank">Sign up at hushlark.ai</a>
+        </p>
+      </div>
+
+      <div class="settings-section" id="local-fields" style="display:none">
+        <p class="settings-hint">
+          Using local API keys. Configure providers from the command line:<br><br>
+          <code>phaibel config add-provider anthropic</code><br>
+          <code>phaibel config add-provider openai</code>
+        </p>
+      </div>
+
+      <button class="settings-save-btn" id="settings-save">Save</button>
+      <div class="settings-status hidden" id="settings-status"></div>
     </div>
   </div>
 
@@ -2411,6 +2503,92 @@ async function markTaskDone(checkEl) {
   // Poll status and scheduler periodically
   setInterval(fetchStatus, 30000);
   setInterval(fetchScheduler, 30000);
+})();
+
+// ── Settings panel ───────────────────────────────────────────────────────────
+(function() {
+  const overlay   = document.getElementById('settings-overlay');
+  const closeBtn  = document.getElementById('settings-close');
+  const openBtn   = document.getElementById('settings-btn');
+  const saveBtn   = document.getElementById('settings-save');
+  const statusEl  = document.getElementById('settings-status');
+  const modeLocal    = document.getElementById('mode-local');
+  const modeSynaptic = document.getElementById('mode-synaptic');
+  const synapticFields = document.getElementById('synaptic-fields');
+  const localFields    = document.getElementById('local-fields');
+  const endpointInput  = document.getElementById('settings-endpoint');
+  const tokenInput     = document.getElementById('settings-token');
+
+  let currentMode = 'local';
+
+  function setMode(mode) {
+    currentMode = mode;
+    modeLocal.classList.toggle('active', mode === 'local');
+    modeSynaptic.classList.toggle('active', mode === 'synaptic');
+    synapticFields.style.display = mode === 'synaptic' ? 'flex' : 'none';
+    localFields.style.display    = mode === 'local'    ? 'flex' : 'none';
+  }
+
+  function showStatus(msg, isError) {
+    statusEl.textContent = msg;
+    statusEl.className = 'settings-status' + (isError ? ' error' : '');
+    statusEl.classList.remove('hidden');
+    setTimeout(() => statusEl.classList.add('hidden'), 3000);
+  }
+
+  async function loadSettings() {
+    try {
+      const res = await fetch('/api/settings/provider');
+      const data = await res.json();
+      setMode(data.mode);
+      if (data.endpoint) endpointInput.value = data.endpoint;
+      if (data.hasToken) tokenInput.placeholder = '(token saved — enter new value to replace)';
+    } catch {}
+  }
+
+  openBtn.addEventListener('click', () => {
+    overlay.classList.remove('hidden');
+    loadSettings();
+  });
+
+  closeBtn.addEventListener('click', () => overlay.classList.add('hidden'));
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.add('hidden'); });
+
+  modeLocal.addEventListener('click', () => setMode('local'));
+  modeSynaptic.addEventListener('click', () => setMode('synaptic'));
+
+  saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      const body = currentMode === 'synaptic'
+        ? { mode: 'synaptic', endpoint: endpointInput.value || 'https://synaptic.hushlark.ai', token: tokenInput.value || undefined }
+        : { mode: 'local' };
+
+      if (currentMode === 'synaptic' && !tokenInput.value && tokenInput.placeholder.includes('saved')) {
+        // Token unchanged — re-send without overwriting
+        const res2 = await fetch('/api/settings/provider');
+        const existing = await res2.json();
+        body.token = undefined; // don't overwrite
+      }
+
+      const res = await fetch('/api/settings/provider', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        showStatus(currentMode === 'synaptic' ? '✓ Connected to Phaibel' : '✓ Switched to local', false);
+        overlay.classList.add('hidden');
+      } else {
+        const d = await res.json().catch(() => ({}));
+        showStatus('Error: ' + (d.error || res.statusText), true);
+      }
+    } catch (e) {
+      showStatus('Error: ' + e.message, true);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
 })();
 </script>
 </body>

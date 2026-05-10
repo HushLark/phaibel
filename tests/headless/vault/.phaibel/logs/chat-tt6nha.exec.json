@@ -1,0 +1,79 @@
+{
+  "timestamp": "2026-05-10T20:05:42.682Z",
+  "chat_id": "chat-tt6nha",
+  "user_input": "Ask bob to lunch to talk about their proposal",
+  "process_source": "custom",
+  "process_key": "chat.generated",
+  "process_json": {
+    "reasoning": [
+      "Multiple Bobs exist, so prompt Gary to select which Bob, then create a lunch event and link it to the selected person."
+    ],
+    "iterations": 1
+  },
+  "context_result": {
+    "startDate": "2026-05-12T12:00:00-06:00",
+    "duration": "PT1H",
+    "location": "",
+    "selected_bob": "Bob Martinez (Designer",
+    "bob_entity": {
+      "filepath": "/Users/gary/Workspaces/ai/phaibel/tests/headless/vault/people/bob-martinez.md",
+      "content": "Bob is the lead UX designer at Acme. Collaborates with Gary on the new onboarding flow. Last spoke at the design review on April 18.",
+      "title": "Bob Martinez",
+      "type": "person",
+      "id": "bob-martinez",
+      "role": "Designer",
+      "company": "Acme Corp",
+      "email": "bob@acme.com",
+      "tags": [
+        "person",
+        "work",
+        "design"
+      ],
+      "updated": "2026-04-20T14:00:00-06:00",
+      "name": "Bob Martinez",
+      "_filepath": "/Users/gary/Workspaces/ai/phaibel/tests/headless/vault/people/bob-martinez.md"
+    },
+    "title": "Lunch with Bob Martinez (Designer — Proposal Discussion",
+    "content": "Lunch meeting with Bob Martinez (Designer to discuss their proposal.",
+    "tags": [
+      "lunch",
+      "meeting",
+      "proposal"
+    ],
+    "filepath": "/Users/gary/Workspaces/ai/phaibel/tests/headless/vault/events/lunch-with-bob-martinez-designer-proposal-discussion_t3tt41yd.md",
+    "entity": {
+      "filepath": "/Users/gary/Workspaces/ai/phaibel/tests/headless/vault/events/lunch-with-bob-martinez-designer-proposal-discussion_t3tt41yd.md",
+      "content": "Lunch meeting with Bob Martinez (Designer to discuss their proposal.",
+      "id": "t3tt41yd",
+      "name": "Lunch with Bob Martinez (Designer — Proposal Discussion",
+      "entityType": "event",
+      "created": "2026-05-10T20:05:37.462Z",
+      "tags": [
+        "lunch",
+        "meeting",
+        "proposal"
+      ],
+      "startDate": "2026-05-12T12:00:00-06:00",
+      "duration": "PT1H",
+      "location": "",
+      "updated": "2026-05-10T20:05:38.376Z",
+      "summary": "Lunch meeting with designer Bob Martinez to discuss a proposal."
+    },
+    "created_entities": [
+      {
+        "id": "t3tt41yd",
+        "title": "Lunch with Bob Martinez (Designer — Proposal Discussion",
+        "entityType": "event",
+        "filepath": "/Users/gary/Workspaces/ai/phaibel/tests/headless/vault/events/lunch-with-bob-martinez-designer-proposal-discussion_t3tt41yd.md"
+      }
+    ],
+    "link": {
+      "source": "event:t3tt41yd",
+      "target": "person:bob-martinez",
+      "label": "attendee"
+    }
+  },
+  "success": true,
+  "outcome_summary": "Done, sir. Agent has created **Lunch with Bob Martinez — Proposal Discussion** for May 12, 2026 at 12:00 PM (1 hour) and linked Bob as an attendee.\n\nYou may wish to drop him an email at bob@acme.com to confirm.",
+  "iterations": 1
+}

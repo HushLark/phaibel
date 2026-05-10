@@ -7,6 +7,7 @@ import './service/index.js';
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { configCommand } from './commands/config.js';
+import { loginCommand, logoutCommand } from './commands/login.js';
 import { syncCommand } from './commands/sync.js';
 import { initCommand } from './commands/init.js';
 import { serviceCommand, queueCommand, indexCommand } from './commands/service.js';
@@ -36,6 +37,8 @@ program
 
 // Register admin/tool commands
 program.addCommand(initCommand);
+program.addCommand(loginCommand);
+program.addCommand(logoutCommand);
 program.addCommand(configCommand);
 program.addCommand(syncCommand);
 program.addCommand(serviceCommand);

@@ -1,0 +1,14 @@
+{
+  "2026-05-10": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 47331,
+      "outputTokens": 4366,
+      "calls": 32
+    },
+    "claude-sonnet-4-6": {
+      "inputTokens": 27166,
+      "outputTokens": 3468,
+      "calls": 9
+    }
+  }
+}

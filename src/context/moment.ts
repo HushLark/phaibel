@@ -23,24 +23,32 @@ export interface MomentContext {
  * Build the "in the moment" context variables.
  * Reads from the entity index (must be built) for task/event data.
  */
+/** Format a Date as a local YYYY-MM-DD string (not UTC). */
+function localDateStr(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Format a Date as HH:MM using local time. */
+function localTimeStr(d: Date): string {
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 export function buildMomentContext(userName?: string): MomentContext {
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
 
-    // Tomorrow's date
+    // Local date/time — use getFullYear/getMonth/etc., NOT toISOString() (which is UTC)
+    const today = localDateStr(now);
+
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    const tomorrowStr = localDateStr(tomorrow);
 
-    // Time
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const currentTime = `${hours}:${minutes}`;
+    const currentTime = localTimeStr(now);
 
     // Day of week
     const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' });
 
-    // Timezone
+    // Timezone offset (e.g. "-06:00")
     const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const off = now.getTimezoneOffset();
     const sign = off <= 0 ? '+' : '-';
@@ -48,8 +56,9 @@ export function buildMomentContext(userName?: string): MomentContext {
     const m = String(Math.abs(off) % 60).padStart(2, '0');
     const tzOffset = `${sign}${h}:${m}`;
 
-    // Full ISO 8601 with timezone offset
-    const isoWithTz = now.toISOString().replace('Z', tzOffset);
+    // Build ISO 8601 from LOCAL time components so the datetime is correct in the user's zone
+    const sec = String(now.getSeconds()).padStart(2, '0');
+    const isoWithTz = `${today}T${currentTime}:${sec}${tzOffset}`;
 
     // ── Task urgency from entity index ───────────────────────────────────
     const index = getEntityIndex();
@@ -84,15 +93,19 @@ export function buildMomentContext(userName?: string): MomentContext {
             const startDate = (event.meta.startDate as string) || '';
             if (!startDate) continue;
 
-            // Check if event falls on today (compare date portion)
-            const eventDate = startDate.slice(0, 10);
-            if (eventDate !== today) continue;
+            // Parse the date and compare using local calendar date (not UTC)
+            let eventLocalDate: string;
+            let timePart: string;
+            if (startDate.includes('T')) {
+                const d = new Date(startDate);
+                eventLocalDate = localDateStr(d);
+                timePart = localTimeStr(d);
+            } else {
+                eventLocalDate = startDate.slice(0, 10);
+                timePart = 'all-day';
+            }
 
-            // Extract time for display
-            const timePart = startDate.includes('T')
-                ? startDate.slice(11, 16) // HH:MM
-                : 'all-day';
-
+            if (eventLocalDate !== today) continue;
             todayEvents.push({ time: timePart, title: event.title });
         }
 

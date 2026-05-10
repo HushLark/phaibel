@@ -14,6 +14,9 @@ export type Frontmatter = z.infer<typeof FrontmatterSchema>;
 // Provider secrets
 export const ProviderSecretSchema = z.object({
     apiKey: z.string(),
+    endpoint: z.string().optional(),
+    refreshToken: z.string().optional(),
+    userId: z.string().optional(),
 });
 
 export const SecretsSchema = z.object({

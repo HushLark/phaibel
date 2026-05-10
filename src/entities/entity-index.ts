@@ -461,6 +461,52 @@ export class EntityIndex {
         return [...this.edges];
     }
 
+    /**
+     * Score and rank candidate nodes by composite relevance using CxMS RelevanceConfig.
+     * Requires the EmbeddingIndex to be loaded for the semantic signal; falls back to
+     * graph + recency only if embeddings are unavailable.
+     *
+     * @param query        The user's query text (used for semantic similarity)
+     * @param entityType   Optional type filter
+     * @param anchorKeys   Keys of already-fetched nodes (seeds for graph proximity)
+     * @param config       RelevanceConfig from the entity type definition
+     */
+    async searchByRelevance(
+        query: string,
+        entityType: EntityTypeName | undefined,
+        anchorKeys: Set<string>,
+        config: import('../entities/entity-type-config.js').RelevanceConfig,
+    ): Promise<IndexSearchResult[]> {
+        const { scoreNodes } = await import('../cxms/relevance-scorer.js');
+        const { getEmbeddingIndex } = await import('./embedding-index.js');
+
+        const candidates = entityType
+            ? this.getNodes(entityType)
+            : this.getNodes();
+
+        // Build vector similarity map
+        const vectorSimilarity = new Map<string, number>();
+        const embeddingIndex = getEmbeddingIndex();
+        if (embeddingIndex.isLoaded && query) {
+            const results = await embeddingIndex.search(query, candidates.length, entityType);
+            for (const r of results) {
+                vectorSimilarity.set(r.key, r.similarity);
+            }
+        }
+
+        const scores = scoreNodes(candidates, config, {
+            vectorSimilarity,
+            edges: this.edges,
+            anchorKeys,
+            now: new Date(),
+        });
+
+        return scores.map(s => ({
+            node: this.nodes.get(s.key)!,
+            score: s.total,
+        })).filter(r => r.node !== undefined);
+    }
+
     getStats(): IndexStats {
         const byType: Record<string, number> = {};
         for (const node of this.nodes.values()) {

@@ -28,6 +28,8 @@
 import type http from 'http';
 import path from 'path';
 import { promises as fs } from 'fs';
+import { getPlatform } from '../platform/index.js';
+import { getLogsDir } from '../paths.js';
 import {
     listEntities,
     parseEntity,
@@ -45,6 +47,7 @@ import { validateEntity, formatValidationErrors } from '../entities/entity-valid
 import { bootstrapFeral, type FeralRuntime } from '../feral/bootstrap.js';
 import { debug } from '../utils/debug.js';
 import { upcomingAnnualDates } from '../context/annual-date-resolver.js';
+import { loadSecrets, saveSecrets, getConfiguredProviders } from '../config.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -594,6 +597,91 @@ export async function handleApiRoute(
             json(res, 200, { ok: true, id: entity.meta.id, title: entity.meta.title });
             return true;
         }
+    }
+
+    // ── Provider settings ────────────────────────────────────────────
+    if (method === 'GET' && pathname === '/api/settings/provider') {
+        const configured = await getConfiguredProviders();
+        const secrets = await loadSecrets();
+        const synapticCfg = secrets.providers['synaptic'] as { apiKey: string; endpoint?: string } | undefined;
+        json(res, 200, {
+            mode: configured.includes('synaptic') ? 'synaptic' : 'local',
+            endpoint: synapticCfg?.endpoint ?? 'https://synaptic.hushlark.ai',
+            hasToken: !!synapticCfg?.apiKey,
+            configured: configured.filter(p => p !== 'synaptic'),
+        });
+        return true;
+    }
+
+    if (method === 'POST' && pathname === '/api/settings/provider') {
+        const body = await parseJsonBody(req) as { mode: string; endpoint?: string; token?: string };
+        const secrets = await loadSecrets();
+        if (body.mode === 'synaptic') {
+            if (!body.token) { error(res, 400, 'token is required'); return true; }
+            secrets.providers['synaptic'] = {
+                apiKey: body.token,
+                endpoint: body.endpoint ?? 'https://synaptic.hushlark.ai',
+            };
+        } else {
+            delete secrets.providers['synaptic'];
+        }
+        await saveSecrets(secrets);
+        json(res, 200, { ok: true });
+        return true;
+    }
+
+    // ── Chat logs ────────────────────────────────────────────────
+
+    // GET /api/chat-logs?days=N — list chats with token summary
+    if (method === 'GET' && pathname === '/api/chat-logs') {
+        const days = parseInt(url.searchParams.get('days') ?? '30', 10);
+        const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+        const { storage, paths: platPaths } = getPlatform();
+        const logsDir = await getLogsDir();
+
+        let files: string[] = [];
+        try { files = (await fs.readdir(logsDir)).filter(f => f.endsWith('.log')); } catch { /* no dir */ }
+
+        const results: Record<string, unknown>[] = [];
+        for (const file of files) {
+            const raw = await storage.readFile(platPaths.join(logsDir, file)).catch(() => null);
+            if (!raw) continue;
+            const entries = raw.trim().split('\n').filter(Boolean)
+                .map((l: string) => { try { return JSON.parse(l); } catch { return null; } })
+                .filter(Boolean) as Record<string, unknown>[];
+            const start = entries.find((e: Record<string, unknown>) => e.type === 'start') as { ts: string; data: Record<string, unknown> } | undefined;
+            const summary = entries.find((e: Record<string, unknown>) => e.type === 'summary') as { data: Record<string, unknown> } | undefined;
+            if (!start || start.ts < cutoff) continue;
+            results.push({
+                chatId: file.replace('.log', ''),
+                ts: start.ts,
+                userInput: start.data.userInput ?? '',
+                inputTokens: summary?.data.inputTokens ?? 0,
+                outputTokens: summary?.data.outputTokens ?? 0,
+                totalTokens: summary?.data.totalTokens ?? 0,
+                estimatedCostUsd: summary?.data.estimatedCostUsd ?? 0,
+                calls: summary?.data.calls ?? [],
+            });
+        }
+        results.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+        json(res, 200, results);
+        return true;
+    }
+
+    // GET /api/chat-logs/:chatId — full JSONL log for one chat
+    const chatLogMatch = pathname.match(/^\/api\/chat-logs\/([^/]+)$/);
+    if (method === 'GET' && chatLogMatch) {
+        const chatId = decodeURIComponent(chatLogMatch[1]);
+        const { storage, paths: platPaths } = getPlatform();
+        const logsDir = await getLogsDir();
+        const logFile = platPaths.join(logsDir, `${chatId}.log`);
+        const raw = await storage.readFile(logFile).catch(() => null);
+        if (!raw) { error(res, 404, 'Chat log not found'); return true; }
+        const entries = raw.trim().split('\n').filter(Boolean)
+            .map((l: string) => { try { return JSON.parse(l); } catch { return null; } })
+            .filter(Boolean);
+        json(res, 200, entries);
+        return true;
     }
 
     // No route matched

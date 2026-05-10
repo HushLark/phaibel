@@ -29,21 +29,16 @@ import { loadEntityTypes } from '../entities/entity-type-config.js';
 import { getUserName } from '../state/manager.js';
 import { getVaultContext } from '../context/reader.js';
 import { getEntityIndex } from '../entities/entity-index.js';
-import { buildContextTree, expandContextTree } from '../context/context-tree.js';
-import { serializeContextTree } from '../context/context-tree-serializer.js';
-import { classifyScope } from '../context/scope-classifier.js';
 import { analyzeQueryRelevance, filterCatalogNodes } from '../context/query-relevance.js';
+import type { RelevantType } from '../context/query-relevance.js';
 import { buildMomentContext, momentToGlobals } from '../context/moment.js';
 import { updateProfile, validateScores, invalidateProfileCache, type BigFiveSample } from '../personality/big-five.js';
-import { probeAll, probeByDate, probeTodos, probeLatest } from '../federation/federator.js';
-import { getEnabledSources } from '../federation/source-registry.js';
 import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../entities/entity.js';
 import { getEntityType } from '../entities/entity-type-config.js';
-import { runProgressiveDisclosure } from '../context/progressive-disclosure.js';
-import { loadSkillMetas, loadSkillManifest, loadSkillScript } from '../skills/skill-manager.js';
-import { runCapabilityDiscovery } from '../context/capability-discovery.js';
-import { hydrateProcess } from '../feral/process/process-json-hydrator.js';
-import type { ProcessConfigJson } from '../feral/process/process-json-hydrator.js';
+import { classifyIntent } from '../context/intent-classifier.js';
+import { buildContextManifest } from '../context/context-manifest.js';
+import { runContextLoop, serializeGatheredContext } from '../context/context-loop.js';
+import { resolveTokens, TOKEN_INSTRUCTIONS } from '../utils/token-resolver.js';
 import type { LLMProvider } from '../llm/types.js';
 import { runWithTokenTracker, type ChatTokenTotals } from '../llm/token-usage.js';
 import { getContextWindowTokens } from '../config.js';
@@ -264,6 +259,14 @@ export async function feralChatHeadless(
         const { result: response, tokens } = await runWithTokenTracker(() =>
             _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? [], platform, clientHints)
         );
+        const totalCostUsd = tokens.calls.reduce((s, c) => s + c.costUsd, 0);
+        await logger.log('summary', {
+            inputTokens: tokens.inputTokens,
+            outputTokens: tokens.outputTokens,
+            totalTokens: tokens.totalTokens,
+            estimatedCostUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
+            calls: tokens.calls,
+        });
         return { response, tokens };
     }
     catch (error) {
@@ -295,205 +298,30 @@ async function _feralChatHeadlessInner(
 
     await logger.log('start', { chatId, userInput });
 
-    // Load vault context (.vault.md chain)
-    // Scrub any secrets that may have been accidentally pasted into .vault.md files
     const vaultContext = scrubSecrets(await getVaultContext().catch(() => '')) as string;
 
-    // ── Build context tree with moment context ─────────────────────
     const entityIndex = getEntityIndex();
     if (!entityIndex.isBuilt) await entityIndex.build();
 
-    const moment = buildMomentContext();
-    const globalsMap = momentToGlobals(moment, userName);
-
-    const scope = classifyScope(userInput, entityTypes, entityIndex.getStats());
-
-    // Deterministic pre-filter runs here so keywords are available for FCP probe
-    const relevance = analyzeQueryRelevance(userInput, entityTypes, entityIndex);
-
-    // Run context tree build and FCP probe fan-out in parallel
-    const [contextTree, fcpRelevance] = await Promise.all([
-        buildContextTree(scope, globalsMap),
-        (async () => {
-            try {
-                const sources = await getEnabledSources();
-                if (sources.length === 0) return null;
-                const inputLower = userInput.toLowerCase();
-                // Route to the right probe mode based on query intent
-                if (/\btodo(s)?\b|open tasks?|action items?/i.test(inputLower)) {
-                    return await probeTodos();
-                }
-                if (/\blatest\b|recent(ly)?\b|last \d+ days?\b/i.test(inputLower)) {
-                    return await probeLatest();
-                }
-                const dateMatch = inputLower.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-                if (dateMatch) {
-                    return await probeByDate(dateMatch[1]);
-                }
-                if (/\btoday\b/i.test(inputLower)) {
-                    return await probeByDate(new Date().toISOString().slice(0, 10));
-                }
-                if (relevance.keywords.length > 0) {
-                    return await probeAll(relevance.keywords);
-                }
-                return null;
-            } catch {
-                return null; // federation errors never block the main pipeline
-            }
-        })(),
-    ]);
-
-    let contextTreeStr = serializeContextTree(contextTree);
-
-    debug('chat', `Context tree: scope=${scope.type}, tokens≈${Math.ceil(contextTreeStr.length / 4)}`);
-    if (fcpRelevance?.hint) {
-        debug('fcp', `Federation hint: ${fcpRelevance.hint.slice(0, 200)}`);
-    }
-
-    const allNodes = runtime.catalog.getAllCatalogNodes();
-    const filteredNodes = filterCatalogNodes(
-        allNodes.filter(n => !n.key.startsWith('speak_')),
-        relevance.relevantTypes,
-        entityTypes,
-    );
-
-    // Build catalog summary for LLM (only relevant nodes, grouped)
-    const nodesByGroup = new Map<string, typeof filteredNodes>();
-    for (const n of filteredNodes) {
-        const group = n.group;
-        if (!nodesByGroup.has(group)) nodesByGroup.set(group, []);
-        nodesByGroup.get(group)!.push(n);
-    }
-    const catalogSummary = Array.from(nodesByGroup.entries())
-        .map(([group, nodes]) =>
-            `[${group}]\n${nodes.map(n => `  ${n.key}: ${n.description || n.name}`).join('\n')}`)
-        .join('\n');
-
-    const relevanceHintBlock = relevance.relevanceHint
-        ? `\nQUERY RELEVANCE (entity matches from vault search):\n${relevance.relevanceHint}\n`
-        : '';
-
-    const fcpHintBlock = fcpRelevance?.hint
-        ? `\nFEDERATED SOURCES (external content matching this query):\n${fcpRelevance.hint}\nTo retrieve full content for any of the above, include fcp_probe_* and fcp_fetch in your node selection.\n`
-        : '';
-
-    debug('chat', `Catalog has ${allNodes.length} nodes, sending ${filteredNodes.length} after relevance filter (${relevance.relevantTypes.map(rt => rt.type).join(', ') || 'all'})`);
-
-    const [llm, reasonMapping] = await Promise.all([
+    const [categorizeLlm, reasonLlm, chatLlm, reasonMapping] = await Promise.all([
+        getModelForCapability('categorize'),
         getModelForCapability('reason'),
+        getModelForCapability('chat'),
         getCapabilityModel('reason'),
     ]);
     const reasonModelName = reasonMapping?.model ?? 'gpt-4o';
 
-    // ── PHASE PD: Progressive Disclosure (entity context) ────────────
-    // Keyword search → summaries → iterative LLM-driven detail requests.
-    // Appends a targeted entity context snapshot used by all later phases.
-    let pdContext = '';
-    if (relevance.keywords.length > 0) {
-        try {
-            status('Scanning context…');
-            pdContext = await runProgressiveDisclosure(
-                llm, userInput, vaultContext, relevance.keywords,
-            );
-            if (pdContext) {
-                contextTreeStr = contextTreeStr + '\n\nPROGRESSIVE CONTEXT:\n' + pdContext;
-                debug('chat', `PD context: ${Math.ceil(pdContext.length / 4)} tokens`);
-            }
-        } catch (err) {
-            debug('chat', `Progressive disclosure failed (non-fatal): ${err}`);
-        }
-    }
+    const moment = buildMomentContext();
+    const globalsMap = momentToGlobals(moment, userName);
+    void globalsMap; // used by removed context tree; kept for future use
 
-    // ── PHASE CD: Capability Discovery ────────────────────────────────
-    // After entity context is loaded, the LLM browses skill manifests and
-    // catalog node docs iteratively until it either selects a skill to run
-    // directly or has enough knowledge to compose a custom Feral process.
-    // The capability snapshot enriches Step 1 and Step 2 prompts.
-    const skillMetas = await loadSkillMetas().catch(() => []);
-    let capabilitySnapshot = '';
-    try {
-        status('Discovering capabilities…');
-        const cdResult = await runCapabilityDiscovery(
-            llm, userInput, pdContext,
-            skillMetas, runtime.catalog, runtime.nodeCodeFactory,
-        );
-        capabilitySnapshot = cdResult.contextSnapshot;
-        debug('chat', `CD snapshot: ${Math.ceil(capabilitySnapshot.length / 4)} tokens`);
+    const relevance = await analyzeQueryRelevance(userInput, entityTypes, entityIndex);
+    const historyBlock = formatHistoryBlock(history);
+    const examplesStr = EXAMPLE_PROCESSES.map((ex, i) =>
+        `Example ${i + 1}: ${ex.description}\n${JSON.stringify(ex.json, null, 2)}`
+    ).join('\n\n');
 
-        // If the LLM selected a skill, execute it and return early
-        if (cdResult.selectedSkill) {
-            const matchedMeta = cdResult.selectedSkill;
-            if (matchedMeta.scriptNames.length > 0) {
-                status(`Running skill: ${matchedMeta.name}…`);
-                const script = await loadSkillScript(matchedMeta, cdResult.selectedScript ?? undefined);
-                if (script) {
-                    const manifest = await loadSkillManifest(matchedMeta);
-                    const skillProcess = hydrateProcess(script.process as unknown as ProcessConfigJson);
-                    inMemorySource.add(skillProcess);
-
-                    let contextResult: Record<string, unknown>;
-                    let success = true;
-                    try {
-                        const ctx = await runtime.runner.run(skillProcess.key, {
-                            user_input: userInput,
-                            skill_name: matchedMeta.name,
-                            skill_instructions: manifest.body,
-                            ...(onQuestion ? { _askQuestion: onQuestion } : {}),
-                        });
-                        contextResult = ctx.getAll();
-                    } catch (error) {
-                        debug('chat', `Skill execution failed: ${error}`);
-                        contextResult = { _error: error instanceof Error ? error.message : String(error) };
-                        success = false;
-                    }
-
-                    // Record skill run in analytics (fire-and-forget)
-                    import('../analytics/analytics-service.js')
-                        .then(({ getAnalyticsService }) => getAnalyticsService().recordSkillRun(matchedMeta.name, success))
-                        .catch(() => {});
-
-                    if (success) {
-                        const filteredResult = Object.entries(contextResult)
-                            .filter(([k]) => !k.startsWith('_') && k !== 'user_input')
-                            .reduce((acc, [k, v]) => {
-                                acc[k] = typeof v === 'string' && v.length > 2000 ? v.slice(0, 2000) + '…' : v;
-                                return acc;
-                            }, {} as Record<string, unknown>);
-
-                        const scrubbedResult = scrubSecrets(filteredResult) as Record<string, unknown>;
-                        await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'skill' });
-
-                        const finalResponse = await synthesizeResponse(
-                            llm, userInput, `Skill "${matchedMeta.name}"`,
-                            [scrubbedResult], [], vaultContext, history, chatId, clientHints,
-                        );
-                        await logger.log('response', { response: finalResponse });
-
-                        writeExecutionLog({
-                            timestamp: new Date().toISOString(),
-                            chat_id: chatId,
-                            user_input: userInput,
-                            process_source: 'skill',
-                            process_key: skillProcess.key,
-                            process_json: { key: skillProcess.key, skill: matchedMeta.name },
-                            context_result: scrubbedResult,
-                            success,
-                            outcome_summary: finalResponse.slice(0, 500),
-                            iterations: 1,
-                        }).catch(err => debug('chat', `Execution log write failed: ${err}`));
-
-                        return finalResponse;
-                    }
-                    // Fall through to custom pipeline if skill execution failed
-                }
-            }
-        }
-    } catch (err) {
-        debug('chat', `Capability discovery failed (non-fatal): ${err}`);
-    }
-
-    // ── PHASE 1: Process reuse ─────────────────────────────────────────
-    // Show the LLM ALL known processes and let it pick one, or choose "custom".
+    // ── PHASE 0: Process reuse check ─────────────────────────────────
     const allProcesses = runtime.processFactory.getAllProcesses()
         .filter(p => p.key !== 'chat.generated');
 
@@ -504,9 +332,7 @@ async function _feralChatHeadlessInner(
             .map(p => `- ${p.key}: ${p.description}`)
             .join('\n');
 
-        const historyBlock = formatHistoryBlock(history);
-
-        const phase1Response = await llm.chat(
+        const phase0Response = await categorizeLlm.chat(
             [{
                 role: 'user' as const,
                 content: `The user said: "${userInput}"
@@ -530,10 +356,10 @@ Return ONLY the JSON object, no markdown fences.`,
             },
         );
 
-        debug('chat', `Phase 1 response: ${phase1Response}`);
+        debug('chat', `Phase 0 response: ${phase0Response}`);
 
         try {
-            const matchResult = parseJsonResponse(phase1Response) as {
+            const matchResult = parseJsonResponse(phase0Response) as {
                 action: string;
                 process_key?: string;
                 context_overrides?: Record<string, unknown>;
@@ -569,19 +395,15 @@ Return ONLY the JSON object, no markdown fences.`,
                     }, {} as Record<string, unknown>);
 
                 const scrubbedResult = scrubSecrets(filteredResult) as Record<string, unknown>;
-
                 await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'reuse' });
 
                 const matchedProcess = allProcesses.find(p => p.key === matchResult.process_key);
-
-                // Synthesize response
                 const finalResponse = await synthesizeResponse(
-                    llm, userInput, matchResult.reasoning,
-                    [scrubbedResult], [], vaultContext, history, chatId, clientHints,
+                    chatLlm, userInput, matchResult.reasoning,
+                    [scrubbedResult], [], vaultContext, history, chatId, clientHints, reasonModelName,
                 );
                 await logger.log('response', { response: finalResponse });
 
-                // Fire-and-forget execution log
                 writeExecutionLog({
                     timestamp: new Date().toISOString(),
                     chat_id: chatId,
@@ -598,24 +420,76 @@ Return ONLY the JSON object, no markdown fences.`,
                 return finalResponse;
             }
         } catch {
-            debug('chat', 'Phase 1 parse failed, falling through to custom pipeline');
+            debug('chat', 'Phase 0 parse failed, falling through to custom pipeline');
         }
     }
 
-    // ── PHASE 2: Custom process pipeline ─────────────────────────────
-    // Only runs if Phase 1 chose "custom", no processes exist, or parse failed.
+    // ── PHASE 1: Intent classification ───────────────────────────────
+    status('Understanding request…');
+    const intent = await classifyIntent(
+        categorizeLlm, userInput, history, entityTypes.map(et => et.name),
+    );
+    await logger.log('intent', {
+        summary: intent.summary,
+        actionType: intent.actionType,
+        entityTypes: intent.entityTypes,
+        timeframe: intent.timeframe,
+        isSimple: intent.isSimple,
+        confidence: intent.confidence,
+    });
 
-    // ── STEP 1: Select catalog nodes ─────────────────────────────────
+    // ── PHASE 2: Context manifest ────────────────────────────────────
+    const manifest = buildContextManifest(entityIndex, entityTypes, moment, intent.entityTypes);
+    await logger.log('context_manifest', {
+        totalEntities: manifest.totalEntities,
+        types: manifest.entityTypes.map(t => ({ type: t.type, count: t.count })),
+    });
+
+    // ── PHASE 3: Context selection loop ─────────────────────────────
+    status('Gathering context…');
+    const gathered = await runContextLoop(categorizeLlm, intent, manifest, entityIndex);
+    await logger.log('context_fetch', {
+        rounds: gathered.rounds,
+        entityCount: gathered.nodes.length,
+        summary: gathered.summary,
+        fetchedTypes: [...new Set(gathered.nodes.map(n => n.type))],
+    });
+
+    debug('chat', `Context gathered: ${gathered.nodes.length} entities in ${gathered.rounds} round(s)`);
+
+    // ── PHASE 4: Node selection ──────────────────────────────────────
     status('Selecting capabilities…');
 
-    const historyBlock = formatHistoryBlock(history);
+    const intentRelevantTypes: RelevantType[] = intent.entityTypes.length > 0
+        ? intent.entityTypes.map(t => ({ type: t, reason: 'mentioned' as const, matchCount: 0, matchSamples: [] }))
+        : relevance.relevantTypes;
 
-    const step1Response = await llm.chat(
+    const allNodes = runtime.catalog.getAllCatalogNodes();
+    const filteredNodes = filterCatalogNodes(
+        allNodes.filter(n => !n.key.startsWith('speak_')),
+        intentRelevantTypes,
+        entityTypes,
+    );
+
+    const nodesByGroup = new Map<string, typeof filteredNodes>();
+    for (const n of filteredNodes) {
+        const group = n.group;
+        if (!nodesByGroup.has(group)) nodesByGroup.set(group, []);
+        nodesByGroup.get(group)!.push(n);
+    }
+    const catalogSummary = Array.from(nodesByGroup.entries())
+        .map(([group, nodes]) =>
+            `[${group}]\n${nodes.map(n => `  ${n.key}: ${n.description || n.name}`).join('\n')}`)
+        .join('\n');
+
+    debug('chat', `Catalog: ${allNodes.length} total → ${filteredNodes.length} after intent filter`);
+
+    const phase4Response = await categorizeLlm.chat(
         [{
             role: 'user' as const,
             content: `The user said: "${userInput}"
 ${historyBlock}
-${contextTreeStr}
+${serializeGatheredContext(gathered)}
 
 Each entity type has create_*, list_*, find_*, update_*, delete_*, complete_*, set_{type}_{field} catalog nodes.
 CRITICAL: Match entity types precisely — event≠task. Use create_event for appointments/meetings, create_task for todos.
@@ -623,9 +497,8 @@ For new content types (recipe, vehicle, etc.), select "create_content_type". Use
 For field values on creation, also select "set_context_value" to stage fields in context.
 
 AVAILABLE CATALOG NODES:
-${relevanceHintBlock}${fcpHintBlock}
 ${catalogSummary}
-${capabilitySnapshot ? `\nCAPABILITY CONTEXT (from discovery phase):\n${capabilitySnapshot}\n` : ''}
+
 RULES:
 - Always include "start" and "stop". Select only nodes needed for the request.
 - Prefer entity nodes (create_*, complete_*, find_*) over llm_chat for data operations.
@@ -646,30 +519,24 @@ Return ONLY the JSON object, no markdown fences.`,
         },
     );
 
-    debug('chat', `Step 1 response: ${step1Response}`);
+    debug('chat', `Phase 4 (node selection) response: ${phase4Response}`);
 
     let nodeSelection: { reasoning: string; nodes: string[] };
     try {
-        nodeSelection = parseJsonResponse(step1Response) as { reasoning: string; nodes: string[] };
+        nodeSelection = parseJsonResponse(phase4Response) as { reasoning: string; nodes: string[] };
     } catch (err) {
-        debug('chat', `Step 1 raw response: ${step1Response}`);
+        debug('chat', `Phase 4 raw response: ${phase4Response}`);
         throw new Error(`Failed to parse node selection from LLM: ${err instanceof Error ? err.message : err}`);
     }
 
     await logger.log('node_selection', { reasoning: nodeSelection.reasoning, nodes: nodeSelection.nodes });
 
-    // Ensure start/stop are included
     if (!nodeSelection.nodes.includes('start')) nodeSelection.nodes.unshift('start');
     if (!nodeSelection.nodes.includes('stop')) nodeSelection.nodes.push('stop');
 
-    // Gather selected node details + their config descriptions
     const selectedNodes = nodeSelection.nodes
         .map(key => {
-            try {
-                return runtime.catalog.getCatalogNode(key);
-            } catch {
-                return null;
-            }
+            try { return runtime.catalog.getCatalogNode(key); } catch { return null; }
         })
         .filter(Boolean);
 
@@ -682,7 +549,6 @@ Return ONLY the JSON object, no markdown fences.`,
         })
         .join('\n');
 
-    // Get config descriptions for the selected node codes
     const nodeCodeDetails: string[] = [];
     for (const n of selectedNodes) {
         if (!n) continue;
@@ -690,7 +556,6 @@ Return ONLY the JSON object, no markdown fences.`,
             const nodeCode = runtime.nodeCodeFactory.getNodeCode(n.nodeCodeKey);
             const Ctor = nodeCode.constructor as { configDescriptions?: Array<{ key: string; name: string; description: string; type: string; default?: unknown; isOptional?: boolean; isSecret?: boolean }> };
             const Ctor2 = nodeCode.constructor as { resultDescriptions?: Array<{ status: string; description: string }> };
-            // Filter out secret config keys — they should never appear in LLM prompts
             const configs = (Ctor.configDescriptions ?? []).filter(c => !c.isSecret);
             const results = Ctor2.resultDescriptions ?? [];
             if (configs.length > 0 || results.length > 0) {
@@ -701,75 +566,40 @@ Return ONLY the JSON object, no markdown fences.`,
                 nodeCodeDetails.push(`${n.key} (nodeCode: ${n.nodeCodeKey}):\n  Configuration:\n${configStr}\n  Results (edge keys):\n${resultStr}`);
             }
         } catch {
-            // Skip if node code not found
+            // skip missing node codes
         }
     }
 
-    // ── STEP 1.5: Information gathering (skipped in headless mode) ──
-    // In headless mode we don't prompt for follow-ups — proceed with what we have
-    const gatheredInfoStr = '';
-
-    // ── Expand context tree with entity types referenced by selected nodes ──
-    // When find_*, link_*, update_*, complete_*, set_* nodes are selected,
-    // the LLM needs leaf data for those types to avoid hallucinating titles.
-    const refNodePattern = /^(find_|link_|update_|complete_|set_|add_tag_|search_)/;
-    const additionalTypes: string[] = [];
-    for (const key of nodeSelection.nodes) {
-        if (refNodePattern.test(key)) {
-            const parts = key.split('_');
-            if (key === 'link_entities') {
-                for (const et of entityTypes) {
-                    if (!contextTree.branches.some(b => b.entityType === et.name && b.leaves.length > 0)) {
-                        additionalTypes.push(et.name);
-                    }
-                }
-            } else if (parts.length >= 2) {
-                const typeName = parts.slice(1).join('_');
-                const match = entityTypes.find(et => et.name === typeName || et.plural === typeName);
-                if (match && !contextTree.branches.some(b => b.entityType === match.name && b.leaves.length > 0)) {
-                    additionalTypes.push(match.name);
-                }
-            }
-        }
-    }
-    if (additionalTypes.length > 0) {
-        await expandContextTree(contextTree, additionalTypes);
-        contextTreeStr = serializeContextTree(contextTree);
-    }
-
-    // ── ORCHESTRATION LOOP ────────────────────────────────────────────
-    // Iteratively: generate process → run → check completion → repeat
+    // ── PHASES 5–7: Design → Execute → Check (loop) ──────────────────
     const MAX_ITERATIONS = 3;
     const allResults: Record<string, unknown>[] = [];
     const allReasonings: string[] = [];
     const allProcessKeys: string[] = [];
     let remainingWork = userInput;
 
-    const examplesStr = EXAMPLE_PROCESSES.map((ex, i) =>
-        `Example ${i + 1}: ${ex.description}\n${JSON.stringify(ex.json, null, 2)}`
-    ).join('\n\n');
+    const gatheredContextStr = serializeGatheredContext(gathered);
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-        // ── STEP 2: Generate process ─────────────────────────────────
+        // ── PHASE 5: Process design (reason model) ───────────────────
         status(`Designing process${iteration > 0 ? ` (step ${iteration + 1})` : ''}…`);
 
         const previousResultsStr = allResults.length > 0
             ? `\n\nRESULTS FROM PREVIOUS STEPS:\n${compactResultsForPrompt(allResults, reasonModelName)}`
             : '';
 
-        const step2Response = await llm.chat(
+        const phase5Response = await reasonLlm.chat(
             [{
                 role: 'user' as const,
                 content: `Build a Feral process to handle: "${remainingWork}"
-${historyBlock}${gatheredInfoStr}${previousResultsStr}
-${contextTreeStr}
+${historyBlock}${previousResultsStr}
+${gatheredContextStr}
 
 SELECTED CATALOG NODES (you must only use nodes from this list):
 ${selectedNodeDetails}
 
 NODE CONFIGURATION DETAILS:
 ${nodeCodeDetails.join('\n\n')}
-${capabilitySnapshot ? `\nCAPABILITY CONTEXT (from discovery phase — use node docs above to configure correctly):\n${capabilitySnapshot}\n` : ''}
+
 PROCESS FORMAT RULES:
 1. schema_version=1, key="chat.generated". First node: key="start", catalog_node_key="start". Last node: key="done", catalog_node_key="stop", edges={}.
 2. "edges" maps result statuses to next node key. Most nodes produce "ok" and "error". Use {context_key} for interpolation.
@@ -778,7 +608,7 @@ PROCESS FORMAT RULES:
 5. create_* nodes ONLY accept: entity_type, entity_title, entity_body, tags, extra_fields. To set fields (startDate, priority, etc.): put values in process "context" object, list field names in extra_fields. For multi-entity with different field values, use set_context_value nodes between creates.
 6. DATE FORMAT: date→YYYY-MM-DD, datetime→ISO 8601 with timezone (e.g. "2026-03-25T14:00:00-06:00"). Events ALWAYS need startDate in context+extra_fields. Include duration in ISO 8601 format (e.g. "PT1H" not "1h", "PT30M" not "30m") or endDate if known. Default startDate to 09:00 if no time given.
 7. CRITICAL: Match entity types precisely. event≠task. Use create_event for appointments/meetings, create_task for todos. Never substitute types.
-8. When referencing existing entities, use EXACT titles from CONTEXT TREE. Use valid enum values only.
+8. When referencing existing entities, use EXACT titles from GATHERED CONTEXT. Use valid enum values only.
 9. Prefer ACTION over QUESTIONS. Use sensible defaults (today's date, "medium" priority). Max one prompt node per process.
 10. If create_content_type is in your node list, you MUST use it. Create type FIRST, then create_entity. Don't use "note" as a generic bucket.
 11. Multiple create_entity nodes of same type work correctly — don't worry about context key collisions.
@@ -804,25 +634,20 @@ Return ONLY the JSON object, no markdown fences.`,
             },
         );
 
-        debug('chat', `Step 2 response (iteration ${iteration + 1}): ${step2Response}`);
+        debug('chat', `Phase 5 response (iteration ${iteration + 1}): ${phase5Response}`);
 
         let processDesign: { reasoning: string; process: Record<string, unknown> };
         try {
-            processDesign = parseJsonResponse(step2Response) as { reasoning: string; process: Record<string, unknown> };
+            processDesign = parseJsonResponse(phase5Response) as { reasoning: string; process: Record<string, unknown> };
         } catch (err) {
-            debug('chat', `Step 2 raw response: ${step2Response}`);
+            debug('chat', `Phase 5 raw response: ${phase5Response}`);
             throw new Error(`Failed to parse process design from LLM: ${err instanceof Error ? err.message : err}`);
         }
 
         allReasonings.push(processDesign.reasoning);
-
         await logger.log('process_design', { iteration: iteration + 1, reasoning: processDesign.reasoning, process: processDesign.process });
-
-        // Emit process JSON for visualization
         onProcess?.(processDesign.process);
 
-        // Detect duplicate process — if the LLM generated the same process
-        // as a previous iteration, it's looping and we should stop
         const processFingerprint = JSON.stringify(processDesign.process);
         if (allProcessKeys.includes(processFingerprint)) {
             debug('chat', `Duplicate process detected at iteration ${iteration + 1}, breaking loop`);
@@ -830,7 +655,7 @@ Return ONLY the JSON object, no markdown fences.`,
         }
         allProcessKeys.push(processFingerprint);
 
-        // ── STEP 3: Execute the generated process ────────────────────
+        // ── PHASE 6: Execute ─────────────────────────────────────────
         status(`Running process${iteration > 0 ? ` (step ${iteration + 1})` : ''}…`);
 
         let processJsonStr: string;
@@ -847,7 +672,6 @@ Return ONLY the JSON object, no markdown fences.`,
 
         let contextResult: Record<string, unknown>;
         try {
-            // Merge process-level context values (e.g. field values for extra_fields)
             const processContext = (processDesign.process.context ?? {}) as Record<string, unknown>;
             const ctx = await runtime.runner.run(process.key, {
                 ...processContext,
@@ -860,8 +684,6 @@ Return ONLY the JSON object, no markdown fences.`,
             contextResult = { _error: error instanceof Error ? error.message : String(error) };
         }
 
-        // Filter internal keys and scrub any secrets from context results
-        // Keep 'error' and '_error' visible so completion checker knows about failures
         const iterationResult = Object.entries(contextResult)
             .filter(([k]) => k === '_error' || (!k.startsWith('_') && k !== 'user_input'))
             .reduce((acc, [k, v]) => {
@@ -870,14 +692,13 @@ Return ONLY the JSON object, no markdown fences.`,
             }, {} as Record<string, unknown>);
 
         allResults.push(scrubSecrets(iterationResult) as Record<string, unknown>);
-
         await logger.log('process_result', { iteration: iteration + 1, results: iterationResult });
 
-        // ── STEP 4: Check completion ──────────────────────────────────
+        // ── PHASE 7: Completion check (categorize model) ─────────────
         if (iteration < MAX_ITERATIONS - 1) {
             status('Checking if task is complete…');
 
-            const completionResponse = await llm.chat(
+            const completionResponse = await categorizeLlm.chat(
                 [{
                     role: 'user' as const,
                     content: `The user originally said: "${userInput}"
@@ -914,7 +735,7 @@ Return ONLY the JSON object, no markdown fences.`,
                 },
             );
 
-            debug('chat', `Completion check (iteration ${iteration + 1}): ${completionResponse}`);
+            debug('chat', `Phase 7 completion check (iteration ${iteration + 1}): ${completionResponse}`);
 
             let completion: { status: string; remaining?: string };
             try {
@@ -931,13 +752,12 @@ Return ONLY the JSON object, no markdown fences.`,
                 break;
             }
 
-            // Update the remaining work for the next iteration
             remainingWork = completion.remaining || userInput;
             debug('chat', `More work needed: ${remainingWork}`);
         }
     }
 
-    // ── STEP 5: Synthesize response ──────────────────────────────────
+    // ── PHASE 8: Synthesize response ─────────────────────────────────
     status('Composing response…');
 
     const nodesUsed = selectedNodes
@@ -945,12 +765,11 @@ Return ONLY the JSON object, no markdown fences.`,
         .map(n => `- ${n!.key}: ${n!.description || n!.name}`);
 
     const finalResponse = await synthesizeResponse(
-        llm, userInput, nodeSelection.reasoning,
+        chatLlm, userInput, allReasonings.join(' → ') || gathered.summary,
         allResults, nodesUsed, vaultContext, history, chatId, clientHints, reasonModelName,
     );
     await logger.log('response', { response: finalResponse });
 
-    // Fire-and-forget execution log
     const lastProcessDesign = allReasonings.length > 0
         ? { reasoning: allReasonings, iterations: allReasonings.length }
         : {};
@@ -1014,6 +833,7 @@ RESPONSE GUIDELINES:
 - Keep it concise — a few sentences, not paragraphs
 - If there were errors, acknowledge honestly and suggest alternatives
 - If the results suggest follow-up actions, briefly mention them
+${TOKEN_INSTRUCTIONS}
 
 PERSONALITY OBSERVATION (Big Five — include with every response):
 After composing your response, rate BOTH the user and yourself on these 5 traits (1-5 scale) based on THIS interaction only. Observe the user's communication style, requests, and behavior. Observe your own response style.
@@ -1075,6 +895,9 @@ You MUST return valid JSON with this structure:
         responseText = rawResponse.trim();
         debug('chat', 'Synthesis returned plain text — personality scoring skipped');
     }
+
+    // Resolve datetime tokens ({{local_time:ISO}} etc.) to local-timezone strings
+    responseText = resolveTokens(responseText);
 
     // Post-message judge — fire-and-forget alongside personality update
     if (chatId) {

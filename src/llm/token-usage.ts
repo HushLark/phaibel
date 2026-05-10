@@ -8,6 +8,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { getPlatform } from '../platform/index.js';
 import { getVaultConfigDir } from '../paths.js';
+import { estimateCost } from '../analytics/analytics-service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -91,6 +92,8 @@ export async function recordUsage(
     model: string,
     inputTokens: number,
     outputTokens: number,
+    prompt?: ChatCall['prompt'],
+    response?: string,
 ): Promise<void> {
     const data = await loadUsage();
     const today = new Date().toISOString().split('T')[0];
@@ -103,7 +106,7 @@ export async function recordUsage(
     data[today][model].calls += 1;
 
     // Feed per-chat tracker if active
-    feedChatTracker(inputTokens, outputTokens);
+    feedChatTracker(model, inputTokens, outputTokens, prompt, response);
 
     const pruned = prune(data);
     await saveUsage(pruned);
@@ -215,10 +218,20 @@ export async function getTrackedModels(): Promise<string[]> {
 // PER-CHAT TOKEN TRACKING (via AsyncLocalStorage)
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface ChatCall {
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+    prompt?: { system?: string; messages: { role: string; content: string }[] };
+    response?: string;
+}
+
 export interface ChatTokenTotals {
     inputTokens: number;
     outputTokens: number;
     totalTokens: number;
+    calls: ChatCall[];
 }
 
 const chatTokenStore = new AsyncLocalStorage<ChatTokenTotals>();
@@ -226,12 +239,19 @@ const chatTokenStore = new AsyncLocalStorage<ChatTokenTotals>();
 /**
  * Called by recordUsage to feed the active per-chat tracker (if any).
  */
-function feedChatTracker(inputTokens: number, outputTokens: number): void {
+function feedChatTracker(
+    model: string,
+    inputTokens: number,
+    outputTokens: number,
+    prompt?: ChatCall['prompt'],
+    response?: string,
+): void {
     const tracker = chatTokenStore.getStore();
     if (tracker) {
         tracker.inputTokens += inputTokens;
         tracker.outputTokens += outputTokens;
         tracker.totalTokens += inputTokens + outputTokens;
+        tracker.calls.push({ model, inputTokens, outputTokens, costUsd: estimateCost(model, inputTokens, outputTokens), prompt, response });
     }
 }
 
@@ -240,7 +260,7 @@ function feedChatTracker(inputTokens: number, outputTokens: number): void {
  * Returns both the function's result and accumulated token totals.
  */
 export async function runWithTokenTracker<T>(fn: () => Promise<T>): Promise<{ result: T; tokens: ChatTokenTotals }> {
-    const tokens: ChatTokenTotals = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+    const tokens: ChatTokenTotals = { inputTokens: 0, outputTokens: 0, totalTokens: 0, calls: [] };
     const result = await chatTokenStore.run(tokens, fn);
     return { result, tokens };
 }

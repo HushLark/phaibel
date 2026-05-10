@@ -245,6 +245,8 @@ export class WebServer {
             url.pathname.startsWith('/api/entities') ||
             url.pathname.startsWith('/api/search') ||
             url.pathname.startsWith('/api/processes') ||
+            url.pathname.startsWith('/api/chat-logs') ||
+            url.pathname.startsWith('/api/settings') ||
             url.pathname === '/api/calendar') {
             res.setHeader('Deprecation', 'true');
             res.setHeader('Link', '</cx/>; rel="successor-version"');

@@ -47,14 +47,22 @@ export class ClaudeProvider implements LLMProvider {
             messages: chatMessages,
         });
 
-        // Track token usage
-        if (response.usage) {
-            recordUsage(this.modelId, response.usage.input_tokens, response.usage.output_tokens).catch(() => {});
-        }
-
         // Extract text from response
         const textBlock = response.content.find(block => block.type === 'text');
-        return textBlock?.text || '';
+        const responseText = textBlock?.text || '';
+
+        // Track token usage
+        if (response.usage) {
+            recordUsage(
+                this.modelId,
+                response.usage.input_tokens,
+                response.usage.output_tokens,
+                { system: systemPrompt, messages: chatMessages },
+                responseText,
+            ).catch(() => {});
+        }
+
+        return responseText;
     }
 }
 

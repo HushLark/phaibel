@@ -56,11 +56,21 @@ export class GeminiProvider implements LLMProvider {
             messages: openaiMessages,
         });
 
+        const responseText = response.choices[0]?.message?.content || '';
+
         if (response.usage) {
-            recordUsage(this.modelId, response.usage.prompt_tokens, response.usage.completion_tokens).catch(() => {});
+            const sys = openaiMessages.find(m => m.role === 'system');
+            const nonSys = openaiMessages.filter(m => m.role !== 'system') as { role: string; content: string }[];
+            recordUsage(
+                this.modelId,
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens,
+                { system: typeof sys?.content === 'string' ? sys.content : undefined, messages: nonSys },
+                responseText,
+            ).catch(() => {});
         }
 
-        return response.choices[0]?.message?.content || '';
+        return responseText;
     }
 }
 

@@ -46,6 +46,15 @@ export function getContextWindowTokens(model: string): number {
 }
 
 export const PROVIDER_MODELS: Record<string, Partial<Record<LLMCapability, string>>> = {
+    // Synaptic manages model selection server-side; "model" here is the capability path.
+    synaptic: {
+        reason: 'reason',
+        chat: 'chat',
+        summarize: 'summarize',
+        categorize: 'categorize',
+        format: 'format',
+        // embed excluded — Synaptic routes embed through OpenAI; use local OpenAI for now
+    },
     openai: {
         reason: 'gpt-4o',
         summarize: 'gpt-4o-mini',
@@ -82,13 +91,14 @@ export const PROVIDER_MODELS: Record<string, Partial<Record<LLMCapability, strin
 
 // Preferred provider order per capability when multiple providers are configured.
 // First available provider with a model for the capability wins.
+// synaptic leads every capability — when a Phaibel account is configured it takes over.
 const CAPABILITY_PREFERRED_PROVIDERS: Record<LLMCapability, string[]> = {
-    reason: ['anthropic', 'google', 'deepseek', 'openai'],      // Claude Sonnet best, Gemini 2.5 Pro strong
-    chat: ['anthropic', 'google', 'deepseek', 'openai'],        // Claude best personality, Gemini Flash good & cheap
-    summarize: ['deepseek', 'google', 'openai', 'anthropic'],   // DeepSeek-V3 cheapest, Gemini 2.5 Flash also very cheap
-    categorize: ['deepseek', 'google', 'openai', 'anthropic'],  // DeepSeek-V3 cheapest, Gemini 2.5 Flash also very cheap
-    format: ['deepseek', 'google', 'openai', 'anthropic'],      // DeepSeek-V3 cheapest, Gemini 2.5 Flash also very cheap
-    embed: ['openai'],                                           // Only OpenAI supports embeddings
+    reason:     ['synaptic', 'anthropic', 'google', 'deepseek', 'openai'],
+    chat:       ['synaptic', 'anthropic', 'google', 'deepseek', 'openai'],
+    summarize:  ['synaptic', 'deepseek', 'google', 'openai', 'anthropic'],
+    categorize: ['synaptic', 'deepseek', 'google', 'openai', 'anthropic'],
+    format:     ['synaptic', 'deepseek', 'google', 'openai', 'anthropic'],
+    embed:      ['openai'],  // embed stays local — synaptic embed endpoint not yet supported
 };
 
 // Config stores only explicit user overrides; everything else is auto-resolved.

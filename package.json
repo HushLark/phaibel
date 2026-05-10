@@ -45,11 +45,13 @@
     "test:all": "vitest run",
     "eval": "tsx evals/run-eval.ts",
     "eval:loop": "tsx evals/loop.ts",
-    "eval:compare": "tsx evals/compare.ts"
+    "eval:compare": "tsx evals/compare.ts",
+    "headless": "node tests/headless/repl.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@gclift/cxms": "^2.1.18",
+    "@huggingface/transformers": "^4.2.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",

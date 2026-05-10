@@ -3,10 +3,12 @@ import { createClaudeProvider } from './claude.js';
 import { createDeepSeekProvider } from './deepseek.js';
 import { createGeminiProvider } from './gemini.js';
 import { createOpenAIProvider } from './openai.js';
+import { createSynapticProvider } from './synaptic.js';
 
 const providers: Map<string, (modelId?: string) => LLMProvider> = new Map();
 
 // Register built-in providers
+providers.set('synaptic', createSynapticProvider);
 providers.set('anthropic', createClaudeProvider);
 providers.set('deepseek', createDeepSeekProvider);
 providers.set('google', createGeminiProvider);

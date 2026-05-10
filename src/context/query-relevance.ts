@@ -13,6 +13,7 @@
 import type { EntityTypeConfig } from '../entities/entity-type-config.js';
 import type { EntityIndex } from '../entities/entity-index.js';
 import type { CatalogNode } from '../feral/catalog/catalog-node.js';
+import { getEmbeddingIndex } from '../entities/embedding-index.js';
 
 // English stop words — common words that don't carry entity-matching signal
 const STOP_WORDS = new Set([
@@ -121,12 +122,13 @@ export function extractKeywords(input: string): string[] {
  * 2. Check if any keywords match entity type names/plurals
  * 3. Search entity index for keyword matches, group by type
  * 4. Check action words for type hints
+ * 5. Use vector similarity (local embeddings) to surface types with relevance config
  */
-export function analyzeQueryRelevance(
+export async function analyzeQueryRelevance(
     userInput: string,
     entityTypes: EntityTypeConfig[],
     entityIndex: EntityIndex,
-): RelevanceResult {
+): Promise<RelevanceResult> {
     const keywords = extractKeywords(userInput);
     const inputLower = userInput.toLowerCase();
 
@@ -195,6 +197,28 @@ export function analyzeQueryRelevance(
                     });
                 }
             }
+        }
+    }
+
+    // 4. Vector similarity — surface types with RelevanceConfig whose entities
+    //    score semantically close to the query, even without keyword overlap
+    const embeddingIndex = getEmbeddingIndex();
+    if (embeddingIndex.isLoaded && userInput.trim()) {
+        try {
+            const vectorResults = await embeddingIndex.search(userInput, 20);
+            for (const result of vectorResults) {
+                const [type] = result.key.split(':');
+                if (!typeMap.has(type) && entityTypes.some(et => et.name === type)) {
+                    typeMap.set(type, {
+                        type,
+                        reason: 'entity_match',
+                        matchCount: 1,
+                        matchSamples: [],
+                    });
+                }
+            }
+        } catch {
+            // Embeddings not available — skip vector signal
         }
     }
 
