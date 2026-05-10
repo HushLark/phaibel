@@ -2077,6 +2077,323 @@ function DayDivider({ label }) {
   );
 }
 
+// ── ph: component system ────────────────────────────────────────────────────
+
+function parsePhBlocks(text) {
+  // Match ```ph:name params\n...content...\n``` blocks
+  const RE = /```ph:([^\s`]+)([ \t][^\n]*)?\n([\s\S]*?)```/g;
+  const segments = [];
+  let last = 0;
+  let m;
+  while ((m = RE.exec(text)) !== null) {
+    if (m.index > last) segments.push({ type: 'text', content: text.slice(last, m.index) });
+    const name = m[1];
+    const paramStr = (m[2] || '').trim();
+    const params = {};
+    for (const part of paramStr.match(/\S+=\S+/g) || []) {
+      const eq = part.indexOf('=');
+      params[part.slice(0, eq)] = part.slice(eq + 1);
+    }
+    segments.push({ type: 'component', name, params });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) segments.push({ type: 'text', content: text.slice(last) });
+  return segments;
+}
+
+function useEntityFetch(url) {
+  const [data, setData] = React.useState(null);
+  const [loading, setLoading] = React.useState(true);
+  React.useEffect(() => {
+    if (!url) { setLoading(false); return; }
+    setLoading(true);
+    fetch(url)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [url]);
+  return { data, loading };
+}
+
+function PhShell({ label, loading, children }) {
+  return (
+    <div className="ph-component">
+      <div className="ph-header">
+        <span className="ph-header-label">{label}</span>
+        {loading && <span className="ph-loading-text">Loading…</span>}
+      </div>
+      {!loading && <div className="ph-body">{children}</div>}
+    </div>
+  );
+}
+
+function PhTasks({ params }) {
+  const { filter, ids } = params;
+  const [tasks, setTasks] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (ids) {
+      const idList = ids.split(',').map(s => s.trim()).filter(Boolean);
+      Promise.all(idList.map(id =>
+        fetch(`/api/entities/task/${id}`).then(r => r.ok ? r.json() : null).catch(() => null)
+      )).then(res => { setTasks(res.filter(Boolean)); setLoading(false); });
+    } else {
+      let url = '/api/entities/task';
+      if (filter === 'overdue') url += '?due=overdue';
+      else if (filter === 'today') url += '?due=today';
+      else if (filter === 'open') url += '?status=open';
+      fetch(url).then(r => r.ok ? r.json() : [])
+        .then(d => { setTasks(Array.isArray(d) ? d : []); setLoading(false); })
+        .catch(() => setLoading(false));
+    }
+  }, [params.filter, params.ids]);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const priorityColor = { low: 'var(--muted)', medium: 'var(--gold)', high: 'var(--oxblood)', critical: 'var(--oxblood)' };
+  const statusColor   = { open: 'var(--muted)', 'in-progress': 'var(--gold)', done: 'var(--sage)' };
+  const label = filter === 'overdue' ? 'Overdue Tasks' : filter === 'today' ? "Today's Tasks" : 'Tasks';
+
+  return (
+    <PhShell label={label} loading={loading}>
+      {tasks.length === 0
+        ? <div className="ph-empty">No tasks found</div>
+        : tasks.map(t => {
+            const meta = t.meta || {};
+            const title = meta.title || t.id;
+            const status = meta.status || 'open';
+            const priority = meta.priority;
+            const due = meta.dueDate;
+            const overdue = due && due < today && status !== 'done';
+            return (
+              <div key={t.id} className="ph-task-row">
+                <span className="ph-dot" style={{ background: statusColor[status] || 'var(--muted)' }} />
+                <span className="ph-task-title">{title}</span>
+                {priority && <span className="ph-badge" style={{ color: priorityColor[priority] || 'var(--muted)' }}>{priority}</span>}
+                {due && <span className="ph-badge" style={{ color: overdue ? 'var(--oxblood)' : 'var(--muted)' }}>{due}</span>}
+              </div>
+            );
+          })
+      }
+    </PhShell>
+  );
+}
+
+const AVATAR_BG = ['#1E3A5F', '#3A1E5F', '#1E3A26', '#5F3A1E', '#3A1E1E'];
+function avatarBg(name) {
+  let h = 0;
+  for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AVATAR_BG[h % AVATAR_BG.length];
+}
+function initials(name) {
+  return String(name).split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
+}
+
+function PhPeople({ params }) {
+  const idList = (params.ids || '').split(',').map(s => s.trim()).filter(Boolean);
+  const [people, setPeople] = React.useState([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    if (!idList.length) { setLoading(false); return; }
+    Promise.all(idList.map(id =>
+      fetch(`/api/entities/person/${id}`).then(r => r.ok ? r.json() : null).catch(() => null)
+    )).then(res => { setPeople(res.filter(Boolean)); setLoading(false); });
+  }, [params.ids]);
+
+  return (
+    <PhShell label="People" loading={loading}>
+      {people.length === 0
+        ? <div className="ph-empty">No people found</div>
+        : <div className="ph-people-grid">
+            {people.map(p => {
+              const meta = p.meta || {};
+              const name = meta.title || p.id;
+              return (
+                <div key={p.id} className="ph-person-card">
+                  <div className="ph-person-avatar" style={{ background: avatarBg(name) }}>{initials(name)}</div>
+                  <div className="ph-person-name">{name}</div>
+                  {meta.role && <div className="ph-person-sub">{meta.role}</div>}
+                  {meta.relationship && <div className="ph-person-rel">{meta.relationship}</div>}
+                </div>
+              );
+            })}
+          </div>
+      }
+    </PhShell>
+  );
+}
+
+function PhCompany({ params }) {
+  const id = params.id || '';
+  const { data, loading } = useEntityFetch(id ? `/api/entities/business/${id}` : null);
+  if (!id) return null;
+  const meta = data?.meta || {};
+  return (
+    <PhShell label="Company" loading={loading}>
+      {data
+        ? <div className="ph-company-card">
+            <div className="ph-company-name">{meta.title || id}</div>
+            {meta.industry && <div className="ph-company-sub">{meta.industry}</div>}
+            {meta.website && <a className="ph-company-url mono" href={meta.website} target="_blank" rel="noopener noreferrer">{meta.website}</a>}
+          </div>
+        : <div className="ph-empty">Company not found</div>
+      }
+    </PhShell>
+  );
+}
+
+function PhTimeline({ params }) {
+  const anchor = params.anchor || new Date().toISOString().slice(0, 10);
+  const days   = Math.min(14, Math.max(1, parseInt(params.days || '3', 10)));
+  const { data, loading } = useEntityFetch('/api/calendar');
+  const items = Array.isArray(data) ? data : [];
+  const today = new Date().toISOString().slice(0, 10);
+
+  const buckets = React.useMemo(() => {
+    const out = [];
+    for (let d = 0; d < days; d++) {
+      const dt = new Date(anchor + 'T12:00:00');
+      dt.setDate(dt.getDate() + d);
+      const dateStr = dt.toISOString().slice(0, 10);
+      const dayLabel = d === 0 ? 'Today' : d === 1 ? 'Tomorrow'
+        : dt.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+      const dayItems = items
+        .filter(it => (it.date || '').slice(0, 10) === dateStr)
+        .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      out.push({ dateStr, dayLabel, dayItems });
+    }
+    return out;
+  }, [data, anchor, days]);
+
+  const label = `${days}-Day Schedule`;
+
+  return (
+    <PhShell label={label} loading={loading}>
+      {buckets.map(({ dateStr, dayLabel, dayItems }) => (
+        <div key={dateStr} className="ph-tl-day">
+          <div className="ph-tl-day-label">
+            {dayLabel}
+            <span className="ph-tl-date"> · {dateStr}</span>
+            {dateStr === today && <span className="ph-tl-today-badge">today</span>}
+          </div>
+          {dayItems.length === 0
+            ? <div className="ph-tl-empty">Nothing scheduled</div>
+            : dayItems.map((it, i) => {
+                const hasTime = (it.date || '').includes('T');
+                const timeStr = hasTime
+                  ? new Date(it.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                  : null;
+                const isTask = it.entityType === 'task';
+                const overdue = isTask && it.overduable && (it.date || '').slice(0, 10) < today && it.meta?.status !== 'done';
+                return (
+                  <div key={i} className={`ph-tl-item${overdue ? ' ph-tl-overdue' : ''}`}>
+                    <span className="ph-dot ph-dot-sm" style={{ background: isTask ? 'var(--gold)' : 'var(--ink-3)' }} />
+                    {timeStr && <span className="ph-tl-time mono">{timeStr}</span>}
+                    <span className="ph-tl-title">{it.title}</span>
+                    {overdue && <span className="ph-badge" style={{ color: 'var(--oxblood)' }}>overdue</span>}
+                  </div>
+                );
+              })
+          }
+        </div>
+      ))}
+    </PhShell>
+  );
+}
+
+function PhCalendar({ params }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const month = params.month || today.slice(0, 7);
+  const { data, loading } = useEntityFetch('/api/calendar');
+  const items = Array.isArray(data) ? data : [];
+
+  const [year, mon] = month.split('-').map(Number);
+  const firstDow = (new Date(year, mon - 1, 1).getDay() + 6) % 7; // Mon=0
+  const daysInMonth = new Date(year, mon, 0).getDate();
+  const monthLabel = new Date(year, mon - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const eventsByDate = React.useMemo(() => {
+    const m = new Map();
+    for (const it of items) {
+      const d = (it.date || '').slice(0, 10);
+      if (!d.startsWith(month)) continue;
+      if (!m.has(d)) m.set(d, []);
+      m.get(d).push(it);
+    }
+    return m;
+  }, [data, month]);
+
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const ds = `${year}-${String(mon).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    cells.push({ d, ds, its: eventsByDate.get(ds) || [] });
+  }
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  return (
+    <PhShell label={monthLabel} loading={loading}>
+      <div className="ph-cal">
+        <div className="ph-cal-head">
+          {['Mo','Tu','We','Th','Fr','Sa','Su'].map(d => <div key={d} className="ph-cal-dh">{d}</div>)}
+        </div>
+        <div className="ph-cal-grid">
+          {cells.map((cell, i) => {
+            if (!cell) return <div key={i} className="ph-cal-cell ph-cal-empty" />;
+            const isToday = cell.ds === today;
+            return (
+              <div key={i} className={`ph-cal-cell${isToday ? ' ph-cal-today' : ''}`} title={cell.its.map(x => x.title).join(', ')}>
+                <span className="ph-cal-day">{cell.d}</span>
+                {cell.its.length > 0 && (
+                  <div className="ph-cal-dots">
+                    {cell.its.slice(0, 3).map((it, j) => (
+                      <span key={j} className={`ph-cal-dot ph-cal-dot-${it.entityType}`} />
+                    ))}
+                    {cell.its.length > 3 && <span className="ph-cal-more">+{cell.its.length - 3}</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </PhShell>
+  );
+}
+
+function PhComponent({ name, params }) {
+  switch (name) {
+    case 'tasks':    return <PhTasks    params={params} />;
+    case 'people':   return <PhPeople   params={params} />;
+    case 'company':  return <PhCompany  params={params} />;
+    case 'timeline': return <PhTimeline params={params} />;
+    case 'calendar': return <PhCalendar params={params} />;
+    default: return <div className="ph-unknown">Unknown component: ph:{name}</div>;
+  }
+}
+
+function MessageBody({ text }) {
+  const segments = React.useMemo(() => parsePhBlocks(text || ''), [text]);
+  if (!segments.some(s => s.type === 'component')) {
+    return <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(text || '') }} />;
+  }
+  return (
+    <div>
+      {segments.map((seg, i) => {
+        if (seg.type === 'text') {
+          const html = marked.parse(seg.content || '');
+          if (!html.trim()) return null;
+          return <div key={i} className="md" dangerouslySetInnerHTML={{ __html: html }} />;
+        }
+        return <PhComponent key={i} name={seg.name} params={seg.params} />;
+      })}
+    </div>
+  );
+}
+
+// ── Message ──────────────────────────────────────────────────────────────────
+
 function Message({ m, onPin, pinned }) {
   const isUser = m.role === "user";
   const isProactive = m.kind === "proactive";
@@ -2103,7 +2420,7 @@ function Message({ m, onPin, pinned }) {
           <div className="bubble-body">
             {isUser
               ? m.text.split("\n").map((line, i) => <p key={i}>{line}</p>)
-              : <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(m.text || "") }} />
+              : <MessageBody text={m.text || ''} />
             }
           </div>
           {m.sources && (
@@ -3783,6 +4100,67 @@ function GlobalStyle() {
       .call-msg-assistant .call-msg-role { color: var(--sage); }
       .call-msg-system .call-msg-role { color: var(--muted); }
       .call-pre-msg { max-height: 200px; }
+
+      /* ── ph: embedded UI components ────────────────────────────────── */
+      .ph-component { margin: 10px 0; border: 1px solid var(--line); border-radius: var(--radius-lg); overflow: hidden; background: var(--paper); }
+      .ph-header { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: var(--paper-2); border-bottom: 1px solid var(--line); }
+      .ph-header-label { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+      .ph-loading-text { font-size: 11px; color: var(--muted-2); }
+      .ph-body { }
+      .ph-empty { padding: 12px; font-size: 13px; color: var(--muted); }
+      .ph-unknown { padding: 8px 12px; font-size: 12px; color: var(--oxblood); font-family: var(--font-mono); }
+      .ph-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+      .ph-dot-sm { width: 5px; height: 5px; margin-top: 6px; }
+      .ph-badge { font-size: 10px; font-family: var(--font-mono); padding: 1px 5px; border-radius: var(--radius-sm); background: var(--paper-2); flex-shrink: 0; }
+
+      /* Tasks */
+      .ph-task-row { display: flex; align-items: baseline; gap: 7px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
+      .ph-task-row:last-child { border-bottom: none; }
+      .ph-task-title { flex: 1; font-size: 13px; color: var(--ink); min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+      /* People */
+      .ph-people-grid { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; }
+      .ph-person-card { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 76px; text-align: center; }
+      .ph-person-avatar { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: var(--paper); flex-shrink: 0; }
+      .ph-person-name { font-size: 11px; font-weight: 600; color: var(--ink); line-height: 1.25; word-break: break-word; }
+      .ph-person-sub { font-size: 10px; color: var(--muted); line-height: 1.2; }
+      .ph-person-rel { font-size: 9px; color: var(--muted-2); background: var(--paper-2); border-radius: var(--radius-sm); padding: 1px 4px; }
+
+      /* Company */
+      .ph-company-card { padding: 12px 14px; }
+      .ph-company-name { font-size: 15px; font-weight: 700; color: var(--ink); margin-bottom: 3px; }
+      .ph-company-sub { font-size: 12px; color: var(--muted); }
+      .ph-company-url { font-size: 11px; color: var(--muted-2); display: block; margin-top: 4px; text-decoration: none; }
+      .ph-company-url:hover { color: var(--ink); text-decoration: underline; }
+
+      /* Timeline */
+      .ph-tl-day { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+      .ph-tl-day:last-child { border-bottom: none; }
+      .ph-tl-day-label { font-size: 12px; font-weight: 600; color: var(--ink); margin-bottom: 5px; }
+      .ph-tl-date { font-size: 10px; color: var(--muted-2); font-family: var(--font-mono); }
+      .ph-tl-today-badge { display: inline-block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; background: var(--ink-3); color: var(--paper); border-radius: var(--radius-sm); padding: 1px 5px; margin-left: 5px; vertical-align: middle; }
+      .ph-tl-empty { font-size: 12px; color: var(--muted-2); font-style: italic; margin-bottom: 2px; }
+      .ph-tl-item { display: flex; align-items: baseline; gap: 7px; padding: 2px 0; font-size: 13px; }
+      .ph-tl-time { font-family: var(--font-mono); color: var(--muted); font-size: 11px; flex-shrink: 0; min-width: 58px; }
+      .ph-tl-title { color: var(--ink); flex: 1; }
+      .ph-tl-overdue .ph-tl-title { color: var(--oxblood); }
+
+      /* Calendar */
+      .ph-cal { padding: 8px 10px 10px; }
+      .ph-cal-head { display: grid; grid-template-columns: repeat(7, 1fr); margin-bottom: 3px; }
+      .ph-cal-dh { font-size: 9px; font-weight: 700; color: var(--muted-2); text-align: center; padding: 2px 0; text-transform: uppercase; letter-spacing: .04em; }
+      .ph-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+      .ph-cal-cell { min-height: 34px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 1px; border-radius: var(--radius-sm); cursor: default; }
+      .ph-cal-cell:not(.ph-cal-empty):hover { background: var(--paper-2); }
+      .ph-cal-today { background: var(--ink-3) !important; border-radius: var(--radius-sm); }
+      .ph-cal-today .ph-cal-day { color: var(--paper); font-weight: 700; }
+      .ph-cal-day { font-size: 11px; color: var(--ink); line-height: 1; }
+      .ph-cal-empty .ph-cal-day { opacity: 0; }
+      .ph-cal-dots { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; }
+      .ph-cal-dot { width: 4px; height: 4px; border-radius: 50%; }
+      .ph-cal-dot-event { background: var(--ink-3); }
+      .ph-cal-dot-task  { background: var(--gold); }
+      .ph-cal-more { font-size: 8px; color: var(--muted-2); }
     `}</style>
   );
 }

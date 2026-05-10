@@ -39,6 +39,7 @@ import { classifyIntent } from '../context/intent-classifier.js';
 import { buildContextManifest } from '../context/context-manifest.js';
 import { runContextLoop, serializeGatheredContext } from '../context/context-loop.js';
 import { resolveTokens, TOKEN_INSTRUCTIONS } from '../utils/token-resolver.js';
+import { UI_COMPONENT_INSTRUCTIONS } from '../utils/ui-components.js';
 import type { LLMProvider } from '../llm/types.js';
 import { runWithTokenTracker, type ChatTokenTotals } from '../llm/token-usage.js';
 import { getContextWindowTokens } from '../config.js';
@@ -834,6 +835,7 @@ RESPONSE GUIDELINES:
 - If there were errors, acknowledge honestly and suggest alternatives
 - If the results suggest follow-up actions, briefly mention them
 ${TOKEN_INSTRUCTIONS}
+${UI_COMPONENT_INSTRUCTIONS}
 
 PERSONALITY OBSERVATION (Big Five — include with every response):
 After composing your response, rate BOTH the user and yourself on these 5 traits (1-5 scale) based on THIS interaction only. Observe the user's communication style, requests, and behavior. Observe your own response style.
