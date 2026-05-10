@@ -350,6 +350,11 @@ export function parseEntity(filepath: string, rawContent: string): { meta: Recor
     // Keep title as alias for backward-compat callers
     if (data.name !== undefined) data.title = data.name;
 
+    // Normalise contextType → entityType for internal consumers
+    if (data.contextType !== undefined && data.entityType === undefined) {
+        data.entityType = data.contextType;
+    }
+
     // Extract domain fields from body prefix (new format)
     const { fields, content } = parseEntityBody(rawBody.trim());
 
@@ -385,6 +390,12 @@ export async function writeEntity(
         cleanMeta.description = cleanMeta.summary;
     }
     delete cleanMeta.summary;
+
+    // Write contextType, not entityType, to disk
+    if (cleanMeta.entityType !== undefined && cleanMeta.contextType === undefined) {
+        cleanMeta.contextType = cleanMeta.entityType;
+    }
+    delete cleanMeta.entityType;
 
     // Separate core (frontmatter) from domain (body)
     const frontmatter: Record<string, unknown> = {};

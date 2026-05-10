@@ -930,7 +930,6 @@ async function createAssumedNodes(
         const meta: Record<string, unknown> = {
             id,
             title: node.title,
-            entityType: node.contextType,
             contextType: node.contextType,
             created: now,
             tags: (node.tags as string[]) || typeConfig.defaultTags || [],

@@ -616,7 +616,6 @@ async function handleCreateNode(req: http.IncomingMessage, res: http.ServerRespo
     const meta: Record<string, unknown> = {
         id,
         title: body.title,
-        entityType: typeName,
         contextType: typeName,
         created: now,
         tags: (body.tags as string[]) || typeConfig.defaultTags || [],
