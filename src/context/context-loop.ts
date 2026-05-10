@@ -115,11 +115,19 @@ Rules:
             const anchorKeys = new Set(fetched.map(n => `${n.type}:${n.id}`));
             const newNodes = await fulfillRequests(decision.requests, entityIndex, anchorKeys);
             let added = 0;
+            const addedKeys: string[] = [];
             for (const node of newNodes) {
                 if (!fetched.some(n => n.type === node.type && n.id === node.id)) {
                     fetched.push(node);
+                    addedKeys.push(`${node.type}:${node.id}`);
                     added++;
                 }
+            }
+            // Record behavioral signal for every node that entered context
+            if (addedKeys.length > 0) {
+                import('../cxms/behavioral-index.js')
+                    .then(({ getBehavioralIndex }) => getBehavioralIndex().recordMany(addedKeys))
+                    .catch(() => {});
             }
             debug('chat', `Context loop round ${round + 1}: fetched ${newNodes.length} new entities (total: ${fetched.length})`);
 

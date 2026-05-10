@@ -112,9 +112,10 @@ export interface TemporalConfig {
 
 export interface RelevanceConfig {
     /**
-     * Weights for composite relevance score (must sum to 1.0).
-     * Defaults applied when absent: semantic=0.4, recency=0.25, graphProximity=0.2,
-     * coOccurrence=0.1, centrality=0.05.
+     * Weights for composite relevance score. Active signals are normalized to
+     * sum to 1.0 automatically — only declare the signals your type uses.
+     * Signals with no config (spatial, goalAlignment, etc.) are excluded unless
+     * their sub-config is also present.
      */
     weights?: {
         semantic?: number;        // vector cosine similarity to query
@@ -122,27 +123,54 @@ export interface RelevanceConfig {
         graphProximity?: number;  // hop distance from other relevant nodes
         coOccurrence?: number;    // edge count with other relevant nodes
         centrality?: number;      // total degree (hub nodes score higher)
+        spatial?: number;         // inverse haversine distance from current location
+        goalAlignment?: number;   // hop distance to an active goal node
+        socialProximity?: number; // relationship-type weight (family > colleague)
+        behavioral?: number;      // interaction frequency score
+    };
+
+    /** Recency half-life in days. Default: 30. */
+    recencyHalfLifeDays?: number;
+
+    /** Max graph hops for proximity traversal. Default: 2. */
+    graphDepth?: number;
+
+    /** Edge labels to follow during graph proximity. Absent = all edges. */
+    anchorRelationships?: string[];
+
+    /**
+     * Spatial scoring. Requires entities to have a coordinates field
+     * holding { lat: number; lng: number }.
+     */
+    spatial?: {
+        /** Frontmatter field holding { lat, lng }. Default: 'coordinates'. */
+        coordinatesField?: string;
+        /** Distance (km) at which spatial score reaches 0. Default: 50. */
+        maxDistanceKm?: number;
     };
 
     /**
-     * How quickly interaction recency decays.
-     * A node updated this many days ago scores 0.5 on the recency signal.
-     * Default: 30 days.
+     * Goal alignment scoring. Traverses the graph from each candidate node
+     * looking for active goal nodes. Closer = higher score.
      */
-    recencyHalfLifeDays?: number;
+    goalAlignment?: {
+        /** Max hops to search for a connected goal. Default: 3. */
+        maxHops?: number;
+    };
 
     /**
-     * Maximum graph hops to traverse when computing proximity.
-     * Default: 2.
+     * Social proximity scoring. Reads a relationship-type field on the node
+     * and maps it to a static weight.
      */
-    graphDepth?: number;
-
-    /**
-     * Edge labels to follow during graph proximity traversal.
-     * If absent, all edge types are followed.
-     * Example: ['employer', 'owns', 'member-of']
-     */
-    anchorRelationships?: string[];
+    socialProximity?: {
+        /** Frontmatter field holding the relationship type. Default: 'relationship'. */
+        relationshipField?: string;
+        /**
+         * Weight map from relationship type to score [0, 1].
+         * Default: { family: 1.0, friend: 0.75, colleague: 0.5, acquaintance: 0.25, professional: 0.4 }
+         */
+        weights?: Record<string, number>;
+    };
 }
 
 export interface EntityTypeConfig {

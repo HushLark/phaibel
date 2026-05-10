@@ -27,14 +27,19 @@
       ],
       "relevance": {
         "weights": {
-          "semantic": 0.35,
-          "recency": 0.25,
-          "graphProximity": 0.25,
-          "coOccurrence": 0.1,
-          "centrality": 0.05
+          "semantic": 0.25,
+          "recency": 0.15,
+          "graphProximity": 0.15,
+          "coOccurrence": 0.10,
+          "centrality": 0.05,
+          "goalAlignment": 0.10,
+          "socialProximity": 0.10,
+          "behavioral": 0.10
         },
         "recencyHalfLifeDays": 14,
-        "graphDepth": 2
+        "graphDepth": 2,
+        "goalAlignment": { "maxHops": 3 },
+        "socialProximity": { "relationshipField": "relationship" }
       }
     },
     {

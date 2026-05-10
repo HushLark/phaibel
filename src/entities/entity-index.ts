@@ -417,7 +417,14 @@ export class EntityIndex {
     // ── Queries ──────────────────────────────────────────────────────────
 
     getNode(key: string): IndexNode | undefined {
-        return this.nodes.get(key);
+        const node = this.nodes.get(key);
+        if (node) {
+            // Record behavioral interaction (fire-and-forget)
+            import('../cxms/behavioral-index.js')
+                .then(({ getBehavioralIndex }) => getBehavioralIndex().record(key))
+                .catch(() => {});
+        }
+        return node;
     }
 
     getNodes(type?: EntityTypeName): IndexNode[] {
@@ -476,29 +483,47 @@ export class EntityIndex {
         entityType: EntityTypeName | undefined,
         anchorKeys: Set<string>,
         config: import('../entities/entity-type-config.js').RelevanceConfig,
+        currentLocation?: import('../cxms/relevance-scorer.js').Coordinates,
     ): Promise<IndexSearchResult[]> {
         const { scoreNodes } = await import('../cxms/relevance-scorer.js');
         const { getEmbeddingIndex } = await import('./embedding-index.js');
+        const { getBehavioralIndex } = await import('../cxms/behavioral-index.js');
 
         const candidates = entityType
             ? this.getNodes(entityType)
             : this.getNodes();
 
-        // Build vector similarity map
+        // Vector similarity
         const vectorSimilarity = new Map<string, number>();
         const embeddingIndex = getEmbeddingIndex();
         if (embeddingIndex.isLoaded && query) {
             const results = await embeddingIndex.search(query, candidates.length, entityType);
-            for (const r of results) {
-                vectorSimilarity.set(r.key, r.similarity);
+            for (const r of results) vectorSimilarity.set(r.key, r.similarity);
+        }
+
+        // Active goal keys — nodes of type 'goal' that are not done/completed
+        const activeGoalKeys = new Set<string>();
+        if (config.goalAlignment) {
+            for (const node of this.getNodes('goal' as EntityTypeName)) {
+                const status = node.meta.status as string | undefined;
+                if (!status || !['done', 'completed', 'achieved'].includes(status.toLowerCase())) {
+                    activeGoalKeys.add(`${node.type}:${node.id}`);
+                }
             }
         }
+
+        // Behavioral index
+        const behavioralIndex = getBehavioralIndex();
+        if (!behavioralIndex.isLoaded) await behavioralIndex.load().catch(() => {});
 
         const scores = scoreNodes(candidates, config, {
             vectorSimilarity,
             edges: this.edges,
             anchorKeys,
             now: new Date(),
+            currentLocation,
+            activeGoalKeys,
+            behavioralIndex,
         });
 
         return scores.map(s => ({

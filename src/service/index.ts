@@ -264,6 +264,15 @@ async function main(): Promise<void> {
             } catch (err) {
                 debug('embeddings', `Embedding index sync skipped: ${err}`);
             }
+
+            // Load behavioral index
+            try {
+                const { getBehavioralIndex } = await import('../cxms/behavioral-index.js');
+                await getBehavioralIndex().load();
+                debug('service', 'Behavioral index loaded');
+            } catch (err) {
+                debug('service', `Behavioral index load skipped: ${err}`);
+            }
         } catch (err) {
             debug('service', `Entity index skipped: ${err}`);
         }
