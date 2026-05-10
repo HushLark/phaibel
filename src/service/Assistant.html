@@ -530,10 +530,12 @@ function App() {
 
   const handlePinMessage = (msg) => {
     if (pinboard.some((p) => p.sourceId === msg.id)) return;
+    const stripped = (msg.text || '').replace(/```ph:[^\n]*\n[\s\S]*?```/g, '').trim();
+    const title = stripped.slice(0, 56).replace(/\n/g, " ") + (stripped.length > 56 ? "…" : "");
     const newPin = {
       id: `pin-${randId().slice(0, 4)}`,
       sourceId: msg.id,
-      title: msg.text.slice(0, 56).replace(/\n/g, " ") + (msg.text.length > 56 ? "…" : ""),
+      title: title || "Pinned component",
       body: msg.text,
       tag: "From chat",
       when: "Pinned just now",
@@ -634,7 +636,7 @@ function LeftPanel({ pinboard, onRemovePin, onClearAll, agentName, drawerOpen, s
                 <button className="pin-x" onClick={() => onRemovePin(p.id)} aria-label="Unpin">×</button>
               </header>
               <h4>{p.title}</h4>
-              <div className="pin-body"><MessageBody text={p.body} /></div>
+              <div className="pin-body"><MessageBody text={p.body} componentsOnly={true} /></div>
               <footer className="pin-foot">
                 <span className="pin-when">{p.when}</span>
                 <span className="pin-id">{p.id}</span>
@@ -2197,15 +2199,17 @@ function PhComponent({ name, params }) {
   }
 }
 
-function MessageBody({ text }) {
+function MessageBody({ text, componentsOnly }) {
   const segments = React.useMemo(() => parsePhBlocks(text || ''), [text]);
   if (!segments.some(s => s.type === 'component')) {
+    if (componentsOnly) return null;
     return <div className="md" dangerouslySetInnerHTML={{ __html: marked.parse(text || '') }} />;
   }
   return (
     <div>
       {segments.map((seg, i) => {
         if (seg.type === 'text') {
+          if (componentsOnly) return null;
           const html = marked.parse(seg.content || '');
           if (!html.trim()) return null;
           return <div key={i} className="md" dangerouslySetInnerHTML={{ __html: html }} />;
