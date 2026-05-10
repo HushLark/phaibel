@@ -572,6 +572,9 @@ function App() {
         onPin={handlePinMessage}
         wsConnected={wsConnected}
         sendMessage={handleSendMessage}
+        agentName={agentName}
+        drawerOpen={drawerOpen}
+        setDrawerOpen={setDrawerOpen}
       />
       {tweaksOpen && (
         <TweaksPanel tweaks={tweaks} update={updateTweak} onClose={() => setTweaksOpen(false)} />
@@ -598,23 +601,6 @@ function randId() {
 function LeftPanel({ pinboard, onRemovePin, onClearAll, agentName, drawerOpen, setDrawerOpen }) {
   return (
     <>
-      {/* Toggle button — always visible */}
-      <button
-        className={`drawer-toggle${drawerOpen ? ' drawer-toggle-open' : ''}`}
-        onClick={() => setDrawerOpen(o => !o)}
-        aria-label={drawerOpen ? 'Close pinboard' : 'Open pinboard'}
-        title={drawerOpen ? 'Close pinboard' : `Pinboard (${pinboard.length})`}
-      >
-        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M13 3 L13 9 L16 13 L4 13 L7 9 L7 3 Z"/>
-          <line x1="10" y1="13" x2="10" y2="17"/>
-          <line x1="7" y1="3" x2="13" y2="3"/>
-        </svg>
-        {pinboard.length > 0 && !drawerOpen && (
-          <span className="drawer-badge">{pinboard.length}</span>
-        )}
-      </button>
-
       {/* Backdrop */}
       {drawerOpen && (
         <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />
@@ -654,7 +640,7 @@ function LeftPanel({ pinboard, onRemovePin, onClearAll, agentName, drawerOpen, s
                 <button className="pin-x" onClick={() => onRemovePin(p.id)} aria-label="Unpin">×</button>
               </header>
               <h4>{p.title}</h4>
-              <p>{p.body}</p>
+              <div className="pin-body"><MessageBody text={p.body} /></div>
               <footer className="pin-foot">
                 <span className="pin-when">{p.when}</span>
                 <span className="pin-id">{p.id}</span>
@@ -673,7 +659,7 @@ function LeftPanel({ pinboard, onRemovePin, onClearAll, agentName, drawerOpen, s
 /* ============================================================
    RIGHT PANEL — chat
    ============================================================ */
-function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInput, onSend, thinking, thinkingStatus, micActive, setMicActive, onPin, wsConnected, sendMessage }) {
+function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInput, onSend, thinking, thinkingStatus, micActive, setMicActive, onPin, wsConnected, sendMessage, agentName, drawerOpen, setDrawerOpen }) {
   const tabs = [
     { key: "chat",      label: "Chat",      count: messages.length || null },
     { key: "people",    label: "People",    count: null },
@@ -683,8 +669,34 @@ function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInp
   ];
   return (
     <main className="right">
-      <nav className="tabs" role="tablist">
-        <div className="tabs-inner">
+      <header className="app-header" role="banner">
+        <div className="app-header-left">
+          <button
+            className={`drawer-expand${drawerOpen ? ' drawer-expand-open' : ''}`}
+            onClick={() => setDrawerOpen(o => !o)}
+            aria-label={drawerOpen ? 'Close pinboard' : 'Open pinboard'}
+            title={drawerOpen ? 'Close pinboard' : 'Pinboard'}
+          >
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6,3 11,8 6,13"/>
+              <polyline points="2,3 7,8 2,13"/>
+            </svg>
+            {pinboard.length > 0 && !drawerOpen && (
+              <span className="drawer-badge">{pinboard.length}</span>
+            )}
+          </button>
+          <div className="app-brand">
+            <div className="brand-mark" aria-hidden>
+              <svg viewBox="0 0 24 24" width="16" height="16">
+                <rect x="2" y="2" width="20" height="20" rx="2" fill="none" stroke="currentColor" strokeWidth="1.4"/>
+                <path d="M7 16 L12 7 L17 16" fill="none" stroke="currentColor" strokeWidth="1.4"/>
+                <path d="M9.5 13 L14.5 13" stroke="currentColor" strokeWidth="1.4"/>
+              </svg>
+            </div>
+            <span className="app-brand-name">{agentName}</span>
+          </div>
+        </div>
+        <nav className="tabs-inner" role="tablist">
           {tabs.map((t) => (
             <button
               key={t.key}
@@ -697,11 +709,11 @@ function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInp
               {t.count != null && <span className="tab-count mono">{t.count}</span>}
             </button>
           ))}
+        </nav>
+        <div className="app-header-right">
+          <span className="tab-status"><span className={`dot ${wsConnected ? "sage" : "oxblood"}`} />{wsConnected ? "Online" : "Offline"}</span>
         </div>
-        <div className="tabs-right">
-          <span className="tab-status"><span className={`dot ${wsConnected ? "sage" : "oxblood"}`} /> {wsConnected ? "Connected" : "Connecting…"}</span>
-        </div>
-      </nav>
+      </header>
 
       {activeTab === "chat" && (
         <ChatTab
@@ -2484,38 +2496,76 @@ function GlobalStyle() {
         z-index: 1;
       }
 
-      /* ---------- DRAWER TOGGLE ---------- */
-      .drawer-toggle {
-        position: fixed;
-        top: 14px;
-        left: 14px;
-        z-index: 200;
-        width: 36px;
-        height: 36px;
-        border-radius: var(--radius);
-        border: 1px solid var(--line);
-        background: var(--paper);
-        color: var(--ink-3);
+      /* ---------- APP HEADER ---------- */
+      .app-header {
+        display: flex;
+        align-items: center;
+        padding: 0 8px 0 4px;
+        height: 48px;
+        border-bottom: 1px solid var(--line);
+        background: var(--paper-2);
+        gap: 0;
+        flex-shrink: 0;
+      }
+      .app-header-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-shrink: 0;
+        padding-right: 12px;
+        border-right: 1px solid var(--line);
+        height: 100%;
+      }
+      .app-header-right {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        padding-left: 12px;
+        margin-left: auto;
+      }
+      .app-brand {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .app-brand-name {
+        font-family: var(--font-serif);
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--ink);
+        white-space: nowrap;
+      }
+
+      /* Drawer expand button (lives in header) */
+      .drawer-expand {
+        position: relative;
+        width: 32px;
+        height: 32px;
+        border-radius: var(--radius-sm);
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted-2);
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: var(--shadow-sm);
-        transition: background .12s, color .12s, box-shadow .12s;
+        transition: background .1s, color .1s, border-color .1s;
+        flex-shrink: 0;
       }
-      .drawer-toggle:hover { background: var(--paper-2); color: var(--ink); box-shadow: var(--shadow-md); }
-      .drawer-toggle.drawer-toggle-open { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+      .drawer-expand:hover { background: var(--paper-2); color: var(--ink); border-color: var(--line); }
+      .drawer-expand.drawer-expand-open { color: var(--gold); }
       .drawer-badge {
         position: absolute;
-        top: -5px;
-        right: -5px;
+        top: -4px;
+        right: -4px;
         background: var(--gold);
         color: var(--paper);
         font-size: 9px;
         font-weight: 700;
         font-family: var(--font-mono);
-        min-width: 16px;
-        height: 16px;
+        min-width: 15px;
+        height: 15px;
         border-radius: 8px;
         display: flex;
         align-items: center;
@@ -2722,6 +2772,16 @@ function GlobalStyle() {
         color: var(--ink-3);
         margin: 0;
       }
+      .pin-body {
+        font-size: 12px;
+        line-height: 1.45;
+        color: var(--ink-3);
+        margin: 0;
+        overflow: hidden;
+      }
+      .pin-body .md { font-size: 12px; }
+      .pin-body .md p { margin: 0 0 4px; }
+      .pin-body .ph-shell { margin: 4px 0; font-size: 11px; }
       .pin-foot {
         display: flex; justify-content: space-between;
         margin-top: 8px;
@@ -2784,32 +2844,27 @@ function GlobalStyle() {
       }
 
       /* Tabs */
-      .tabs {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0 20px;
-        border-bottom: 1px solid var(--line);
-        background: var(--paper-2);
-      }
       .tabs-inner {
         display: flex;
-        gap: 2px;
+        align-items: stretch;
+        gap: 0;
+        height: 100%;
+        padding: 0 4px;
       }
       .tab {
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        padding: 12px 16px 11px;
+        gap: 7px;
+        padding: 0 14px;
         background: transparent;
         border: 0;
         border-bottom: 2px solid transparent;
-        margin-bottom: -1px;
         font-family: inherit;
         font-size: 13px;
         color: var(--muted);
         cursor: pointer;
         letter-spacing: 0.005em;
+        white-space: nowrap;
       }
       .tab:hover { color: var(--ink); }
       .tab.on {
