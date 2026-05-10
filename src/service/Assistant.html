@@ -2003,7 +2003,7 @@ function avatarBg(name) {
   for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return AVATAR_BG[h % AVATAR_BG.length];
 }
-function initials(name) {
+function phInitials(name) {
   return String(name).split(/\s+/).map(w => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 }
 
@@ -2029,7 +2029,7 @@ function PhPeople({ params }) {
               const name = meta.title || p.id;
               return (
                 <div key={p.id} className="ph-person-card">
-                  <div className="ph-person-avatar" style={{ background: avatarBg(name) }}>{initials(name)}</div>
+                  <div className="ph-person-avatar" style={{ background: avatarBg(name) }}>{phInitials(name)}</div>
                   <div className="ph-person-name">{name}</div>
                   {meta.role && <div className="ph-person-sub">{meta.role}</div>}
                   {meta.relationship && <div className="ph-person-rel">{meta.relationship}</div>}
