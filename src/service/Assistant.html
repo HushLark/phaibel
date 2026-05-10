@@ -555,7 +555,7 @@ function App() {
   };
 
   return (
-    <div className="app">
+    <div className={`app${drawerOpen ? ' rail-open' : ''}`}>
       <LeftPanel pinboard={pinboard} onRemovePin={handleRemovePin} onClearAll={handleClearPins} agentName={agentName} drawerOpen={drawerOpen} setDrawerOpen={setDrawerOpen} />
       <RightPanel
         activeTab={activeTab}
@@ -601,13 +601,7 @@ function randId() {
 function LeftPanel({ pinboard, onRemovePin, onClearAll, agentName, drawerOpen, setDrawerOpen }) {
   return (
     <>
-      {/* Backdrop */}
-      {drawerOpen && (
-        <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />
-      )}
-
-      {/* Drawer panel */}
-      <aside className={`left${drawerOpen ? ' left-open' : ''}`}>
+      <aside className="left">
         <div className="drawer-header">
           <div className="drawer-header-brand">
             <div className="brand-mark" aria-hidden>
@@ -677,7 +671,7 @@ function RightPanel({ activeTab, setActiveTab, messages, pinboard, input, setInp
             aria-label={drawerOpen ? 'Close pinboard' : 'Open pinboard'}
             title={drawerOpen ? 'Close pinboard' : 'Pinboard'}
           >
-            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{transform: drawerOpen ? 'rotate(180deg)' : 'none', transition: 'transform .22s'}}>
               <polyline points="6,3 11,8 6,13"/>
               <polyline points="2,3 7,8 2,13"/>
             </svg>
@@ -2490,10 +2484,14 @@ function GlobalStyle() {
     <style>{`
       .app {
         display: grid;
-        grid-template-columns: 1fr;
+        grid-template-columns: 0px 1fr;
         height: 100vh;
         position: relative;
         z-index: 1;
+        transition: grid-template-columns .22s cubic-bezier(.4,0,.2,1);
+      }
+      .app.rail-open {
+        grid-template-columns: 280px 1fr;
       }
 
       /* ---------- APP HEADER ---------- */
@@ -2574,25 +2572,10 @@ function GlobalStyle() {
         pointer-events: none;
       }
 
-      /* ---------- DRAWER BACKDROP ---------- */
-      .drawer-backdrop {
-        position: fixed;
-        inset: 0;
-        z-index: 149;
-        background: color-mix(in oklab, var(--ink) 20%, transparent);
-        backdrop-filter: blur(2px);
-        animation: backdropIn .15s ease;
-      }
-      @keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
-
-      /* ---------- LEFT DRAWER ---------- */
+      /* ---------- LEFT RAIL ---------- */
       .left {
-        position: fixed;
-        top: 0;
-        left: 0;
-        bottom: 0;
-        width: 320px;
-        z-index: 150;
+        width: 280px;
+        min-width: 280px;
         background: var(--paper-2);
         border-right: 1px solid var(--line);
         padding: var(--pad);
@@ -2600,13 +2583,8 @@ function GlobalStyle() {
         flex-direction: column;
         gap: var(--gap);
         overflow-y: auto;
-        transform: translateX(-100%);
-        transition: transform .22s cubic-bezier(.4,0,.2,1);
-        box-shadow: none;
-      }
-      .left.left-open {
-        transform: translateX(0);
-        box-shadow: var(--shadow-md);
+        overflow-x: hidden;
+        min-height: 0;
       }
       .left-foot { flex-shrink: 0; }
       .brand {
