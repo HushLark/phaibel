@@ -154,3 +154,37 @@ export async function appendJudgement(
     try { existing = await storage.readFile(logFile); } catch { /* new file */ }
     await storage.writeFile(logFile, existing + line + '\n');
 }
+
+/**
+ * Delete chat log files older than `retentionDays` days.
+ * Reads the first line of each `.log` file to get its timestamp.
+ */
+export async function pruneOldChatLogs(retentionDays: number): Promise<{ scanned: number; deleted: number }> {
+    const { storage, paths } = getPlatform();
+    const logsDir = await getLogsDir();
+    let files: string[] = [];
+    try {
+        files = (await storage.readdir(logsDir)).filter((f: string) => f.endsWith('.log'));
+    } catch {
+        return { scanned: 0, deleted: 0 };
+    }
+
+    const cutoff = Date.now() - retentionDays * 86_400_000;
+    let deleted = 0;
+    for (const file of files) {
+        const filePath = paths.join(logsDir, file);
+        try {
+            const raw = await storage.readFile(filePath);
+            const firstLine = raw.split('\n')[0];
+            if (!firstLine) continue;
+            const entry = JSON.parse(firstLine) as { ts?: string };
+            if (entry.ts && new Date(entry.ts).getTime() < cutoff) {
+                await storage.unlink(filePath);
+                deleted++;
+            }
+        } catch {
+            // Skip unreadable or unparseable files
+        }
+    }
+    return { scanned: files.length, deleted };
+}

@@ -1288,6 +1288,56 @@ const CAP_LABELS = {
   format: "Format", chat: "Chat", embed: "Embedding",
 };
 
+function RetentionSetting() {
+  const [retentionDays, setRetentionDays] = React.useState(7);
+  const [input, setInput] = React.useState('');
+  const [status, setStatus] = React.useState(null); // 'saving' | 'saved' | 'error'
+
+  React.useEffect(() => {
+    fetch('/api/settings/log-retention')
+      .then(r => r.json())
+      .then(d => { setRetentionDays(d.retentionDays); setInput(String(d.retentionDays)); })
+      .catch(() => {});
+  }, []);
+
+  function save() {
+    const days = parseInt(input, 10);
+    if (!days || days < 1) return;
+    setStatus('saving');
+    fetch('/api/settings/log-retention', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ retentionDays: days }),
+    })
+      .then(r => r.json())
+      .then(d => {
+        setRetentionDays(d.retentionDays);
+        setStatus(d.pruned > 0 ? `Saved · ${d.pruned} old log${d.pruned !== 1 ? 's' : ''} deleted` : 'Saved');
+        setTimeout(() => setStatus(null), 3000);
+      })
+      .catch(() => { setStatus('Error saving'); setTimeout(() => setStatus(null), 3000); });
+  }
+
+  return (
+    <div className="retention-row">
+      <span className="retention-label">Delete logs older than</span>
+      <input
+        className="retention-input mono"
+        type="number"
+        min="1"
+        value={input}
+        onChange={e => setInput(e.target.value)}
+        onKeyDown={e => e.key === 'Enter' && save()}
+      />
+      <span className="retention-unit">days</span>
+      <button className="retention-save" onClick={save} disabled={status === 'saving'}>
+        {status === 'saving' ? '…' : 'Save'}
+      </button>
+      {status && status !== 'saving' && <span className="retention-status">{status}</span>}
+    </div>
+  );
+}
+
 function AnalyticsTab() {
   const [chats, setChats] = React.useState(null);
   const [days, setDays] = React.useState(30);
@@ -1320,6 +1370,7 @@ function AnalyticsTab() {
           ))}
         </div>
       </div>
+      <RetentionSetting />
       {loading && <div className="loading-msg">Loading…</div>}
       {chats && (
         <table className="chat-log-table">
@@ -3650,6 +3701,15 @@ function GlobalStyle() {
       .period-picker { display: flex; gap: 4px; }
       .period-picker button { padding: 4px 10px; border: 1px solid var(--line); border-radius: var(--radius); background: none; cursor: pointer; font-size: 12px; color: var(--muted); }
       .period-picker button.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+      .retention-row { display: flex; align-items: center; gap: 7px; padding: 8px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 12px; flex-wrap: wrap; }
+      .retention-label { font-size: 12px; color: var(--muted); }
+      .retention-input { width: 52px; padding: 3px 6px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--paper); font-size: 12px; color: var(--ink); text-align: right; }
+      .retention-input:focus { outline: none; border-color: var(--ink-3); }
+      .retention-unit { font-size: 12px; color: var(--muted); }
+      .retention-save { padding: 3px 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: none; cursor: pointer; font-size: 12px; color: var(--ink); }
+      .retention-save:hover { background: var(--paper-2); }
+      .retention-save:disabled { opacity: .5; cursor: default; }
+      .retention-status { font-size: 12px; color: var(--sage); }
       .chat-log-table { width: 100%; border-collapse: collapse; font-size: 12px; }
       .chat-log-table th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
       .chat-log-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }

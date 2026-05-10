@@ -13,6 +13,8 @@ import { checkPampMail } from './pamp-checker.js';
 import { runTemporalArchive } from './temporal-archive.js';
 import { deduplicateEntities } from './entity-dedup.js';
 import { runScheduledDelete } from './scheduled-delete.js';
+import { pruneOldChatLogs } from '../../utils/chat-logger.js';
+import { loadState } from '../../state/manager.js';
 import { getEntityIndex } from '../../entities/entity-index.js';
 import { getEmbeddingIndex } from '../../entities/embedding-index.js';
 import { getCronConfigPath, getVaultConfigDir } from '../../paths.js';
@@ -40,6 +42,7 @@ const DEFAULT_CONFIG: CronConfig = {
         'temporal-archive':    { enabled: true,  intervalMinutes: 1440 },
         'entity-dedup':        { enabled: true,  intervalMinutes: 1440 },
         'scheduled-delete':    { enabled: true,  intervalMinutes: 1440 },
+        'log-prune':           { enabled: true,  intervalMinutes: 1440 },
     },
 };
 
@@ -142,6 +145,16 @@ const JOB_DEFS: CronJobDef[] = [
             if (result.deleted === 0) return `${result.scanned} scanned, nothing to delete`;
             const details = result.details.map(d => `${d.type}/${d.title}`).join(', ');
             return `${result.scanned} scanned, ${result.deleted} deleted — ${details}`;
+        },
+    },
+    {
+        name: 'log-prune',
+        async run() {
+            const state = await loadState();
+            const days = state.chatLogRetentionDays ?? 7;
+            const result = await pruneOldChatLogs(days);
+            if (result.deleted === 0) return `${result.scanned} scanned, nothing to prune`;
+            return `${result.scanned} scanned, ${result.deleted} deleted (>${days}d old)`;
         },
     },
 ];

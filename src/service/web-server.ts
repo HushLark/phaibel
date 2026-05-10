@@ -12,7 +12,8 @@ import { listEntities, writeEntity, parseEntity, getEntityDir } from '../entitie
 import { feralChatHeadless, type ChatHistoryEntry, type ChatResult } from '../commands/chat.js';
 import { getQueueManager } from './queue/manager.js';
 import { getEntityIndex } from '../entities/entity-index.js';
-import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, saveProfile, loadState } from '../state/manager.js';
+import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, saveProfile, loadState, saveState } from '../state/manager.js';
+import { pruneOldChatLogs } from '../utils/chat-logger.js';
 import { refreshSystemPromptCache } from '../llm/router.js';
 import { getEffectiveConfig } from '../config.js';
 import { LLM_CAPABILITIES } from '../schemas/index.js';
@@ -572,6 +573,36 @@ export class WebServer {
             } catch (err) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+            }
+            return;
+        }
+
+        // GET /api/settings/log-retention
+        if (req.method === 'GET' && url.pathname === '/api/settings/log-retention') {
+            try {
+                const state = await loadState();
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ retentionDays: state.chatLogRetentionDays ?? 7 }));
+            } catch (err) {
+                res.writeHead(500); res.end(JSON.stringify({ error: String(err) }));
+            }
+            return;
+        }
+
+        // PATCH /api/settings/log-retention
+        if (req.method === 'PATCH' && url.pathname === '/api/settings/log-retention') {
+            try {
+                const body = JSON.parse(await this.readBody(req));
+                const days = parseInt(body.retentionDays, 10);
+                if (!Number.isInteger(days) || days < 1) throw new Error('retentionDays must be a positive integer');
+                const state = await loadState();
+                state.chatLogRetentionDays = days;
+                await saveState(state);
+                const pruned = await pruneOldChatLogs(days);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ ok: true, retentionDays: days, pruned: pruned.deleted }));
+            } catch (err) {
+                res.writeHead(400); res.end(JSON.stringify({ error: String(err) }));
             }
             return;
         }

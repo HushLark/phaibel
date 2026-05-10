@@ -71,6 +71,7 @@ export const StateSchema = z.object({
     personalCalUrl: z.string().optional(),
     workCalUrl: z.string().optional(),
     interviewComplete: z.boolean().optional(),
+    chatLogRetentionDays: z.number().int().min(1).optional(),
 });
 
 export type State = z.infer<typeof StateSchema>;
