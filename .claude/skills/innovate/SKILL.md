@@ -202,3 +202,4 @@ Go back to Step 2 with the new results. Stop after 10 loops or when all scenario
 6. **Read before editing** — always read the file before modifying it.
 7. **Revert failures** — if a change doesn't help, revert it before trying the next thing.
 8. **Persona scenarios are additive** — never remove or skip core scenarios. Persona scenarios run alongside them.
+9. **Smoke evals are authoritative** — `evals/scenarios/evals.md` contains Gary's hand-written scenarios that define expected behaviour. These are auto-loaded into every run as the `smoke` category. Never modify them during innovation loops; if they fail, fix the code, not the test.
