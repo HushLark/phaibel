@@ -43,7 +43,7 @@ export class AgentCatalogSource implements CatalogSource {
                 nodeCodeKey: 'open_ai',
                 name: 'Perplexity Sonar',
                 group: 'genai',
-                description: 'Call Perplexity Sonar via OpenAI-compatible API',
+                description: 'Search the web for real-time information (flight status, product details, news, facts, prices, current events). Use when the user mentions a flight number, URL, or needs live data not in the vault.',
                 configuration: { model: 'sonar', base_url: 'https://api.perplexity.ai' },
             }),
             // Data synthesis

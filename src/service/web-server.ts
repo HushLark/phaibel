@@ -23,6 +23,8 @@ import { serializeToCxf } from '../cxf/cxf-serializer.js';
 import { recordSync, shouldIncludeTombstone } from '../cxf/cxf-sync-state.js';
 import { loadSystems, addSystem, removeSystem } from '../cxf/cxf-systems.js';
 import { handleApiRoute } from './api-router.js';
+import { handleAuthRoute } from './auth-router.js';
+import { handleBillingRoute } from './billing-router.js';
 import { handleCxRoute } from '../cxms/cx-router.js';
 import { handlePiRoute } from '../introspection/pi-router.js';
 import { handleFccfRoute } from '../feral/fccf-router.js';
@@ -197,6 +199,18 @@ export class WebServer {
                 res.end('Assistant client not available');
             }
             return;
+        }
+
+        // ── Auth API (/auth/*) ────────────────────────────────────────
+        if (url.pathname.startsWith('/auth/')) {
+            const handled = await handleAuthRoute(req, res, url);
+            if (handled) return;
+        }
+
+        // ── Billing API (/billing/*) ──────────────────────────────────
+        if (url.pathname.startsWith('/billing/')) {
+            const handled = await handleBillingRoute(req, res, url);
+            if (handled) return;
         }
 
         // ── A2A Agent Card ─────────────────────────────────────────────

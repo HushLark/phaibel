@@ -44,6 +44,8 @@ function parseAssertion(line: string): EvalAssertion | null {
             return { type: 'entity_field', entityType: p[0], titleMatch: p[1], field: p[2], expected: p[3], description: `${p[1]}.${p[2]} should be "${p[3]}"` };
         case 'entity_count':
             return { type: 'entity_count', entityType: p[0], expected: parseInt(p[1], 10), description: `Should have ${p[1]} ${p[0]}(s)` };
+        case 'entity_body':
+            return { type: 'entity_body', entityType: p[0], titleMatch: p[1], match: p[2], description: `${p[1]} (${p[0]}) body should contain "${p[2]}"` };
         case 'response_contains':
             return { type: 'response_contains', match: rest.trim(), description: `Response should contain "${rest.trim()}"` };
         case 'context_type_created':

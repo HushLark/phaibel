@@ -70,6 +70,7 @@ function checkAssertion(
         case 'entity_count': return checkEntityCount(a, after);
         case 'response_contains': return checkResponseContains(a, responseText);
         case 'context_type_created': return checkContextTypeCreated(a, after);
+        case 'entity_body': return checkEntityBody(a, after);
     }
 }
 
@@ -213,6 +214,20 @@ function checkContextTypeCreated(
     }
     const available = Object.keys(after).join(', ');
     return { description: a.description, type: a.type, passed: false, message: `Context type "${a.typeName}" not found. Available: [${available}]` };
+}
+
+function checkEntityBody(
+    a: { type: 'entity_body'; entityType: string; titleMatch: string; match: string; description: string },
+    after: VaultSnapshot,
+): AssertionResult {
+    const entity = (after[a.entityType] ?? []).find(e => titleMatches(e, a.titleMatch));
+    if (!entity) {
+        return { description: a.description, type: a.type, passed: false, message: `No ${a.entityType} matching "${a.titleMatch}" found` };
+    }
+    if (entity.body.toLowerCase().includes(a.match.toLowerCase())) {
+        return { description: a.description, type: a.type, passed: true, message: `Body contains "${a.match}"` };
+    }
+    return { description: a.description, type: a.type, passed: false, actual: entity.body.slice(0, 200), message: `Body does not contain "${a.match}"` };
 }
 
 function checkResponseContains(

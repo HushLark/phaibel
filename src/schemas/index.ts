@@ -21,6 +21,13 @@ export const ProviderSecretSchema = z.object({
 
 export const SecretsSchema = z.object({
     providers: z.record(z.string(), ProviderSecretSchema),
+    jwtSecret: z.string().optional(),
+    stripeSecretKey: z.string().optional(),
+    stripeWebhookSecret: z.string().optional(),
+    stripePrices: z.object({
+        pro_monthly: z.string().optional(),
+        pro_annual: z.string().optional(),
+    }).optional(),
 });
 
 export type Secrets = z.infer<typeof SecretsSchema>;

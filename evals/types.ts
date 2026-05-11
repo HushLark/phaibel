@@ -84,6 +84,13 @@ export interface ContextTypeCreatedAssertion extends BaseAssertion {
     typeName: string;
 }
 
+export interface EntityBodyAssertion extends BaseAssertion {
+    type: 'entity_body';
+    entityType: string;
+    titleMatch: string;
+    match: string;
+}
+
 export type EvalAssertion =
     | EntityCreatedAssertion
     | EntityUpdatedAssertion
@@ -92,6 +99,7 @@ export type EvalAssertion =
     | EntityNotCreatedAssertion
     | EntityCountAssertion
     | ResponseContainsAssertion
+    | EntityBodyAssertion
     | ContextTypeCreatedAssertion;
 
 // ─────────────────────────────────────────────────────────────────────────────

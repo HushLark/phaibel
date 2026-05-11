@@ -180,6 +180,24 @@ const EXAMPLE_PROCESSES = [
         },
     },
     {
+        description: 'Migrate existing entities to a new content type: create the type, loop over old entities, recreate each under the new type, then delete the originals',
+        json: {
+            schema_version: 1,
+            key: 'type.migrate',
+            description: 'Create a soccer_game content type and convert existing soccer events to it',
+            context: {},
+            nodes: [
+                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create_type' } },
+                { key: 'create_type', catalog_node_key: 'create_content_type', configuration: { type_name: 'soccer_game', description: 'A soccer game with date, venue, opponent, and score' }, edges: { ok: 'list_old', already_exists: 'list_old', error: 'done' } },
+                { key: 'list_old', catalog_node_key: 'search_events', configuration: { query: 'soccer game', context_path: 'events_to_migrate' }, edges: { ok: 'iter', error: 'done' } },
+                { key: 'iter', catalog_node_key: 'array_iterator', configuration: { source_context_path: 'events_to_migrate', item_context_path: '_item', spread_fields: true }, edges: { ok: 'create_new', done: 'done' } },
+                { key: 'create_new', catalog_node_key: 'create_entity', configuration: { entity_type: 'soccer_game', entity_title_context_key: 'title', entity_body_context_key: 'body' }, edges: { ok: 'delete_old', already_exists: 'delete_old', error: 'iter' } },
+                { key: 'delete_old', catalog_node_key: 'delete_event', configuration: { title_context_key: 'title' }, edges: { ok: 'iter', not_found: 'iter', error: 'iter' } },
+                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
+            ],
+        },
+    },
+    {
         description: 'Create a task with fields (status, priority, dueDate) set via process context',
         json: {
             schema_version: 1,
@@ -505,6 +523,7 @@ RULES:
 - Prefer entity nodes (create_*, complete_*, find_*) over llm_chat for data operations.
 - For unknown content types, select "create_content_type". For multiple entities, select multiple create_* nodes.
 - Proactively link related entities. Prefer action over questions — use sensible defaults.
+- When the user mentions a flight number, URL, product, or needs live/external data, include "perplexity_sonar" to look it up, then update the created/found entity with the results.
 
 Return a JSON object with this exact structure:
 {
