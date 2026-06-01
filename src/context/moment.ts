@@ -13,6 +13,7 @@ export interface MomentContext {
     day_of_week: string;            // e.g. "Tuesday"
     current_datetime_iso: string;   // full ISO 8601 with timezone
     user_timezone: string;          // e.g. "America/Denver (UTC-06:00)"
+    user_name?: string;             // name from the "me" person node if available
     overdue_tasks: number;
     tasks_due_today: number;
     tasks_due_tomorrow: number;
@@ -118,12 +119,20 @@ export function buildMomentContext(userName?: string): MomentContext {
         }
     }
 
+    // User name from the "me" person node
+    let userName: string | undefined = undefined;
+    if (index.isBuilt) {
+        const meNode = index.getMeNode();
+        if (meNode) userName = meNode.name;
+    }
+
     return {
         current_date: today,
         current_time: currentTime,
         day_of_week: dayOfWeek,
         current_datetime_iso: isoWithTz,
         user_timezone: `${userTimezone} (UTC${tzOffset})`,
+        user_name: userName,
         overdue_tasks: overdueTasks,
         tasks_due_today: tasksDueToday,
         tasks_due_tomorrow: tasksDueTomorrow,
@@ -136,6 +145,7 @@ export function buildMomentContext(userName?: string): MomentContext {
  */
 export function formatMomentBlock(moment: MomentContext): string {
     const lines = [
+        ...(moment.user_name ? [`- user: ${moment.user_name}`] : []),
         `- current_date: ${moment.current_date} (${moment.day_of_week})`,
         `- current_time: ${moment.current_time}`,
         `- current_datetime: ${moment.current_datetime_iso}`,

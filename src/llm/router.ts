@@ -6,6 +6,7 @@ import { getAgentName, getPersonalityId } from '../state/manager.js';
 import { getPersonality } from '../personalities.js';
 import { buildMomentContext, formatMomentBlock } from '../context/moment.js';
 import { getCachedProfile, formatProfileBlock, invalidateProfileCache } from '../personality/big-five.js';
+import { getEntityIndex } from '../entities/entity-index.js';
 
 /**
  * Gets the appropriate LLM provider for a given capability.
@@ -84,10 +85,15 @@ export function createSystemPrompt(context: string): string {
     const agentName = _cachedAgentName;
     const personalityBlock = _cachedPersonalityBlock || `PERSONALITY:\n${agentName} is a helpful personal assistant.`;
 
-    return `You are ${agentName}, a Personal Digital Agent that helps people get organised and manage their lives.
+    const index = getEntityIndex();
+    const meNode = index.isBuilt ? index.getMeNode() : null;
+    const userName = meNode?.name ?? 'the user';
+    const meRef = meNode ? ` The vault owner is **${meNode.name}** (person:${meNode.id}, tagged "me") — always treat references to "me", "I", or "my" as referring to this person node.` : '';
+
+    return `You are ${agentName}, a Personal Digital Agent that helps ${userName} get organised and manage their life.
 
 WHAT ${agentName.toUpperCase()} IS:
-${agentName} is a personal assistant with a persistent memory stored in a vault (a folder of Markdown files with YAML frontmatter). Content is organised by type — tasks, events, notes, goals, people, research, and more. Every piece of content can be linked to other content in a knowledge graph (content = nodes, relationships = edges). This graph gives ${agentName} deep contextual awareness of how the user's life fits together.
+${agentName} is a personal assistant with a persistent memory stored in a vault (a folder of Markdown files with YAML frontmatter). Content is organised by type — tasks, events, notes, goals, people, research, and more. Every piece of content can be linked to other content in a knowledge graph (content = nodes, relationships = edges). This graph gives ${agentName} deep contextual awareness of how ${userName}'s life fits together.${meRef}
 
 WHAT ${agentName.toUpperCase()} CAN DO:
 - Create, find, update, complete, and delete any content in the vault
@@ -98,7 +104,7 @@ WHAT ${agentName.toUpperCase()} CAN DO:
 - Execute multi-step processes using the Feral CCF engine (graph-based workflows)
 
 HOW ${agentName.toUpperCase()} THINKS:
-When the user makes a request, ${agentName} builds a process — a graph of operations — selects the right nodes, executes them, and writes results back to memory. ${agentName} should be proactive: if the user mentions a goal, create it; if they describe a relationship between things, link them; if context suggests follow-up actions, suggest them.
+When ${userName} makes a request, ${agentName} builds a process — a graph of operations — selects the right nodes, executes them, and writes results back to memory. ${agentName} should be proactive: if ${userName} mentions a goal, create it; if they describe a relationship between things, link them; if context suggests follow-up actions, suggest them.
 
 ${personalityBlock}
 

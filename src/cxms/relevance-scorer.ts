@@ -1,43 +1,37 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// CxMS RELEVANCE SCORER
-// Composite relevance scoring for non-temporal context types.
+// CxMS RELEVANCE SCORER (v2)
+// Composite relevance scoring using the 6-dimension system.
 //
-// Nine signals, each [0, 1]. Only signals with active config are included.
-// Declared weights are normalized to sum to 1.0 automatically.
-//
-// Signal          Source                      Needs
+// Dimension       Source                      Needs
 // ─────────────── ─────────────────────────── ──────────────────────────────
 // semantic        vector cosine similarity    EmbeddingIndex + query
-// recency         exponential decay (updated) node.meta.updated
-// graphProximity  BFS hop distance            entity graph edges
-// coOccurrence    shared edges with anchors   entity graph edges
-// centrality      total degree                entity graph edges
-// spatial         haversine distance          node coordinates + currentLocation
-// goalAlignment   BFS to active goal node     entity graph + goal type nodes
-// socialProximity relationship-type weight    node.meta[relationshipField]
-// behavioral      log-scale interaction freq  BehavioralIndex
+// recency         exponential decay (updated) dimensions.recency.updatedAt
+// graphDistance   BFS + centrality + goal BFS entity graph edges
+// socialProximity relationship-type weight    dimensions.socialProximity
+// geographical    haversine distance          dimensions.geographical + location
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { IndexNode, IndexEdge } from '../entities/entity-index.js';
-import type { RelevanceConfig } from '../entities/entity-type-config.js';
-import type { BehavioralIndex } from './behavioral-index.js';
+import type { RelevanceDimensionDef } from '../entities/entity-type-config.js';
+import type { NodeDimensions } from './types.js';
+import type { RequestWeights } from '../context/request-weights.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEFAULTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_WEIGHTS = {
+const DEFAULT_WEIGHTS: Record<string, number> = {
     semantic:        0.40,
     recency:         0.25,
-    graphProximity:  0.20,
-    coOccurrence:    0.10,
-    centrality:      0.05,
+    graphDistance:   0.20,
+    socialProximity: 0.00,
+    geographical:    0.00,
 };
 
-const DEFAULT_RECENCY_HALF_LIFE   = 30;
-const DEFAULT_GRAPH_DEPTH         = 2;
-const DEFAULT_MAX_DISTANCE_KM     = 50;
-const DEFAULT_GOAL_MAX_HOPS       = 3;
+const DEFAULT_RECENCY_HALF_LIFE  = 30;
+const DEFAULT_MAX_HOPS           = 2;
+const DEFAULT_MAX_DISTANCE_KM    = 50;
+const DEFAULT_GOAL_MAX_HOPS      = 3;
 const DEFAULT_SOCIAL_WEIGHTS: Record<string, number> = {
     family:       1.00,
     friend:       0.75,
@@ -68,14 +62,15 @@ export interface ScorerContext {
     now: Date;
     currentLocation?: Coordinates;
     activeGoalKeys?: Set<string>;
-    behavioralIndex?: BehavioralIndex;
+    /** Composite key ("person:user-self") for the vault owner's Person node. */
+    meNodeKey?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SIGNAL FUNCTIONS
+// PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
 
-function recencyScore(updatedAt: string | undefined, halfLifeDays: number, now: Date): number {
+function recencySignal(updatedAt: string | undefined, halfLifeDays: number, now: Date): number {
     if (!updatedAt) return 0.5;
     const d = new Date(updatedAt);
     if (isNaN(d.getTime())) return 0.5;
@@ -109,147 +104,183 @@ function bfsHops(
     return Infinity;
 }
 
-function graphProximityScore(hops: number, maxDepth: number): number {
+function proximitySignal(hops: number, maxDepth: number): number {
     if (hops === 0) return 1.0;
     if (hops === Infinity) return 0.0;
     return 1 - hops / (maxDepth + 1);
 }
 
-function coOccurrenceScore(nodeKey: string, anchorKeys: Set<string>, edges: IndexEdge[]): number {
-    if (anchorKeys.size === 0) return 0;
-    let shared = 0;
-    for (const edge of edges) {
-        const touchesNode   = edge.source === nodeKey || edge.target === nodeKey;
-        const touchesAnchor = anchorKeys.has(edge.source) || anchorKeys.has(edge.target);
-        if (touchesNode && touchesAnchor) shared++;
-    }
-    return Math.min(1, shared / Math.max(1, anchorKeys.size));
-}
-
-function centralityScore(nodeKey: string, edges: IndexEdge[], maxDegree: number): number {
-    if (maxDegree === 0) return 0;
-    const degree = edges.filter(e => e.source === nodeKey || e.target === nodeKey).length;
-    return Math.min(1, degree / maxDegree);
-}
-
-/** Haversine great-circle distance in km. */
 function haversineKm(a: Coordinates, b: Coordinates): number {
     const R = 6371;
     const dLat = ((b.lat - a.lat) * Math.PI) / 180;
     const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-    const sinLat = Math.sin(dLat / 2);
-    const sinLng = Math.sin(dLng / 2);
-    const h = sinLat * sinLat +
-        Math.cos((a.lat * Math.PI) / 180) *
-        Math.cos((b.lat * Math.PI) / 180) *
-        sinLng * sinLng;
+    const s1 = Math.sin(dLat / 2);
+    const s2 = Math.sin(dLng / 2);
+    const h = s1 * s1 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * s2 * s2;
     return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-function spatialScore(
-    meta: Record<string, unknown>,
-    coordField: string,
+// ─────────────────────────────────────────────────────────────────────────────
+// DIMENSION SIGNAL COMPUTERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function semanticSignal(key: string, ctx: ScorerContext): number {
+    return ctx.vectorSimilarity.get(key) ?? 0;
+}
+
+function recencyDimSignal(
+    dims: NodeDimensions,
+    halfLifeDays: number,
+    now: Date,
+): number {
+    return recencySignal(dims.recency?.updatedAt, halfLifeDays, now);
+}
+
+function graphDistanceSignal(
+    key: string,
+    dims: NodeDimensions,
+    ctx: ScorerContext,
+    maxHops: number,
+    allowedLabels: string[] | undefined,
+    maxDegree: number,
+): number {
+    // Proximity to current query anchors
+    const anchorHops = bfsHops(key, ctx.anchorKeys, ctx.edges, maxHops, allowedLabels);
+    const anchorProximity = proximitySignal(anchorHops, maxHops);
+
+    // Centrality (normalized degree)
+    const degree = dims.graphDistance?.degree ?? 0;
+    const centrality = maxDegree > 0 ? Math.min(1, degree / maxDegree) : 0;
+
+    // Goal alignment (BFS to active goal nodes)
+    let goalScore = 0;
+    if (ctx.activeGoalKeys && ctx.activeGoalKeys.size > 0) {
+        const goalHops = bfsHops(key, ctx.activeGoalKeys, ctx.edges, DEFAULT_GOAL_MAX_HOPS);
+        goalScore = proximitySignal(goalHops, DEFAULT_GOAL_MAX_HOPS);
+    }
+
+    const hasGoal = goalScore > 0;
+    const totalWeight = 0.6 + 0.25 + (hasGoal ? 0.15 : 0);
+    return (anchorProximity * 0.6 + centrality * 0.25 + goalScore * (hasGoal ? 0.15 : 0)) / totalWeight;
+}
+
+function socialProximitySignal(
+    key: string,
+    dims: NodeDimensions,
+    ctx: ScorerContext,
+    weightMap: Record<string, number>,
+): number {
+    // Graph-based: BFS distance from the "me" node (vault owner).
+    // 0 hops = this IS the me node (1.0); 1 hop = direct contact (0.8); etc.
+    if (ctx.meNodeKey) {
+        if (key === ctx.meNodeKey) return 1.0;
+        const hops = bfsHops(key, new Set([ctx.meNodeKey]), ctx.edges, 4);
+        if (hops !== Infinity) return proximitySignal(hops, 4);
+    }
+    // Fallback: static relationship-type weight from entity metadata
+    const rel = dims.socialProximity?.relationship;
+    if (!rel) return 0;
+    return weightMap[rel.toLowerCase()] ?? 0;
+}
+
+function geographicalSignal(
+    dims: NodeDimensions,
     currentLocation: Coordinates,
     maxKm: number,
 ): number {
-    const raw = meta[coordField];
-    if (!raw || typeof raw !== 'object') return 0;
-    const { lat, lng } = raw as Record<string, unknown>;
-    if (typeof lat !== 'number' || typeof lng !== 'number') return 0;
-    const km = haversineKm(currentLocation, { lat, lng });
+    const geo = dims.geographical;
+    if (!geo) return 0;
+    const km = haversineKm(currentLocation, geo);
     return Math.max(0, 1 - km / maxKm);
-}
-
-function goalAlignmentScore(
-    nodeKey: string,
-    activeGoalKeys: Set<string>,
-    edges: IndexEdge[],
-    maxHops: number,
-): number {
-    if (activeGoalKeys.size === 0) return 0;
-    const hops = bfsHops(nodeKey, activeGoalKeys, edges, maxHops);
-    return graphProximityScore(hops, maxHops);
-}
-
-function socialProximityScore(
-    meta: Record<string, unknown>,
-    relationshipField: string,
-    weightMap: Record<string, number>,
-): number {
-    const rel = meta[relationshipField];
-    if (typeof rel !== 'string') return 0;
-    return weightMap[rel.toLowerCase()] ?? 0;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WEIGHT NORMALIZATION
 // ─────────────────────────────────────────────────────────────────────────────
 
-function buildActiveWeights(
-    config: RelevanceConfig,
-    hasSpatial: boolean,
-    hasGoal: boolean,
+function buildWeights(
+    dimensions: RelevanceDimensionDef[],
     hasSocial: boolean,
-    hasBehavioral: boolean,
+    hasGeo: boolean,
 ): Record<string, number> {
-    const declared = config.weights ?? {};
+    const raw: Record<string, number> = { ...DEFAULT_WEIGHTS };
 
-    // Start with always-active base signals
-    const active: Record<string, number> = {
-        semantic:       declared.semantic       ?? DEFAULT_WEIGHTS.semantic,
-        recency:        declared.recency        ?? DEFAULT_WEIGHTS.recency,
-        graphProximity: declared.graphProximity ?? DEFAULT_WEIGHTS.graphProximity,
-        coOccurrence:   declared.coOccurrence   ?? DEFAULT_WEIGHTS.coOccurrence,
-        centrality:     declared.centrality     ?? DEFAULT_WEIGHTS.centrality,
-    };
+    for (const def of dimensions) {
+        if (def.type === 'temporal') continue; // not a scorer dimension
+        if (def.weight !== undefined) raw[def.type] = def.weight;
+    }
 
-    // Add optional signals only when configured
-    if (hasSpatial)    active.spatial         = declared.spatial         ?? 0.20;
-    if (hasGoal)       active.goalAlignment   = declared.goalAlignment   ?? 0.20;
-    if (hasSocial)     active.socialProximity = declared.socialProximity ?? 0.20;
-    if (hasBehavioral) active.behavioral      = declared.behavioral      ?? 0.15;
+    if (!hasSocial) raw.socialProximity = 0;
+    if (!hasGeo)    raw.geographical    = 0;
 
-    // Normalize so weights sum to 1.0
-    const total = Object.values(active).reduce((s, v) => s + v, 0);
-    if (total === 0) return active;
-    for (const k of Object.keys(active)) active[k] /= total;
-    return active;
+    const total = Object.values(raw).reduce((s, v) => s + v, 0);
+    if (total === 0) return raw;
+    const normalized: Record<string, number> = {};
+    for (const [k, v] of Object.entries(raw)) normalized[k] = v / total;
+    return normalized;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SCORER
+// REQUEST-WEIGHT OVERLAY
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Apply per-request weight overrides on top of per-type dimension weights.
+ *
+ * Only dimensions already active in the type config (weight > 0) are eligible
+ * for a request boost — we never activate an unconfigured dimension at query
+ * time.  The active set is re-normalized after applying request weights.
+ */
+function applyRequestWeights(
+    typeWeights: Record<string, number>,
+    rw: Partial<RequestWeights>,
+): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [k, w] of Object.entries(typeWeights)) {
+        if (w <= 0) {
+            result[k] = 0;
+            continue;
+        }
+        // Substitute the request weight for this dimension (or keep type default)
+        const rwVal = (rw as Record<string, number>)[k];
+        result[k] = rwVal !== undefined ? rwVal : w;
+    }
+    const total = Object.values(result).reduce((s, v) => s + v, 0);
+    if (total === 0) return typeWeights;
+    const norm: Record<string, number> = {};
+    for (const [k, v] of Object.entries(result)) norm[k] = v / total;
+    return norm;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN SCORER
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function scoreNodes(
     candidates: IndexNode[],
-    config: RelevanceConfig,
+    dimensions: RelevanceDimensionDef[],
     ctx: ScorerContext,
+    requestWeights?: Partial<RequestWeights>,
 ): RelevanceScore[] {
-    const halfLife      = config.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE;
-    const maxDepth      = config.graphDepth          ?? DEFAULT_GRAPH_DEPTH;
-    const allowedRel    = config.anchorRelationships;
+    // Extract per-dimension configs
+    const recencyDef    = dimensions.find(d => d.type === 'recency');
+    const graphDef      = dimensions.find(d => d.type === 'graphDistance');
+    const socialDef     = dimensions.find(d => d.type === 'socialProximity');
+    const geoDef        = dimensions.find(d => d.type === 'geographical');
 
-    // Spatial config
-    const spatialCfg    = config.spatial;
-    const hasSpatial    = !!(spatialCfg && ctx.currentLocation);
-    const coordField    = spatialCfg?.coordinatesField ?? 'coordinates';
-    const maxKm         = spatialCfg?.maxDistanceKm   ?? DEFAULT_MAX_DISTANCE_KM;
+    const halfLife      = (recencyDef?.type === 'recency' ? recencyDef.config?.halfLifeDays : undefined) ?? DEFAULT_RECENCY_HALF_LIFE;
+    const maxHops       = (graphDef?.type === 'graphDistance' ? graphDef.config?.maxHops : undefined) ?? DEFAULT_MAX_HOPS;
+    const allowedLabels = graphDef?.type === 'graphDistance' ? graphDef.config?.followEdgeLabels : undefined;
+    const socialWeights = { ...DEFAULT_SOCIAL_WEIGHTS, ...(socialDef?.type === 'socialProximity' ? (socialDef.config.weights ?? {}) : {}) };
+    const maxKm         = (geoDef?.type === 'geographical' ? geoDef.config.maxKm : undefined) ?? DEFAULT_MAX_DISTANCE_KM;
 
-    // Goal alignment config
-    const goalCfg       = config.goalAlignment;
-    const hasGoal       = !!(goalCfg && ctx.activeGoalKeys && ctx.activeGoalKeys.size > 0);
-    const goalMaxHops   = goalCfg?.maxHops ?? DEFAULT_GOAL_MAX_HOPS;
+    const hasSocial = !!socialDef;
+    const hasGeo    = !!(geoDef && ctx.currentLocation);
 
-    // Social proximity config
-    const socialCfg     = config.socialProximity;
-    const hasSocial     = !!socialCfg;
-    const relField      = socialCfg?.relationshipField ?? 'relationship';
-    const socialWeights = { ...DEFAULT_SOCIAL_WEIGHTS, ...(socialCfg?.weights ?? {}) };
-
-    // Behavioral config
-    const hasBehavioral = !!ctx.behavioralIndex?.isLoaded;
-
-    const weights = buildActiveWeights(config, hasSpatial, hasGoal, hasSocial, hasBehavioral);
+    const typeWeights = buildWeights(dimensions, hasSocial, hasGeo);
+    const weights = requestWeights
+        ? applyRequestWeights(typeWeights, requestWeights)
+        : typeWeights;
 
     // Pre-compute max degree for centrality
     const degreeMap = new Map<string, number>();
@@ -260,33 +291,24 @@ export function scoreNodes(
     const maxDegree = Math.max(0, ...degreeMap.values());
 
     const scores: RelevanceScore[] = candidates.map(node => {
-        const key = `${node.type}:${node.id}`;
+        const key  = `${node.type}:${node.id}`;
+        const dims = (node.meta.dimensions ?? {}) as NodeDimensions;
 
         const signals: Record<string, number> = {
-            semantic:       (ctx.vectorSimilarity.get(key) ?? 0),
-            recency:        recencyScore(node.meta.updated as string | undefined, halfLife, ctx.now),
-            graphProximity: graphProximityScore(
-                bfsHops(key, ctx.anchorKeys, ctx.edges, maxDepth, allowedRel), maxDepth
-            ),
-            coOccurrence:   coOccurrenceScore(key, ctx.anchorKeys, ctx.edges),
-            centrality:     centralityScore(key, ctx.edges, maxDegree),
+            semantic:      semanticSignal(key, ctx),
+            recency:       recencyDimSignal(dims, halfLife, ctx.now),
+            graphDistance: graphDistanceSignal(key, dims, ctx, maxHops, allowedLabels, maxDegree),
         };
 
-        if (hasSpatial) {
-            signals.spatial = spatialScore(node.meta, coordField, ctx.currentLocation!, maxKm);
-        }
-        if (hasGoal) {
-            signals.goalAlignment = goalAlignmentScore(key, ctx.activeGoalKeys!, ctx.edges, goalMaxHops);
-        }
         if (hasSocial) {
-            signals.socialProximity = socialProximityScore(node.meta, relField, socialWeights);
+            signals.socialProximity = socialProximitySignal(key, dims, ctx, socialWeights);
         }
-        if (hasBehavioral) {
-            signals.behavioral = ctx.behavioralIndex!.getScore(key);
+        if (hasGeo) {
+            signals.geographical = geographicalSignal(dims, ctx.currentLocation!, maxKm);
         }
 
         const total = Object.entries(weights).reduce(
-            (sum, [k, w]) => sum + w * (signals[k] ?? 0), 0
+            (sum, [k, w]) => sum + w * (signals[k] ?? 0), 0,
         );
 
         return { key, total, signals };

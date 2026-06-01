@@ -469,25 +469,39 @@ export class EntityIndex {
     }
 
     /**
-     * Score and rank candidate nodes by composite relevance using CxMS RelevanceConfig.
+     * Find the "me" node — the Person entity representing the vault owner.
+     * Identified by `isMe: true` in frontmatter (preferred) or the "me" tag.
+     */
+    getMeNode(): IndexNode | null {
+        for (const node of this.nodes.values()) {
+            if (node.meta.isMe === true) return node;
+        }
+        for (const node of this.nodes.values()) {
+            if (node.tags.includes('me')) return node;
+        }
+        return null;
+    }
+
+    /**
+     * Score and rank candidate nodes by composite relevance using the 6-dimension system.
      * Requires the EmbeddingIndex to be loaded for the semantic signal; falls back to
      * graph + recency only if embeddings are unavailable.
      *
      * @param query        The user's query text (used for semantic similarity)
      * @param entityType   Optional type filter
      * @param anchorKeys   Keys of already-fetched nodes (seeds for graph proximity)
-     * @param config       RelevanceConfig from the entity type definition
+     * @param dimensions   RelevanceDimensionDef[] from the context type definition
      */
     async searchByRelevance(
         query: string,
         entityType: EntityTypeName | undefined,
         anchorKeys: Set<string>,
-        config: import('../entities/entity-type-config.js').RelevanceConfig,
+        dimensions: import('../entities/entity-type-config.js').RelevanceDimensionDef[],
         currentLocation?: import('../cxms/relevance-scorer.js').Coordinates,
+        requestWeights?: import('../context/request-weights.js').RequestWeights,
     ): Promise<IndexSearchResult[]> {
         const { scoreNodes } = await import('../cxms/relevance-scorer.js');
         const { getEmbeddingIndex } = await import('./embedding-index.js');
-        const { getBehavioralIndex } = await import('../cxms/behavioral-index.js');
 
         const candidates = entityType
             ? this.getNodes(entityType)
@@ -501,9 +515,10 @@ export class EntityIndex {
             for (const r of results) vectorSimilarity.set(r.key, r.similarity);
         }
 
-        // Active goal keys — nodes of type 'goal' that are not done/completed
+        // Active goal keys for graphDistance goal-alignment sub-signal
         const activeGoalKeys = new Set<string>();
-        if (config.goalAlignment) {
+        const hasGraphDim = dimensions.some(d => d.type === 'graphDistance');
+        if (hasGraphDim) {
             for (const node of this.getNodes('goal' as EntityTypeName)) {
                 const status = node.meta.status as string | undefined;
                 if (!status || !['done', 'completed', 'achieved'].includes(status.toLowerCase())) {
@@ -512,19 +527,18 @@ export class EntityIndex {
             }
         }
 
-        // Behavioral index
-        const behavioralIndex = getBehavioralIndex();
-        if (!behavioralIndex.isLoaded) await behavioralIndex.load().catch(() => {});
+        const meNode = this.getMeNode();
+        const meNodeKey = meNode ? `${meNode.type}:${meNode.id}` : undefined;
 
-        const scores = scoreNodes(candidates, config, {
+        const scores = scoreNodes(candidates, dimensions, {
             vectorSimilarity,
             edges: this.edges,
             anchorKeys,
             now: new Date(),
             currentLocation,
             activeGoalKeys,
-            behavioralIndex,
-        });
+            meNodeKey,
+        }, requestWeights);
 
         return scores.map(s => ({
             node: this.nodes.get(s.key)!,
