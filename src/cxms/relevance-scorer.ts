@@ -70,8 +70,12 @@ export interface ScorerContext {
     currentLocation?: Coordinates;
     activeGoalKeys?: Set<string>;
     behavioralIndex?: BehavioralIndex;
-    /** Composite key ("person:user-self") for the vault owner's Person node. */
-    meNodeKey?: string;
+    /**
+     * The hub node for social proximity BFS — graph distance from this node
+     * determines how socially close each candidate is. The caller resolves
+     * which node to use; the scorer treats it as an opaque composite key.
+     */
+    focalNodeKey?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -176,8 +180,8 @@ function goalAlignmentScore(
 
 /**
  * Social proximity signal.
- * Primary: BFS distance from the vault owner's "me" node — the closer in the
- * graph, the higher the score (1 hop ≈ 0.8, 2 hops ≈ 0.6, etc.).
+ * Primary: BFS distance from the focal node — the closer in the graph, the
+ * higher the score (1 hop ≈ 0.8, 2 hops ≈ 0.6, etc.).
  * Fallback: static relationship-type weight from the entity's metadata.
  */
 function socialProximityScore(
@@ -187,9 +191,9 @@ function socialProximityScore(
     weightMap: Record<string, number>,
     ctx: ScorerContext,
 ): number {
-    if (ctx.meNodeKey) {
-        if (nodeKey === ctx.meNodeKey) return 1.0;
-        const hops = bfsHops(nodeKey, new Set([ctx.meNodeKey]), ctx.edges, DEFAULT_SOCIAL_MAX_HOPS);
+    if (ctx.focalNodeKey) {
+        if (nodeKey === ctx.focalNodeKey) return 1.0;
+        const hops = bfsHops(nodeKey, new Set([ctx.focalNodeKey]), ctx.edges, DEFAULT_SOCIAL_MAX_HOPS);
         if (hops !== Infinity) return graphProximityScore(hops, DEFAULT_SOCIAL_MAX_HOPS);
     }
     const rel = meta[relationshipField];

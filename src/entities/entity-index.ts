@@ -530,9 +530,10 @@ export class EntityIndex {
         const behavioralIndex = getBehavioralIndex();
         if (!behavioralIndex.isLoaded) await behavioralIndex.load().catch(() => {});
 
-        // Me node key for BFS-based social proximity
+        // Resolve the focal node for social proximity BFS.
+        // Phaibel core knows the "me" concept; the scorer just needs a key.
         const meNode = this.getMeNode();
-        const meNodeKey = meNode ? `${meNode.type}:${meNode.id}` : undefined;
+        const focalNodeKey = meNode ? `${meNode.type}:${meNode.id}` : undefined;
 
         const scores = scoreNodes(candidates, config, {
             vectorSimilarity,
@@ -542,7 +543,7 @@ export class EntityIndex {
             currentLocation,
             activeGoalKeys,
             behavioralIndex,
-            meNodeKey,
+            focalNodeKey,
         });
 
         return scores.map(s => ({
