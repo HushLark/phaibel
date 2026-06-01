@@ -120,10 +120,10 @@ export function buildMomentContext(userName?: string): MomentContext {
     }
 
     // User name from the "me" person node
-    let userName: string | undefined = undefined;
+    let meUserName: string | undefined = undefined;
     if (index.isBuilt) {
         const meNode = index.getMeNode();
-        if (meNode) userName = meNode.name;
+        if (meNode) meUserName = meNode.name;
     }
 
     return {
@@ -132,7 +132,7 @@ export function buildMomentContext(userName?: string): MomentContext {
         day_of_week: dayOfWeek,
         current_datetime_iso: isoWithTz,
         user_timezone: `${userTimezone} (UTC${tzOffset})`,
-        user_name: userName,
+        user_name: meUserName,
         overdue_tasks: overdueTasks,
         tasks_due_today: tasksDueToday,
         tasks_due_tomorrow: tasksDueTomorrow,
