@@ -94,6 +94,9 @@ export async function scanForIncompleteEntities(
         const typeConfig = typeMap.get(node.type);
         if (!typeConfig || typeConfig.fields.length === 0) continue;
 
+        // Skip externally-synced nodes — user can't own their missing fields
+        if (typeof node.meta.sourceId === 'string' && node.meta.sourceId.length > 0) continue;
+
         // Filter to recently modified entities
         const updated = node.meta.updated as string | undefined;
         if (updated) {
@@ -111,9 +114,9 @@ export async function scanForIncompleteEntities(
         candidates.push({ entityKey, entityName: node.title, entityType: node.type, gaps });
     }
 
-    // Sort by highest-priority gap descending, cap at 5
+    // Sort by highest-priority gap descending, cap at 10 before caller shuffles
     candidates.sort((a, b) => (b.gaps[0]?.priority ?? 0) - (a.gaps[0]?.priority ?? 0));
-    return candidates.slice(0, 5);
+    return candidates.slice(0, 10);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
