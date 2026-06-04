@@ -50,6 +50,7 @@ export { SetContextTableNodeCode } from './node-code/data/set-context-table-node
 export { CalculationNodeCode } from './node-code/data/calculation-node-code.js';
 export { CounterNodeCode } from './node-code/data/counter-node-code.js';
 export { HttpNodeCode } from './node-code/data/http-node-code.js';
+export { WebSearchNodeCode } from './node-code/data/web-search-node-code.js';
 export { JsonDecodeNodeCode } from './node-code/data/json-decode-node-code.js';
 export { JsonEncodeNodeCode } from './node-code/data/json-encode-node-code.js';
 export { LogNodeCode } from './node-code/data/log-node-code.js';

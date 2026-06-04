@@ -46,6 +46,7 @@ import { RandomValueNodeCode } from './node-code/data/random-value-node-code.js'
 import { LlmChatNodeCode } from './node-code/data/llm-chat-node-code.js';
 import { CleanLlmJsonNodeCode } from './node-code/data/clean-llm-json-node-code.js';
 import { WeatherNodeCode } from './node-code/data/weather-node-code.js';
+import { WebSearchNodeCode } from './node-code/data/web-search-node-code.js';
 import { QueryTokenUsageNodeCode } from './node-code/data/query-token-usage-node-code.js';
 import { ChartTokenUsageNodeCode } from './node-code/data/chart-token-usage-node-code.js';
 import { MergeStringsNodeCode } from './node-code/genai/merge-strings-node-code.js';
@@ -127,6 +128,7 @@ function getCrossPlatformNodeCodes(): NodeCode[] {
         new LlmChatNodeCode(),
         new CleanLlmJsonNodeCode(),
         new WeatherNodeCode(),
+        new WebSearchNodeCode(),
         new QueryTokenUsageNodeCode(),
         new ChartTokenUsageNodeCode(),
         // Agent / GenAI
