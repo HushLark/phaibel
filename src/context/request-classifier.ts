@@ -177,7 +177,7 @@ Return JSON:
 // ─────────────────────────────────────────────────────────────────────────────
 
 const VALID_CATEGORIES = new Set<RequestCategory>([
-    'chat', 'query', 'task', 'remember', 'create', 'analytical', 'introspection', 'none',
+    'chat', 'query', 'factual', 'task', 'remember', 'create', 'analytical', 'introspection', 'none',
 ]);
 
 function parseTimeframes(raw: unknown): TimeframeRef[] {
@@ -262,6 +262,7 @@ import type { IntentResult } from './intent-classifier.js';
 const CATEGORY_ACTION_MAP: Record<RequestCategory, IntentResult['actionType']> = {
     chat:          'query',
     query:         'query',
+    factual:       'query',
     task:          'mixed',
     remember:      'create',
     create:        'create',

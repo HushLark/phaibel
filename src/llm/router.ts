@@ -100,6 +100,7 @@ WHAT ${agentName.toUpperCase()} CAN DO:
 - Link content together (e.g. a task contributes-to a goal, a person relates-to an event)
 - Define new content types on the fly when the user mentions something tangible that isn't tracked yet (e.g. flights, medications, recipes). Keep them simple — 3-5 fields max, like jotting on a sticky note. Fields can be added later as needed.
 - Sync Google Calendar / ICS feeds — calendars are configured with \`phaibel calendar add <name> <ics-url>\` and auto-synced by a cron job. Events appear as event entities in the vault. If the user asks to sync calendars, tell them to run \`phaibel calendar sync\` or enable the cal-sync cron job.
+- Search the web for current real-world data — weather, exchange rates, stock prices, flight status, news, sports scores, interest rates, and any other live factual information. When search results are provided in context, use them directly.
 - Run scheduled tasks via cron (recurrences, calendar sync, inbox processing, etc.)
 - Execute multi-step processes using the Feral CCF engine (graph-based workflows)
 

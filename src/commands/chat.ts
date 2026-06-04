@@ -23,7 +23,7 @@ import { getModelForCapability, createSystemPrompt } from '../llm/router.js';
 import { getCapabilityModel } from '../config.js';
 import { debug } from '../utils/debug.js';
 import { ChatLogger, generateChatId, appendJudgement } from '../utils/chat-logger.js';
-import { parseJsonResponse } from '../utils/json-parser.js';
+import { parseJsonResponse, extractResponseField } from '../utils/json-parser.js';
 import { writeExecutionLog } from '../utils/execution-logger.js';
 import { loadEntityTypes } from '../entities/entity-type-config.js';
 import { getUserName } from '../state/manager.js';
@@ -35,9 +35,11 @@ import { buildMomentContext, momentToGlobals } from '../context/moment.js';
 import { updateProfile, validateScores, invalidateProfileCache, type BigFiveSample } from '../personality/big-five.js';
 import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../entities/entity.js';
 import { getEntityType } from '../entities/entity-type-config.js';
-import { classifyIntent } from '../context/intent-classifier.js';
+import { classifyRequest, toIntentResult, BLOCKED_RESPONSE } from '../context/request-classifier.js';
+import { CATEGORY_PROCESSES, CATEGORY_PROCESS_KEY } from '../feral/processes/category-processes.js';
 import { buildContextManifest } from '../context/context-manifest.js';
-import { runContextLoop, serializeGatheredContext } from '../context/context-loop.js';
+import { fetchContextByClassification, serializeGatheredContext } from '../context/context-loop.js';
+import { inferWeights } from '../context/request-weights.js';
 import { resolveTokens, TOKEN_INSTRUCTIONS } from '../utils/token-resolver.js';
 import { UI_COMPONENT_INSTRUCTIONS } from '../utils/ui-components.js';
 import type { LLMProvider } from '../llm/types.js';
@@ -248,6 +250,9 @@ export interface ClientHints {
     platform?: string;
     screenWidth?: number;
     screenHeight?: number;
+    creditsRemaining?: number;
+    creditsLimit?: number;
+    sessionResetAt?: string;
 }
 
 export async function feralChatHeadless(
@@ -309,6 +314,10 @@ async function _feralChatHeadlessInner(
 ): Promise<string> {
     // ── Bootstrap Feral + load entity types + vault context ────────
     const inMemorySource = new InMemoryProcessSource();
+    // Register pre-built category processes so the factory can find them
+    for (const p of CATEGORY_PROCESSES) {
+        inMemorySource.add(p);
+    }
     const [runtime, entityTypes, userName] = await Promise.all([
         bootstrapFeral({ processSources: [inMemorySource], platform }),
         loadEntityTypes().catch(() => []),
@@ -330,9 +339,147 @@ async function _feralChatHeadlessInner(
     ]);
     const reasonModelName = reasonMapping?.model ?? 'gpt-4o';
 
+    // ── GUARDRAIL + CLASSIFICATION ────────────────────────────────────
+    // This is the first gate: safety check + intent categorization in one call.
+    // If blocked, return immediately — do not process further.
+    status('Reviewing request…');
+    const classification = await classifyRequest(
+        categorizeLlm,
+        userInput,
+        history,
+    );
+    if (classification.blocked) {
+        await logger.log('blocked', {});
+        return BLOCKED_RESPONSE;
+    }
+    const requestWeights = inferWeights(classification);
+    await logger.log('classify', {
+        category:   classification.category,
+        confidence: classification.confidence,
+        summary:    classification.summary,
+        timeframes: classification.timeframes,
+        subjects:   classification.subjects,
+        attributes: classification.attributes,
+        weights:    requestWeights,
+    });
+
     const moment = buildMomentContext();
     const globalsMap = momentToGlobals(moment, userName);
     void globalsMap; // used by removed context tree; kept for future use
+
+    // ── CATEGORY FAST DISPATCH ────────────────────────────────────────
+    // For well-understood categories we bypass Phase 0 (the LLM process
+    // matcher) and either short-circuit entirely (chat) or run a pre-built
+    // deterministic process (query/analytical/introspection).  This saves
+    // 2–4 LLM calls on the critical path.
+
+    if (classification.category === 'chat') {
+        // Phatic exchanges need no entity data — go straight to synthesis.
+        status('Composing response…');
+        const chatResponse = await synthesizeResponse(
+            chatLlm, userInput, 'Responding to a casual message — no data retrieval needed',
+            [], [], vaultContext, history, chatId, clientHints, reasonModelName,
+        );
+        await logger.log('response', { response: chatResponse });
+        writeExecutionLog({
+            timestamp: new Date().toISOString(),
+            chat_id: chatId,
+            user_input: userInput,
+            process_source: 'category',
+            process_key: 'phaibel.chat',
+            process_json: {},
+            context_result: {},
+            success: true,
+            outcome_summary: chatResponse.slice(0, 500),
+            iterations: 0,
+        }).catch(err => debug('chat', `Execution log write failed: ${err}`));
+        return chatResponse;
+    }
+
+    // ── FACTUAL FAST DISPATCH ─────────────────────────────────────────
+    // Factual queries need the web_search node to actually run — they can't
+    // be served by fetchContextByClassification (entity/CxMS only).
+    if (classification.category === 'factual') {
+        status('Searching the web…');
+        try {
+            const ctx = await runtime.runner.run('phaibel.factual', {
+                user_input: userInput,
+                ...(onQuestion ? { _askQuestion: onQuestion } : {}),
+            });
+            const allCtx = ctx.getAll();
+            const filteredResult = Object.entries(allCtx)
+                .filter(([k]) => !k.startsWith('_') && k !== 'user_input')
+                .reduce((acc, [k, v]) => {
+                    acc[k] = typeof v === 'string' && v.length > 2000 ? v.slice(0, 2000) + '…' : v;
+                    return acc;
+                }, {} as Record<string, unknown>);
+            const scrubbedResult = scrubSecrets(filteredResult) as Record<string, unknown>;
+            await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'category' });
+
+            status('Composing response…');
+            const reasoning = `Category: factual — ${classification.summary} — web search result in context`;
+            const factualResponse = await synthesizeResponse(
+                chatLlm, userInput, reasoning,
+                [scrubbedResult], [], vaultContext, history, chatId, clientHints, reasonModelName,
+            );
+            await logger.log('response', { response: factualResponse });
+            writeExecutionLog({
+                timestamp: new Date().toISOString(),
+                chat_id: chatId,
+                user_input: userInput,
+                process_source: 'category',
+                process_key: 'phaibel.factual',
+                process_json: { key: 'phaibel.factual' },
+                context_result: scrubbedResult,
+                success: true,
+                outcome_summary: factualResponse.slice(0, 500),
+                iterations: 1,
+            }).catch(err => debug('chat', `Execution log write failed: ${err}`));
+            return factualResponse;
+        } catch (error) {
+            debug('chat', `Factual dispatch failed: ${error} — falling through to full pipeline`);
+        }
+    }
+
+    const prebuiltKey = CATEGORY_PROCESS_KEY[classification.category];
+    if (prebuiltKey) {
+        status('Gathering information…');
+        try {
+            const gathered = await fetchContextByClassification(
+                classification, requestWeights, entityIndex, entityTypes,
+            );
+            const contextResult: Record<string, unknown> = {
+                gathered_context: serializeGatheredContext(gathered),
+            };
+
+            const scrubbedResult = scrubSecrets(contextResult) as Record<string, unknown>;
+            await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'category' });
+
+            status('Composing response…');
+            const reasoning = `Category: ${classification.category} — ${classification.summary}`;
+            const categoryResponse = await synthesizeResponse(
+                chatLlm, userInput, reasoning,
+                [scrubbedResult], [], vaultContext, history, chatId, clientHints, reasonModelName,
+            );
+            await logger.log('response', { response: categoryResponse });
+            writeExecutionLog({
+                timestamp: new Date().toISOString(),
+                chat_id: chatId,
+                user_input: userInput,
+                process_source: 'category',
+                process_key: prebuiltKey,
+                process_json: { key: prebuiltKey },
+                context_result: scrubbedResult,
+                success: true,
+                outcome_summary: categoryResponse.slice(0, 500),
+                iterations: 1,
+            }).catch(err => debug('chat', `Execution log write failed: ${err}`));
+            return categoryResponse;
+        } catch (error) {
+            debug('chat', `Category dispatch failed for ${prebuiltKey}: ${error} — falling through to full pipeline`);
+            // Fall through to Phase 0 and the existing multi-LLM pipeline
+        }
+    }
 
     const relevance = await analyzeQueryRelevance(userInput, entityTypes, entityIndex);
     const historyBlock = formatHistoryBlock(history);
@@ -341,8 +488,11 @@ async function _feralChatHeadlessInner(
     ).join('\n\n');
 
     // ── PHASE 0: Process reuse check ─────────────────────────────────
+    // Exclude chat.generated (LLM-built, not reusable) and phaibel.* category
+    // processes (already dispatched above when relevant).
+    const EXCLUDED_KEYS = new Set(['chat.generated', ...Object.values(CATEGORY_PROCESS_KEY)]);
     const allProcesses = runtime.processFactory.getAllProcesses()
-        .filter(p => p.key !== 'chat.generated');
+        .filter(p => !EXCLUDED_KEYS.has(p.key));
 
     if (allProcesses.length > 0) {
         status('Checking process library…');
@@ -443,18 +593,17 @@ Return ONLY the JSON object, no markdown fences.`,
         }
     }
 
-    // ── PHASE 1: Intent classification ───────────────────────────────
-    status('Understanding request…');
-    const intent = await classifyIntent(
-        categorizeLlm, userInput, history, entityTypes.map(et => et.name),
-    );
+    // ── PHASE 1: Intent bridge ───────────────────────────────────────
+    // Convert the already-computed classification to the IntentResult shape
+    // used by context-loop and downstream consumers. No extra LLM call needed.
+    const intent = toIntentResult(classification);
     await logger.log('intent', {
-        summary: intent.summary,
-        actionType: intent.actionType,
+        summary:     intent.summary,
+        actionType:  intent.actionType,
         entityTypes: intent.entityTypes,
-        timeframe: intent.timeframe,
-        isSimple: intent.isSimple,
-        confidence: intent.confidence,
+        timeframe:   intent.timeframe,
+        isSimple:    intent.isSimple,
+        confidence:  intent.confidence,
     });
 
     // ── PHASE 2: Context manifest ────────────────────────────────────
@@ -464,9 +613,11 @@ Return ONLY the JSON object, no markdown fences.`,
         types: manifest.entityTypes.map(t => ({ type: t.type, count: t.count })),
     });
 
-    // ── PHASE 3: Context selection loop ─────────────────────────────
+    // ── PHASE 3: Context fetch (classification-driven, no LLM) ──────
     status('Gathering context…');
-    const gathered = await runContextLoop(categorizeLlm, intent, manifest, entityIndex);
+    const gathered = await fetchContextByClassification(
+        classification, requestWeights, entityIndex, entityTypes,
+    );
     await logger.log('context_fetch', {
         rounds: gathered.rounds,
         entityCount: gathered.nodes.length,
@@ -825,12 +976,25 @@ async function synthesizeResponse(
     clientHints?: ClientHints,
     modelName = 'gpt-4o',
 ): Promise<string> {
+    const sessionLine = (() => {
+        if (!clientHints?.creditsLimit) return '';
+        const used = (clientHints.creditsLimit) - (clientHints.creditsRemaining ?? 0);
+        const resets = clientHints.sessionResetAt
+            ? new Date(clientHints.sessionResetAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+            : null;
+        const hoursLeft = clientHints.sessionResetAt
+            ? Math.max(0, Math.round((new Date(clientHints.sessionResetAt).getTime() - Date.now()) / 3_600_000))
+            : null;
+        return `- Session credits: ${used} used of ${clientHints.creditsLimit} (${clientHints.creditsRemaining ?? 0} remaining)${resets ? `; resets ${resets}${hoursLeft !== null ? ` (${hoursLeft}h from now)` : ''}` : ''}`;
+    })();
+
     const clientHintBlock = clientHints?.platform === 'mobile'
         ? `CLIENT CONTEXT:
 - Rendering on a mobile screen${clientHints.screenWidth ? ` (${clientHints.screenWidth}×${clientHints.screenHeight}px)` : ''}
 - Prefer concise responses: short paragraphs, brief bullet lists; avoid wide tables or deeply nested structure
-- Markdown renders correctly (bold, bullets, headers, code blocks are all fine)
-
+- Markdown renders correctly (bold, bullets, headers are all fine)
+- Do NOT use fenced code blocks (\`\`\`) — they display as gray boxes and should be avoided entirely
+${sessionLine ? sessionLine + '\n' : ''}
 `
         : '';
 
@@ -867,6 +1031,8 @@ After composing your response, rate BOTH the user and yourself on these 5 traits
 ASSUMED CONTEXT NODES:
 If the user casually mentions people, places, projects, or other notable entities that don't already exist in context, include them in "assumed_nodes" so they can be saved automatically. Only include entities that are clearly worth remembering — not throwaway mentions. Each assumed node needs: contextType (must match an available type like "person", "note", etc.), title, and any fields you can infer.
 
+Do NOT include fenced code blocks (\`\`\`) anywhere in the "response" value.
+
 You MUST return valid JSON with this structure:
 {
     "response": "Your natural response to the user (markdown ok)",
@@ -891,30 +1057,43 @@ You MUST return valid JSON with this structure:
         const parsed = parseJsonResponse(rawResponse);
         responseText = (parsed.response as string) || rawResponse.trim();
 
-        // Extract and store personality observation (fire-and-forget)
-        const obs = parsed.personality_observation as Record<string, unknown> | undefined;
-        if (obs) {
-            const userScores = validateScores(obs.user);
-            const robotScores = validateScores(obs.robot);
-            if (userScores && robotScores) {
-                const sample: BigFiveSample = {
-                    timestamp: new Date().toISOString(),
-                    chatId: chatId || 'unknown',
-                    user: userScores,
-                    robot: robotScores,
-                };
-                updateProfile(sample).then(() => invalidateProfileCache()).catch(() => {});
+        // Personality scoring + node extraction are non-critical — isolate so they
+        // cannot override the already-extracted responseText if they throw.
+        try {
+            const obs = parsed.personality_observation as Record<string, unknown> | undefined;
+            if (obs) {
+                const userScores = validateScores(obs.user);
+                const robotScores = validateScores(obs.robot);
+                if (userScores && robotScores) {
+                    const sample: BigFiveSample = {
+                        timestamp: new Date().toISOString(),
+                        chatId: chatId || 'unknown',
+                        user: userScores,
+                        robot: robotScores,
+                    };
+                    updateProfile(sample).then(() => invalidateProfileCache()).catch(() => {});
+                }
             }
-        }
-        // Extract and create assumed context nodes (fire-and-forget)
-        const assumedNodes = parsed.assumed_nodes as Array<{ contextType: string; title: string; [key: string]: unknown }> | undefined;
-        if (assumedNodes && assumedNodes.length > 0) {
-            createAssumedNodes(assumedNodes).catch(err => debug('chat', `Assumed node creation failed: ${err}`));
+            const assumedNodes = parsed.assumed_nodes as Array<{ contextType: string; title: string; [key: string]: unknown }> | undefined;
+            if (assumedNodes && assumedNodes.length > 0) {
+                createAssumedNodes(assumedNodes).catch(err => debug('chat', `Assumed node creation failed: ${err}`));
+            }
+        } catch (e) {
+            debug('chat', `Personality scoring / node extraction failed: ${e}`);
         }
     } catch {
-        // Fallback: LLM returned plain text — use as-is, skip scoring
-        responseText = rawResponse.trim();
-        debug('chat', 'Synthesis returned plain text — personality scoring skipped');
+        // JSON parse failed — often caused by unescaped quotes inside the response
+        // string value (e.g. LLM writes "Bumpa" without escaping the quotes).
+        // Try to extract just the response field by boundary-searching before
+        // falling all the way back to the raw text.
+        const extracted = extractResponseField(rawResponse);
+        if (extracted) {
+            responseText = extracted;
+            debug('chat', 'Synthesis JSON malformed — extracted response field by boundary search');
+        } else {
+            responseText = rawResponse.trim();
+            debug('chat', 'Synthesis returned plain text — personality scoring skipped');
+        }
     }
 
     // Resolve datetime tokens ({{local_time:ISO}} etc.) to local-timezone strings
