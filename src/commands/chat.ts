@@ -401,12 +401,15 @@ async function _feralChatHeadlessInner(
     // be served by fetchContextByClassification (entity/CxMS only).
     if (classification.category === 'factual') {
         status('Searching the web…');
+        debug('chat', `Factual dispatch: running phaibel.factual`);
         try {
             const ctx = await runtime.runner.run('phaibel.factual', {
                 user_input: userInput,
                 ...(onQuestion ? { _askQuestion: onQuestion } : {}),
             });
             const allCtx = ctx.getAll();
+            const resultKeys = Object.keys(allCtx).filter(k => !k.startsWith('_') && k !== 'user_input');
+            debug('chat', `Factual dispatch: context keys = [${resultKeys.join(', ') || 'empty'}]`);
             const filteredResult = Object.entries(allCtx)
                 .filter(([k]) => !k.startsWith('_') && k !== 'user_input')
                 .reduce((acc, [k, v]) => {
@@ -437,7 +440,7 @@ async function _feralChatHeadlessInner(
             }).catch(err => debug('chat', `Execution log write failed: ${err}`));
             return factualResponse;
         } catch (error) {
-            debug('chat', `Factual dispatch failed: ${error} — falling through to full pipeline`);
+            debug('chat', `Factual dispatch exception: ${error} — falling through to full pipeline`);
         }
     }
 

@@ -11,6 +11,7 @@ import type { ConfigurationDescription, ResultDescription } from '../../configur
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
 import { loadSecrets } from '../../../config.js';
+import { debug } from '../../../utils/debug.js';
 
 const PERPLEXITY_ENDPOINT = 'https://api.perplexity.ai/chat/completions';
 const PERPLEXITY_MODEL    = 'sonar';
@@ -58,6 +59,8 @@ export class WebSearchNodeCode extends AbstractNodeCode {
         const synapticCfg   = secrets.providers['synaptic'] as { apiKey?: string; endpoint?: string } | undefined;
         const perplexityCfg = secrets.providers['perplexity'] as { apiKey?: string } | undefined;
 
+        debug('web-search', `query="${query.slice(0, 80)}" synaptic=${!!synapticCfg?.apiKey} perplexity=${!!perplexityCfg?.apiKey}`);
+
         const messages = [{ role: 'user', content: query }];
 
         try {
@@ -66,6 +69,7 @@ export class WebSearchNodeCode extends AbstractNodeCode {
             if (synapticCfg?.apiKey) {
                 // Subscription path — model is determined server-side by the user's plan
                 const endpoint = synapticCfg.endpoint ?? 'https://synaptic.hushlark.ai';
+                debug('web-search', `Synaptic path → ${endpoint}/v1/phaibel/search`);
                 const res = await fetch(`${endpoint}/v1/phaibel/search`, {
                     method: 'POST',
                     headers: {
@@ -76,12 +80,15 @@ export class WebSearchNodeCode extends AbstractNodeCode {
                 });
                 if (!res.ok) {
                     const detail = await res.text().catch(() => res.statusText);
+                    debug('web-search', `Synaptic search failed ${res.status}: ${detail.slice(0, 200)}`);
                     return this.result(ResultStatus.ERROR, `Search error (${res.status}): ${detail}`);
                 }
                 text = parseSearchResponse(await res.json() as Record<string, unknown>);
+                debug('web-search', `Synaptic search OK — ${text.length} chars`);
 
             } else if (perplexityCfg?.apiKey) {
                 // BYOK path — direct Perplexity API
+                debug('web-search', `Perplexity BYOK path`);
                 const res = await fetch(PERPLEXITY_ENDPOINT, {
                     method: 'POST',
                     headers: {
@@ -92,11 +99,14 @@ export class WebSearchNodeCode extends AbstractNodeCode {
                 });
                 if (!res.ok) {
                     const detail = await res.text().catch(() => res.statusText);
+                    debug('web-search', `Perplexity failed ${res.status}: ${detail.slice(0, 200)}`);
                     return this.result(ResultStatus.ERROR, `Perplexity error (${res.status}): ${detail}`);
                 }
                 text = parseSearchResponse(await res.json() as Record<string, unknown>);
+                debug('web-search', `Perplexity OK — ${text.length} chars`);
 
             } else {
+                debug('web-search', `No search provider configured`);
                 return this.result(
                     ResultStatus.ERROR,
                     'No search provider configured. Add a Perplexity API key in Settings, or sign in with a Phaibel account.',
@@ -108,6 +118,7 @@ export class WebSearchNodeCode extends AbstractNodeCode {
 
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
+            debug('web-search', `Exception: ${message}`);
             return this.result(ResultStatus.ERROR, `Web search failed: ${message}`);
         }
     }
