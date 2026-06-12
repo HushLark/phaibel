@@ -11,7 +11,10 @@ const MODEL_ID = 'Xenova/all-MiniLM-L6-v2';
 export const LOCAL_EMBED_DIMENSIONS = 384;
 export const LOCAL_EMBED_MODEL = MODEL_ID;
 
-type Pipeline = (texts: string[], options: Record<string, unknown>) => Promise<{ data: Float32Array }[]>;
+// Batched input returns a single Tensor ([n, dim], tolist() → number[][]);
+// some versions return one output object per text.
+type PipelineOutput = { tolist(): number[][] } | { data: Float32Array }[];
+type Pipeline = (texts: string[], options: Record<string, unknown>) => Promise<PipelineOutput>;
 
 let _pipeline: Pipeline | null = null;
 let _loading: Promise<Pipeline> | null = null;
@@ -38,6 +41,9 @@ async function getPipeline(): Promise<Pipeline> {
  */
 export async function localEmbed(texts: string[]): Promise<number[][]> {
     const pipe = await getPipeline();
-    const outputs = await pipe(texts, { pooling: 'mean', normalize: true });
-    return outputs.map(o => Array.from(o.data));
+    const output = await pipe(texts, { pooling: 'mean', normalize: true });
+    if (Array.isArray(output)) {
+        return output.map(o => Array.from(o.data));
+    }
+    return output.tolist();
 }
