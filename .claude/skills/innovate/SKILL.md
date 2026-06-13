@@ -8,6 +8,8 @@ allowed-tools: Bash(npm run eval:*), Bash(npx tsx evals/*), Bash(git *), Read, E
 
 You are an autonomous improvement agent for Phaibel. Your job is to run evaluation loops, analyze failures, make targeted changes, and re-run evals to measure impact. If a change improves scores, commit it. If not, revert and try something else.
 
+> **Not the same as** `src/service/cron/innovate.ts` — that is a *runtime* cron job that replays failing execution logs and makes vault-local tweaks (3 loops). This skill is a *dev-time* tool that edits source code against the eval suite. Same name, different scope.
+
 ## Arguments
 
 `$ARGUMENTS` specifies what to innovate and optionally a persona/context to target.
@@ -30,7 +32,7 @@ Parse it as follows:
 
 ### Step 0: Generate Persona Scenarios (only if context was provided)
 
-If the user provided a persona context, generate 6-8 eval scenarios tailored to that persona. Write them to `evals/scenarios/persona.ts`.
+If the user provided a persona context, generate 6-8 eval scenarios tailored to that persona. **Overwrite** `evals/scenarios/persona.ts` (a stale one from a previous run may already exist — replace it wholesale; do not append to it). It is only loaded when a run passes `--scenarios-file`, so without a persona context it stays inert — but don't commit a persona file left over from someone else's run.
 
 The file must follow this exact structure:
 
@@ -113,12 +115,19 @@ Identify the root cause. Common failure patterns:
 Based on the aspect (`$ARGUMENTS`):
 
 #### If "prompts":
-Key files and locations:
-- `src/llm/router.ts` lines 76-108 — `createSystemPrompt()`: the base system prompt with identity, capabilities, thinking model, personality, and guidelines
-- `src/commands/chat.ts` lines 382-450 — Step 1 prompt (node selection): tells the LLM which catalog nodes to pick. Contains entity type descriptions, rules for matching entity types, and instructions for linking
-- `src/commands/chat.ts` lines 447 — Step 1 system prompt: "You are the reasoning engine for Phaibel..."
-- `src/commands/chat.ts` lines 571-630 — Step 2 prompt (process generation): tells the LLM to generate a Feral process JSON with selected nodes
-- `src/commands/chat.ts` lines 723-780 — Completion check prompt
+
+The chat pipeline (`src/commands/chat.ts`) is **two-phase**: Phase 1 tries to reuse a saved process; Phase 2 is the custom multi-step pipeline (select nodes → generate process JSON → run/check completion → synthesize response). Find each prompt by `grep`-ing its anchor string rather than by line number — line numbers drift, anchors don't.
+
+Key prompts and their anchors:
+
+| Prompt | File | `grep` anchor |
+|--------|------|---------------|
+| Base system prompt (identity, capabilities, personality, guidelines) — applied at response synthesis | `src/llm/router.ts` | `function createSystemPrompt` |
+| Process-matcher (Phase 1 reuse decision) | `src/commands/chat.ts` | `You are the process matcher for Phaibel` |
+| Node selection | `src/commands/chat.ts` | `Select the minimal set of catalog nodes` |
+| Process generation (Feral JSON) | `src/commands/chat.ts` | `Generate a valid Feral process JSON` |
+| Completion check (iterate vs. done) | `src/commands/chat.ts` | `You are a task completion checker for Phaibel` |
+| Response synthesis (the only step that applies personality) | `src/commands/chat.ts` | `const synthesisPrompt =` |
 
 Make small, targeted edits. Examples:
 - Add a clarifying sentence about when to use `create_event` vs `create_task`
@@ -127,14 +136,20 @@ Make small, targeted edits. Examples:
 - Add entity type discrimination rules
 
 #### If "model":
-Key file: `src/config.ts` lines 18-46
+Key file: `src/config.ts` — find these two by name (`grep`), not line number:
 - `PROVIDER_MODELS` — which model each provider uses per capability
-- `CAPABILITY_PREFERRED_PROVIDERS` — which provider is preferred per capability
+- `CAPABILITY_PREFERRED_PROVIDERS` — which provider is preferred per capability (first available wins)
 
-Try changing one capability's model assignment. Examples:
-- Switch `reason` from `claude-opus-4-6` to `claude-sonnet-4-6` (cheaper, sometimes comparable)
-- Switch `chat` provider preference order
-- Try `gpt-4o` for `reason` instead of Claude
+Prefer the `--model-override` flag for experiments — it overrides a capability without editing config, e.g.:
+```bash
+npm run eval -- --label "opus-reason" --model-override reason=anthropic:claude-opus-4-8 --scenarios-file evals/scenarios/persona.ts
+```
+Only edit `config.ts` once an override proves out. Try changing one capability at a time. Examples:
+- Try `anthropic:claude-opus-4-8` for `reason` (the anthropic default is already `claude-sonnet-4-6`)
+- Try `openai:gpt-4o` for `reason` instead of Claude
+- Reorder `CAPABILITY_PREFERRED_PROVIDERS` for `chat`
+
+(Model IDs drift — read the current values in `PROVIDER_MODELS` before assuming a name. `synaptic` leads every capability's preference list and routes model choice server-side, so model experiments only take effect when synaptic is *not* configured, i.e. in BYOK/local mode.)
 
 #### If "cxms":
 
@@ -148,7 +163,7 @@ Key files:
 - `src/context/scope-classifier.ts` — `classifyScope()`: determines which vault subdirectories are relevant to a request. Try tightening or broadening classification rules.
 - `src/context/query-relevance.ts` — `analyzeQueryRelevance()` / `filterCatalogNodes()`: pre-filters catalog nodes before Step 1. Try adjusting keyword extraction or relevance thresholds.
 
-These are all imported and used in `src/commands/chat.ts` lines 229-266 (context assembly block).
+These are all imported and used in `src/commands/chat.ts` — find the assembly sites by `grep`-ing the function names (`getVaultContext`, `buildMomentContext`, `analyzeQueryRelevance`, `filterCatalogNodes`) rather than by line number.
 
 Make small, targeted edits. Examples:
 - Adjust how many overdue tasks appear in the moment block

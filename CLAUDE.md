@@ -27,17 +27,19 @@ Phaibel is a TypeScript CLI/daemon that acts as an AI personal assistant. Every 
 
 ### Core Pipeline (`src/commands/chat.ts`)
 
-Five LLM calls per request:
+Two-phase pipeline. **Phase 1 (Process Reuse)** presents all saved processes from `.phaibel/processes/` and lets the LLM reuse one or choose "custom". **Phase 2 (Custom Pipeline)** runs only when Phase 1 chose custom, as a sequence of LLM calls:
 
-| Phase/Step | What happens |
-|------------|-------------|
-| Phase 1 | LLM tries to reuse a saved process from `.phaibel/processes/` |
-| Step 1 | LLM selects relevant catalog nodes |
-| Step 2 | LLM generates a Feral JSON process definition |
-| Step 4 | LLM validates the process completed successfully |
-| Step 5 | LLM synthesizes a natural-language response |
+| Step | What happens | `grep` anchor (system prompt) |
+|------|--------------|-------------------------------|
+| Process match | LLM decides reuse vs. custom | `You are the process matcher for Phaibel` |
+| Node selection | LLM selects relevant catalog nodes | `Select the minimal set of catalog nodes` |
+| Process generation | LLM generates a Feral JSON process definition | `Generate a valid Feral process JSON` |
+| Completion check | LLM validates the process completed (may iterate) | `You are a task completion checker for Phaibel` |
+| Response synthesis | LLM synthesizes a natural-language response | `const synthesisPrompt =` |
 
-Steps 1–4 use the `reason` capability (Opus/Sonnet). Step 5 uses `chat` (Sonnet/GPT-4o) and is the only step that applies personality/identity.
+All steps except synthesis use the `reason` capability (Sonnet/Opus). Synthesis uses `chat` and is the only step that applies personality/identity via `createSystemPrompt()` in `src/llm/router.ts`.
+
+(The in-code debug labels number these as `Phase 0/4/5/7`; the conceptual model above is what matters. Reference prompts by their anchor strings, not line numbers.)
 
 ### Feral CCF Engine (`src/feral/`)
 
