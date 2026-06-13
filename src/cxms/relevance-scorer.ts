@@ -24,7 +24,7 @@ import type { IndexNode, IndexEdge } from '../entities/entity-index.js';
 import type { RelevanceDimensionDef } from '../entities/entity-type-config.js';
 import type { NodeDimensions } from './types.js';
 import type { BehavioralIndex } from './behavioral-index.js';
-import { temporalSalience, todayStr } from '../entities/temporal-filter.js';
+import { temporalSalience, temporalExpired, todayStr } from '../entities/temporal-filter.js';
 import { extractTemporalDimension } from './dimension-calculator.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,16 +242,18 @@ export function scoreNodes(
         const nodeDims = (meta.dimensions ?? {}) as NodeDimensions;
         const signals: Record<string, number> = {};
 
+        // Resolve the temporal window once (live from raw fields when the
+        // precomputed dimension is absent — only cx-router's write path stores
+        // it, so seeded / Feral-created / imported entities lack it).
+        const tdim = temporalDef
+            ? (nodeDims.temporal ?? extractTemporalDimension(meta, temporalDef.config))
+            : undefined;
+
         for (const def of dimensions) {
             switch (def.type) {
-                case 'temporal': {
-                    // Compute live from raw date fields when the precomputed
-                    // dimension is absent — only the cx-router write path stores
-                    // it, so seeded / Feral-created / imported entities lack it.
-                    const dim = nodeDims.temporal ?? extractTemporalDimension(meta, def.config);
-                    signals.temporal = temporalSalience(dim, today);
+                case 'temporal':
+                    signals.temporal = temporalSalience(tdim, today);
                     break;
-                }
                 case 'semantic':
                     signals.semantic = ctx.vectorSimilarity.get(key) ?? 0;
                     break;
@@ -296,11 +298,11 @@ export function scoreNodes(
             }
         }
 
-        // Temporal acts as a candidacy filter: when a type has a temporal
-        // dimension, a node whose salience is 0 (before its window opens or past
-        // its archive point) is excluded outright — not merely ranked low.
-        // (docs/RELEVANCE-DIMENSIONS.md §4.2 — "filter = the curve's support".)
-        if (temporalDef && signals.temporal === 0) return null;
+        // Temporal candidacy filter (docs/RELEVANCE-DIMENSIONS.md §4.2), trailing
+        // side only: an expired / archived node is excluded outright. Upcoming
+        // nodes (before their window opens) are kept — scored low, ranked down —
+        // so a task due months out still appears in "my tasks".
+        if (temporalDef && temporalExpired(tdim, today)) return null;
 
         const total = Object.entries(weights).reduce(
             (sum, [k, w]) => sum + w * (signals[k] ?? 0), 0,

@@ -72,15 +72,17 @@ async function main() {
         ['board deck'],
     );
 
-    // 5. Temporal FILTER: an out-of-window event should be excluded, not just ranked low
+    // 5. Temporal FILTER (trailing side): a past/archived event is excluded;
+    //    an upcoming far-future event is kept (ranked low, not dropped).
     await probe(
-        'temporal filter: event 85 days out is excluded for an event query',
+        'temporal filter: expired event excluded, upcoming event kept',
         [
             { entityType: 'event', title: 'Acme renewal call', fields: { startDate: `${day(2)}T11:30:00` } },
             { entityType: 'event', title: 'Sales kickoff', fields: { startDate: `${day(85)}T09:00:00` } },
+            { entityType: 'event', title: 'Old planning sync', fields: { startDate: `${day(-50)}T09:00:00` } },
         ],
         classification({ summary: 'events', subjects: [{ text: 'events', entityType: 'event' }] }),
-        ['Acme renewal call'], ['Sales kickoff'],
+        ['Acme renewal call', 'Sales kickoff'], ['Old planning sync'],
     );
 
     // 6. Context proximity: a task graph-linked to the queried project should
@@ -94,6 +96,18 @@ async function main() {
         ],
         classification({ summary: 'Acme', subjects: [{ text: 'Acme', entityType: 'company' }] }),
         ['Acme'],
+    );
+
+    // 7. Over-filtering guard: a task due far in the future is still an open work
+    //    item and must NOT be filtered out of "my tasks".
+    await probe(
+        'temporal filter does not drop a far-future open task',
+        [
+            { entityType: 'task', title: 'Renew passport', fields: { status: 'open', priority: 'medium', dueDate: day(200) } },
+            { entityType: 'task', title: 'Reply to Dana', fields: { status: 'open', priority: 'high', dueDate: day(1) } },
+        ],
+        classification({ summary: 'tasks', subjects: [{ text: 'tasks', entityType: 'task' }] }),
+        ['Renew passport', 'Reply to Dana'],
     );
 }
 

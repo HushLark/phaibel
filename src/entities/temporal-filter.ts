@@ -181,11 +181,29 @@ function dayNumber(dateStr: string): number {
 }
 
 /**
+ * True once a node is past the trailing edge of its window (expired / archived).
+ *
+ * This is the candidacy filter (docs/RELEVANCE-DIMENSIONS.md §4.2) — but only on
+ * the PAST side. An item before its window opens (upcoming) is NOT expired: it
+ * stays a candidate, scored low by the salience curve. Only items whose window
+ * has fully passed are excluded outright. Undated nodes never expire.
+ */
+export function temporalExpired(
+    dim: TemporalNodeDimension | undefined,
+    today = todayStr(),
+): boolean {
+    if (!dim) return false;
+    const zero = dayNumber(dim.archiveAfter ?? dim.relevantEnd ?? dim.end ?? dim.start);
+    return dayNumber(today) >= zero;
+}
+
+/**
  * Graded temporal relevance in [0, 1] for a node, given today's date.
  *
  * A node with no temporal dimension is timeless → always 1.
  * Returns 0 once the node is fully outside its window (before relevantStart or
- * at/after the zero point), which is also the archival threshold.
+ * at/after the zero point). Past the zero point the node is also expired
+ * (see temporalExpired) and excluded from candidacy.
  */
 export function temporalSalience(
     dim: TemporalNodeDimension | undefined,

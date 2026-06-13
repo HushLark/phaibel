@@ -100,9 +100,24 @@ salience
 
 We deliberately do **not** support per-node curve *functions* (linear vs exponential vs sigmoid). Against seven other dimensions in a weighted sum, ramp shape is sub-perceptual in ranking — it is false precision not worth the cost or non-determinism. Vary width, fix shape.
 
-### 4.2 Filter = the curve's support
+### 4.2 Filter = the curve's *trailing* support
 
-Because the curve is 0 before `relevanceStart` and after `archiveAfter`, **candidacy is simply "temporal score > 0."** There is no separate boolean window filter and no separate archive threshold — `archiveAfter` is exactly the moment salience reaches zero. This also unifies the two code paths: temporal types no longer bypass the scorer (today's `!typeConfig?.temporal` fork in `context-loop`), so Events/Tasks can finally benefit from Goal/Social/Context dimensions too.
+Temporal is also the candidacy filter — but on the **trailing side only**. A node
+**past** its window (`today ≥ archiveAfter`, or past `relevantEnd` when there's no
+archive delay) is **expired** and excluded outright. A node **before** its window
+opens (salience 0 on the leading ramp) is **not** excluded — it's upcoming, kept
+as a low-scored candidate that ranks down. This matters for open work: a task due
+months out still appears in "my tasks" (it would wrongly vanish under a symmetric
+filter), while a meeting that happened last month is genuinely gone.
+
+Salience is computed **live** from the node's date fields (`extractTemporalDimension`)
+when the precomputed `meta.dimensions.temporal` is absent — so seeded,
+Feral-created, and imported entities are scored correctly, not only those written
+through the cx-router path.
+
+This also unifies the two code paths: temporal types no longer bypass the scorer
+(the old `!typeConfig?.temporal` fork in `context-loop`), so Events/Tasks can
+finally benefit from Goal/Social/Context dimensions too.
 
 ### 4.3 Point vs. period: different decay
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { temporalSalience } from '../../src/entities/temporal-filter.js';
+import { temporalSalience, temporalExpired } from '../../src/entities/temporal-filter.js';
 import type { TemporalNodeDimension } from '../../src/cxms/types.js';
 
 // Period event: 1-day event on 2026-06-20, windowBefore 7, windowAfter 7, archiveDelay 7.
@@ -58,5 +58,26 @@ describe('temporalSalience', () => {
     it('decays an overdue task only after its grace window', () => {
         // peakEnd 06-27, zero 07-04 (7 days); 06-30 is 3 days in → ~0.571
         expect(temporalSalience(task, '2026-06-30')).toBeCloseTo(1 - 3 / 7, 5);
+    });
+});
+
+describe('temporalExpired (trailing-side candidacy filter)', () => {
+    it('an undated node never expires', () => {
+        expect(temporalExpired(undefined, '2099-01-01')).toBe(false);
+    });
+
+    it('an upcoming event (before its window opens) is NOT expired', () => {
+        // far before relevantStart → salience 0 but still a valid candidate
+        expect(temporalSalience(event, '2026-06-01')).toBe(0);
+        expect(temporalExpired(event, '2026-06-01')).toBe(false);
+    });
+
+    it('a far-future task is not expired (stays in "my tasks")', () => {
+        expect(temporalExpired(task, '2026-01-01')).toBe(false);
+    });
+
+    it('a node past its archive point is expired', () => {
+        expect(temporalExpired(event, '2026-07-04')).toBe(true);
+        expect(temporalExpired(event, '2026-08-01')).toBe(true);
     });
 });
