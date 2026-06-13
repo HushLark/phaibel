@@ -70,8 +70,11 @@ describe('scoreNodes', () => {
             dimensions: { temporal: { anchor: 'point', start: '2026-01-01', relevantStart: '2025-12-30', relevantEnd: '2026-01-08', archiveAfter: '2026-01-15' } },
         });
         const ranked = scoreNodes([archived, inWindow], dims, baseCtx());
+        // Temporal is a candidacy filter: the archived (zero-salience) node is
+        // excluded outright, not merely ranked last.
+        expect(ranked).toHaveLength(1);
         expect(ranked[0].key).toBe('event:soon');
-        expect(ranked.find(r => r.key === 'event:old')!.total).toBe(0);
+        expect(ranked.find(r => r.key === 'event:old')).toBeUndefined();
     });
 
     it('request-weight multipliers re-weight the blend', () => {

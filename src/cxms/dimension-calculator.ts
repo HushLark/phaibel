@@ -44,7 +44,7 @@ function parseDurationToEndDate(startDate: string, duration: string): string {
 // TEMPORAL EXTRACTION
 // ─────────────────────────────────────────────────────────────────────────────
 
-function extractTemporalDimension(
+export function extractTemporalDimension(
     meta: Record<string, unknown>,
     config: TemporalDimensionConfig,
 ): TemporalNodeDimension | undefined {

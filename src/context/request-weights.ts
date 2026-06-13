@@ -187,33 +187,36 @@ export function buildFetchRequests(
         });
     }
 
-    // Fallback when no specific subjects were extracted
+    // Fallback when no specific subjects were extracted: pull the operational
+    // types broadly so even a vague query ("what should I do?", "anything I'm
+    // missing?") has real context. These types declare relevance dimensions, so
+    // an empty query is ranked by temporal/recency rather than returning nothing
+    // (a summary keyword search alone usually whiffs — that was a dead end).
     if (requests.length === 0) {
-        if (classification.category === 'analytical' || classification.category === 'introspection') {
-            // Broad multi-type fetch: pull the main operational entity types so the
-            // LLM has real data to analyze.  Date tag applied to each type so temporal
-            // filtering narrows to the relevant window when a date was present.
-            for (const et of ['task', 'event', 'goal', 'note']) {
-                // Empty query → fulfillRequests uses getNodes(type), returning all
-                // entities of this type.  The LLM reasons about dates; we don't
-                // pre-filter because the question spans all time (e.g. overdue tasks).
-                requests.push({ entityType: et, query: '', limit: 10 });
-            }
-        } else {
-            requests.push({
-                query: classification.summary + dateTag,
-                limit: 15,
-            });
+        for (const et of ['task', 'event', 'goal', 'note']) {
+            requests.push({ entityType: et, query: '', limit: 8 });
+        }
+        if (classification.summary.trim()) {
+            // Cross-type keyword pass for any semantic match the broad fetch missed.
+            requests.push({ query: classification.summary, limit: 10 });
         }
     }
 
-    // If we only have a person subject, add a secondary event/task search
-    // so "meeting with Bob" also finds the calendar event, not just Bob's node.
-    if (requests.length === 1 && requests[0].entityType === 'person') {
-        requests.push({
-            query: classification.summary + dateTag,
-            limit: 10,
-        });
+    // Cross-type recall companion. Per-subject requests are scoped to the
+    // subject's type, which silently drops answers that live in a DIFFERENT type
+    // — e.g. "what's Emma allergic to" types Emma as a person and never searches
+    // the NOTE that holds the allergy; "meeting with Bob" finds Bob but not the
+    // event. When any subject was typed, add an untyped search so semantic
+    // matches in any type surface alongside the typed results. Dedup + the
+    // maxNodes cap in fetchContextByClassification bound the total.
+    const hasTypedSubject = classification.subjects.some(s => s.entityType);
+    if (hasTypedSubject) {
+        // Use the subject text (high-signal keywords like "Emma"), not the full
+        // summary sentence — keyword search is AND-matched, so a natural-language
+        // sentence ("what is emma allergic to") rarely matches a short note.
+        const recallQuery = classification.subjects.map(s => s.text).join(' ').trim()
+            || classification.summary;
+        requests.push({ query: recallQuery, limit: 10 });
     }
 
     return requests;

@@ -25,6 +25,7 @@ import type { RelevanceDimensionDef } from '../entities/entity-type-config.js';
 import type { NodeDimensions } from './types.js';
 import type { BehavioralIndex } from './behavioral-index.js';
 import { temporalSalience, todayStr } from '../entities/temporal-filter.js';
+import { extractTemporalDimension } from './dimension-calculator.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEFAULTS
@@ -233,7 +234,9 @@ export function scoreNodes(
         for (const k of Object.keys(weights)) weights[k] /= weightTotal;
     }
 
-    const scores: RelevanceScore[] = candidates.map(node => {
+    const temporalDef = dimensions.find(d => d.type === 'temporal');
+
+    const scored: (RelevanceScore | null)[] = candidates.map(node => {
         const key = `${node.type}:${node.id}`;
         const meta = node.meta as Record<string, unknown>;
         const nodeDims = (meta.dimensions ?? {}) as NodeDimensions;
@@ -241,9 +244,14 @@ export function scoreNodes(
 
         for (const def of dimensions) {
             switch (def.type) {
-                case 'temporal':
-                    signals.temporal = temporalSalience(nodeDims.temporal, today);
+                case 'temporal': {
+                    // Compute live from raw date fields when the precomputed
+                    // dimension is absent — only the cx-router write path stores
+                    // it, so seeded / Feral-created / imported entities lack it.
+                    const dim = nodeDims.temporal ?? extractTemporalDimension(meta, def.config);
+                    signals.temporal = temporalSalience(dim, today);
                     break;
+                }
                 case 'semantic':
                     signals.semantic = ctx.vectorSimilarity.get(key) ?? 0;
                     break;
@@ -288,11 +296,19 @@ export function scoreNodes(
             }
         }
 
+        // Temporal acts as a candidacy filter: when a type has a temporal
+        // dimension, a node whose salience is 0 (before its window opens or past
+        // its archive point) is excluded outright — not merely ranked low.
+        // (docs/RELEVANCE-DIMENSIONS.md §4.2 — "filter = the curve's support".)
+        if (temporalDef && signals.temporal === 0) return null;
+
         const total = Object.entries(weights).reduce(
             (sum, [k, w]) => sum + w * (signals[k] ?? 0), 0,
         );
         return { key, total, signals };
     });
 
-    return scores.sort((a, b) => b.total - a.total);
+    return scored
+        .filter((s): s is RelevanceScore => s !== null)
+        .sort((a, b) => b.total - a.total);
 }
