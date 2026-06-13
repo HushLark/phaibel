@@ -10,6 +10,8 @@ import { getLogsDir } from '../paths.js';
 
 export type ChatLogType =
     | 'start'
+    | 'classify'
+    | 'blocked'
     | 'intent'
     | 'context_manifest'
     | 'context_fetch'

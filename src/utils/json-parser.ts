@@ -119,3 +119,45 @@ export function parseJsonResponse(raw: string): Record<string, unknown> {
 
     throw new Error(`Invalid JSON: ${cleaned.slice(0, 200)}…`);
 }
+
+/**
+ * Extract the "response" field value from a synthesis JSON response even when
+ * the JSON is malformed (e.g. the LLM left unescaped double-quotes inside the
+ * string value).  Finds the region between `"response": "` and the last `"`
+ * that sits before `"personality_observation"` or `"assumed_nodes"`, then
+ * unescapes standard JSON escape sequences.
+ *
+ * Returns null if the field cannot be located.
+ */
+export function extractResponseField(raw: string): string | null {
+    const keyIdx = raw.indexOf('"response"');
+    if (keyIdx < 0) return null;
+    const colonIdx = raw.indexOf(':', keyIdx);
+    if (colonIdx < 0) return null;
+    const openQuote = raw.indexOf('"', colonIdx + 1);
+    if (openQuote < 0) return null;
+
+    // Anchor on the next top-level key so we know where the value must end.
+    const anchors = ['"personality_observation"', '"assumed_nodes"'];
+    let endBoundary = Infinity;
+    for (const a of anchors) {
+        const idx = raw.indexOf(a, openQuote + 1);
+        if (idx > 0 && idx < endBoundary) endBoundary = idx;
+    }
+    if (!isFinite(endBoundary)) return null;
+
+    // The closing quote of the value is the last `"` before the next key.
+    const region = raw.slice(openQuote + 1, endBoundary);
+    const closeQuote = region.lastIndexOf('"');
+    if (closeQuote < 0) return null;
+
+    const rawValue = region.slice(0, closeQuote);
+
+    // Unescape standard JSON escape sequences.
+    return rawValue
+        .replace(/\\n/g, '\n')
+        .replace(/\\t/g, '\t')
+        .replace(/\\r/g, '\r')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+}
