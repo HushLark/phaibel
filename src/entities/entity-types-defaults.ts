@@ -34,6 +34,17 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             windowDaysBefore: 30,
             windowDaysAfter: 180,
         },
+        // Event/Task category (see docs/RELEVANCE-DIMENSIONS.md §3): time window +
+        // goal service dominate. Undated tasks have no temporal dim → timeless.
+        dimensions: [
+            { type: 'temporal',         weight: 3, config: { anchor: 'point', startField: 'dueDate', windowBefore: 2, windowAfter: 60 } },
+            { type: 'goalAlignment',    weight: 3 },
+            { type: 'semantic',         weight: 2 },
+            { type: 'socialProximity',  weight: 2 },
+            { type: 'contextProximity', weight: 2 },
+            { type: 'recency',          weight: 2 },
+            { type: 'behavioral',       weight: 1 },
+        ],
     },
     {
         name: 'note',
@@ -43,6 +54,15 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         defaultTags: ['note'],
         fields: [],
         // Notes have no temporal anchor — always include in context.
+        // Thing category: found by content + graph-linkage to current work.
+        dimensions: [
+            { type: 'semantic',         weight: 3 },
+            { type: 'contextProximity', weight: 3 },
+            { type: 'goalAlignment',    weight: 2 },
+            { type: 'behavioral',       weight: 2 },
+            { type: 'recency',          weight: 2 },
+            { type: 'socialProximity',  weight: 1 },
+        ],
     },
     {
         name: 'event',
@@ -66,6 +86,17 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             windowDaysAfter: 60,
             deleteAfterDays: 14,
         },
+        // Event/Task category (period anchor). Salience peaks during the event,
+        // cools after. location is a free-text string, so no spatial dimension.
+        dimensions: [
+            { type: 'temporal',         weight: 3, config: { anchor: 'period', startField: 'startDate', durationField: 'duration', windowBefore: 3, windowAfter: 14, archiveDelay: 30 } },
+            { type: 'semantic',         weight: 2 },
+            { type: 'socialProximity',  weight: 2 },
+            { type: 'goalAlignment',    weight: 2 },
+            { type: 'contextProximity', weight: 2 },
+            { type: 'recency',          weight: 2 },
+            { type: 'behavioral',       weight: 1 },
+        ],
     },
     {
         name: 'person',
@@ -82,6 +113,16 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             { key: 'handle',       type: 'string',     label: 'Handle',           required: false },
             { key: 'company',      type: 'reference',  label: 'Company',          targetType: 'company', required: false },
             { key: 'birthday',     type: 'date-fixed', label: 'Birthday',         required: false },
+        ],
+        // Human category: closeness to you (me-anchored, refined by the 'type'
+        // relationship field) and interaction frequency dominate. Timeless.
+        dimensions: [
+            { type: 'socialProximity',  weight: 3, config: { field: 'type' } },
+            { type: 'behavioral',       weight: 3 },
+            { type: 'semantic',         weight: 2 },
+            { type: 'contextProximity', weight: 2 },
+            { type: 'recency',          weight: 2 },
+            { type: 'goalAlignment',    weight: 1 },
         ],
     },
     {
@@ -100,6 +141,15 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             { key: 'location',       type: 'string',    label: 'Location',        required: false },
             { key: 'primaryContact', type: 'reference', label: 'Primary Contact', targetType: 'person', required: false },
         ],
+        // Thing/organization: found by name + graph-linkage to deals and people.
+        dimensions: [
+            { type: 'semantic',         weight: 3 },
+            { type: 'contextProximity', weight: 3 },
+            { type: 'behavioral',       weight: 2 },
+            { type: 'goalAlignment',    weight: 2 },
+            { type: 'recency',          weight: 2 },
+            { type: 'socialProximity',  weight: 1 },
+        ],
     },
     {
         name: 'todont',
@@ -109,6 +159,12 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         defaultTags: ['todont'],
         fields: [
             { key: 'reason', type: 'string', label: 'Reason', required: false },
+        ],
+        // Thing category, rarely retrieved by ranking — content match only.
+        dimensions: [
+            { type: 'semantic',         weight: 2 },
+            { type: 'contextProximity', weight: 1 },
+            { type: 'recency',          weight: 1 },
         ],
     },
 ];

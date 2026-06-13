@@ -69,6 +69,12 @@ const EVAL_ENTITY_TYPES = [
         ],
         completionField: 'status',
         completionValue: 'achieved',
+        dimensions: [
+            { type: 'semantic',         weight: 3 },
+            { type: 'contextProximity', weight: 2 },
+            { type: 'recency',          weight: 2 },
+            { type: 'temporal',         weight: 1, config: { anchor: 'point', startField: 'targetDate', windowBefore: 30, windowAfter: 30 } },
+        ],
     },
     {
         name: 'person',
@@ -81,6 +87,16 @@ const EVAL_ENTITY_TYPES = [
             { key: 'phone', type: 'string', label: 'Phone', required: false },
             { key: 'company', type: 'string', label: 'Company', required: false },
             { key: 'role', type: 'string', label: 'Role', required: false },
+            { key: 'type', type: 'string', label: 'Relationship Type', required: false },
+        ],
+        // Human category — mirrors the default person type's dimensions.
+        dimensions: [
+            { type: 'socialProximity',  weight: 3, config: { field: 'type' } },
+            { type: 'behavioral',       weight: 3 },
+            { type: 'semantic',         weight: 2 },
+            { type: 'contextProximity', weight: 2 },
+            { type: 'recency',          weight: 2 },
+            { type: 'goalAlignment',    weight: 1 },
         ],
     },
     {
@@ -91,6 +107,11 @@ const EVAL_ENTITY_TYPES = [
         defaultTags: ['recurrence'],
         fields: [
             { key: 'cadence', type: 'enum', label: 'Cadence', values: ['daily', 'weekly', 'monthly'], default: 'weekly', required: true },
+        ],
+        dimensions: [
+            { type: 'semantic',         weight: 2 },
+            { type: 'contextProximity', weight: 1 },
+            { type: 'recency',          weight: 1 },
         ],
     },
 ];

@@ -28,11 +28,24 @@ Parse it as follows:
 - `/innovate cxms for solo freelancers tracking clients and invoices` — generate freelancer scenarios, then tune context management
 - `/innovate for solo freelancers tracking clients and invoices` — defaults to prompts, generates freelancer scenarios
 
+## Primary product personas (committed, always run)
+
+The two core use cases — **busy VP/CEO** (`evals/scenarios/exec.ts`) and **busy
+parent** (`evals/scenarios/family.ts`) — are first-class committed suites in
+`PERSONA_SCENARIOS`, run by default. Improve these directly; don't treat them as
+throwaway. They include **retrieval-relevance scenarios** that exercise the v2
+dimension scorer (docs/RELEVANCE-DIMENSIONS.md): each seeds a distractor-heavy
+vault and asserts the answer surfaces the right entity (`response_contains`) and
+omits the distractor (`response_not_contains`). Relevance only engages for types
+that declare `dimensions` (see `entity-types-defaults.ts`) — and only when
+upstream classification routes the fetch to those types, which is itself a
+frequent failure mode worth tuning.
+
 ## Workflow — Repeat up to 10 times
 
-### Step 0: Generate Persona Scenarios (only if context was provided)
+### Step 0: Generate Persona Scenarios (only for an ad-hoc persona context)
 
-If the user provided a persona context, generate 6-8 eval scenarios tailored to that persona. **Overwrite** `evals/scenarios/persona.ts` (a stale one from a previous run may already exist — replace it wholesale; do not append to it). It is only loaded when a run passes `--scenarios-file`, so without a persona context it stays inert — but don't commit a persona file left over from someone else's run.
+For a one-off persona beyond the two committed suites, generate 6-8 scenarios and **overwrite** `evals/scenarios/persona.ts` (a stale one may exist — replace it wholesale, don't append). It loads only when a run passes `--scenarios-file`; don't commit a persona file left over from someone else's run.
 
 The file must follow this exact structure:
 
@@ -75,6 +88,7 @@ Each scenario needs:
 - `entity_field` — `{ type, entityType, titleMatch, field, expected, description }`
 - `entity_count` — `{ type, entityType, expected, description }`
 - `response_contains` — `{ type, match, description }`
+- `response_not_contains` — `{ type, match, description }` — asserts a distractor was NOT surfaced (relevance ranking)
 
 **Available entity types:** task, event, note, goal, person, todont, recurrence
 

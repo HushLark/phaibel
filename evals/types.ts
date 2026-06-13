@@ -79,6 +79,12 @@ export interface ResponseContainsAssertion extends BaseAssertion {
     match: string;
 }
 
+export interface ResponseNotContainsAssertion extends BaseAssertion {
+    type: 'response_not_contains';
+    /** Substring (case-insensitive) that must NOT appear — e.g. a distractor entity surfaced by poor ranking */
+    match: string;
+}
+
 export interface ContextTypeCreatedAssertion extends BaseAssertion {
     type: 'context_type_created';
     typeName: string;
@@ -99,6 +105,7 @@ export type EvalAssertion =
     | EntityNotCreatedAssertion
     | EntityCountAssertion
     | ResponseContainsAssertion
+    | ResponseNotContainsAssertion
     | EntityBodyAssertion
     | ContextTypeCreatedAssertion;
 

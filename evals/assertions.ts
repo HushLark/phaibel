@@ -69,6 +69,7 @@ function checkAssertion(
         case 'entity_not_created': return checkEntityNotCreated(a, before, after);
         case 'entity_count': return checkEntityCount(a, after);
         case 'response_contains': return checkResponseContains(a, responseText);
+        case 'response_not_contains': return checkResponseNotContains(a, responseText);
         case 'context_type_created': return checkContextTypeCreated(a, after);
         case 'entity_body': return checkEntityBody(a, after);
     }
@@ -238,4 +239,14 @@ function checkResponseContains(
         return { description: a.description, type: a.type, passed: true, message: `Response contains "${a.match}"` };
     }
     return { description: a.description, type: a.type, passed: false, actual: responseText.slice(0, 200), message: `Response does not contain "${a.match}"` };
+}
+
+function checkResponseNotContains(
+    a: { type: 'response_not_contains'; match: string; description: string },
+    responseText: string,
+): AssertionResult {
+    if (!responseText.toLowerCase().includes(a.match.toLowerCase())) {
+        return { description: a.description, type: a.type, passed: true, message: `Response correctly omits "${a.match}"` };
+    }
+    return { description: a.description, type: a.type, passed: false, actual: responseText.slice(0, 200), message: `Response unexpectedly contains "${a.match}" (distractor surfaced)` };
 }
