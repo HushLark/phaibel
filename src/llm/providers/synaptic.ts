@@ -3,6 +3,19 @@ import type { LLMProvider, Message, ChatOptions } from '../types.js';
 
 const DEFAULT_ENDPOINT = 'https://synaptic.hushlark.ai';
 
+// ── Registered authenticated fetch ──────────────────────────────────────────
+// On mobile the app registers synapticFetch (which owns the refresh token
+// singleton and deduplication).  All Synaptic HTTP calls go through it so
+// concurrent 401s from different callers never race on the same refresh token.
+// On Node.js this stays null and the provider uses its own refresh logic.
+
+type AuthFetchFn = (path: string, options?: RequestInit) => Promise<Response>;
+let _authFetch: AuthFetchFn | null = null;
+
+export function registerSynapticFetch(fn: AuthFetchFn): void {
+    _authFetch = fn;
+}
+
 interface SynapticConfig {
     token: string;
     endpoint: string;
@@ -68,29 +81,54 @@ export class SynapticProvider implements LLMProvider {
     }
 
     async chat(messages: Message[], options: ChatOptions = {}): Promise<string> {
-        let { token, endpoint, refreshToken } = await this.getConfig();
-
-        const doRequest = async (t: string) => fetch(`${endpoint}/v1/phaibel/${this.capability}`, {
+        const path = `/v1/phaibel/${this.capability}`;
+        const fetchOptions: RequestInit = {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${t}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(this.buildBody(messages, options)),
+        };
+
+        // Use the registered auth fetch when available (mobile) — it owns the
+        // refresh token singleton so concurrent 401s from LLM + transcription
+        // never race each other.
+        if (_authFetch) {
+            let res = await _authFetch(path, fetchOptions);
+            // Retry once on transient gateway errors
+            if (res.status === 502 || res.status === 503) {
+                await new Promise(r => setTimeout(r, 1500));
+                res = await _authFetch(path, fetchOptions);
+            }
+            if (!res.ok) {
+                if (res.status === 429) throw new Error('rate_limited');
+                const detail = await res.text().catch(() => res.statusText);
+                throw new Error(`Synaptic error (${res.status}): ${detail}`);
+            }
+            return this.parseResponse(await res.json() as Record<string, unknown>);
+        }
+
+        // Node.js fallback: own refresh logic (no mobile deduplication needed).
+        let { token, endpoint, refreshToken } = await this.getConfig();
+        const doRequest = async (t: string) => fetch(`${endpoint}${path}`, {
+            ...fetchOptions,
+            headers: { ...fetchOptions.headers as Record<string, string>, 'Authorization': `Bearer ${t}` },
         });
 
         let res = await doRequest(token);
-
-        // On 401, attempt one token refresh and retry
         if (res.status === 401 && refreshToken) {
             token = await this.refreshAndSave(endpoint, refreshToken);
             res = await doRequest(token);
         }
 
         if (!res.ok) {
+            if (res.status === 429) throw new Error('rate_limited');
             const detail = await res.text().catch(() => res.statusText);
             throw new Error(`Synaptic error (${res.status}): ${detail}`);
         }
 
-        const data = await res.json() as Record<string, unknown>;
+        return this.parseResponse(await res.json() as Record<string, unknown>);
+    }
 
+    private parseResponse(data: Record<string, unknown>): string {
         const content = data.content as Array<{ type: string; text: string }> | undefined;
         if (content?.[0]?.text) return content[0].text;
 
