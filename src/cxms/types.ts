@@ -5,10 +5,56 @@
 // These types formalize the entity model as a tree of context types and nodes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { FieldDef, FieldType, EntityTypeConfig, SpawnerConfig } from '../entities/entity-type-config.js';
+import type { FieldDef, FieldType, EntityTypeConfig, SpawnerConfig, RelevanceDimensionDef } from '../entities/entity-type-config.js';
 
 // Re-export foundation types
-export type { FieldDef, FieldType, SpawnerConfig };
+export type { FieldDef, FieldType, SpawnerConfig, RelevanceDimensionDef };
+
+// ── Relevance Dimensions (stored on nodes) ───────────────────────────────────
+
+export interface TemporalNodeDimension {
+    anchor: 'point' | 'period';
+    /** Primary anchor date (YYYY-MM-DD or ISO datetime) */
+    start: string;
+    /** Period end date (YYYY-MM-DD or ISO datetime) — period only */
+    end?: string;
+    /** Pre-computed relevance-window start (YYYY-MM-DD): start − windowBefore. Salience attack begins here. */
+    relevantStart?: string;
+    /** Pre-computed relevance-window end (YYYY-MM-DD): (end|start) + windowAfter. Salience decay completes here. */
+    relevantEnd?: string;
+    /** Pre-computed archive date (YYYY-MM-DD): relevantEnd + archiveDelay. Salience reaches 0 here. */
+    archiveAfter?: string;
+}
+
+export interface SemanticNodeDimension {
+    /** Whether the node has been indexed for semantic search */
+    indexed: boolean;
+    /** ISO timestamp of last indexing */
+    indexedAt?: string;
+}
+
+export interface SocialProximityNodeDimension {
+    /** Relationship type read from the configured field (refines me-anchored graph distance) */
+    relationship: string;
+}
+
+export interface SpatialNodeDimension {
+    lat: number;
+    lng: number;
+}
+
+export interface RecencyNodeDimension {
+    /** ISO timestamp of last update */
+    updatedAt: string;
+}
+
+export interface NodeDimensions {
+    temporal?: TemporalNodeDimension;
+    semantic?: SemanticNodeDimension;
+    socialProximity?: SocialProximityNodeDimension;
+    spatial?: SpatialNodeDimension;
+    recency?: RecencyNodeDimension;
+}
 
 // ── Context Type ─────────────────────────────────────────────────────────────
 
@@ -38,6 +84,8 @@ export interface ContextType {
     spawner?: SpawnerConfig;
     /** Field used for calendar/timeline placement */
     calendarDateField?: string;
+    /** Relevance dimension definitions for this type */
+    dimensions?: RelevanceDimensionDef[];
 }
 
 /** Bridge: ContextType is the v5 name for EntityTypeConfig */
@@ -70,6 +118,8 @@ export interface ContextNodeMeta {
     source?: 'user' | 'assumed' | 'system';
     /** Labeled references to other nodes */
     references?: ContextReference[];
+    /** Pre-computed relevance dimensions */
+    dimensions?: NodeDimensions;
     /** Additional fields defined by the context type schema */
     [key: string]: unknown;
 }

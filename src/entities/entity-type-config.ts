@@ -104,74 +104,92 @@ export interface TemporalConfig {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RELEVANCE CONFIG
-// Defines how non-temporal context types are scored for relevance.
-// Combines vector similarity, graph proximity, and interaction recency
-// into a composite score used during context gathering.
+// RELEVANCE DIMENSION DEFINITIONS (v2)
+// The canonical relevance dimension vocabulary (see docs/RELEVANCE-DIMENSIONS.md).
+// Defined on the context type; computed dimension values are stored on nodes.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface RelevanceConfig {
-    /**
-     * Weights for composite relevance score. Active signals are normalized to
-     * sum to 1.0 automatically — only declare the signals your type uses.
-     * Signals with no config (spatial, goalAlignment, etc.) are excluded unless
-     * their sub-config is also present.
-     */
-    weights?: {
-        semantic?: number;        // vector cosine similarity to query
-        recency?: number;         // how recently the node was updated
-        graphProximity?: number;  // hop distance from other relevant nodes
-        coOccurrence?: number;    // edge count with other relevant nodes
-        centrality?: number;      // total degree (hub nodes score higher)
-        spatial?: number;         // inverse haversine distance from current location
-        goalAlignment?: number;   // hop distance to an active goal node
-        socialProximity?: number; // relationship-type weight (family > colleague)
-        behavioral?: number;      // interaction frequency score
-    };
-
-    /** Recency half-life in days. Default: 30. */
-    recencyHalfLifeDays?: number;
-
-    /** Max graph hops for proximity traversal. Default: 2. */
-    graphDepth?: number;
-
-    /** Edge labels to follow during graph proximity. Absent = all edges. */
-    anchorRelationships?: string[];
-
-    /**
-     * Spatial scoring. Requires entities to have a coordinates field
-     * holding { lat: number; lng: number }.
-     */
-    spatial?: {
-        /** Frontmatter field holding { lat, lng }. Default: 'coordinates'. */
-        coordinatesField?: string;
-        /** Distance (km) at which spatial score reaches 0. Default: 50. */
-        maxDistanceKm?: number;
-    };
-
-    /**
-     * Goal alignment scoring. Traverses the graph from each candidate node
-     * looking for active goal nodes. Closer = higher score.
-     */
-    goalAlignment?: {
-        /** Max hops to search for a connected goal. Default: 3. */
-        maxHops?: number;
-    };
-
-    /**
-     * Social proximity scoring. Reads a relationship-type field on the node
-     * and maps it to a static weight.
-     */
-    socialProximity?: {
-        /** Frontmatter field holding the relationship type. Default: 'relationship'. */
-        relationshipField?: string;
-        /**
-         * Weight map from relationship type to score [0, 1].
-         * Default: { family: 1.0, friend: 0.75, colleague: 0.5, acquaintance: 0.25, professional: 0.4 }
-         */
-        weights?: Record<string, number>;
-    };
+export interface TemporalDimensionConfig {
+    /** Whether this type uses a single point or a start–end period */
+    anchor: 'point' | 'period';
+    /** Frontmatter field holding the start date/datetime */
+    startField: string;
+    /** For 'period': frontmatter field holding the end date/datetime */
+    endField?: string;
+    /** For 'period': frontmatter field holding the ISO 8601 duration (e.g. PT2H) */
+    durationField?: string;
+    /** Days before start when the node becomes relevant. Default: 0. */
+    windowBefore: number;
+    /** Days after end (or start for point) when relevance ends. Default: 0. */
+    windowAfter: number;
+    /** Days after relevantEnd before archiving. Absent = never archive. */
+    archiveDelay?: number;
 }
+
+export interface SemanticDimensionConfig {
+    // Vector indexing is automatic — no config needed
+}
+
+export interface ContextProximityDimensionConfig {
+    /** Max BFS hops from the current query anchors. Default: 2. */
+    maxHops?: number;
+    /** Edge labels to follow. Absent = all edges. */
+    followEdgeLabels?: string[];
+}
+
+export interface SocialProximityDimensionConfig {
+    /**
+     * Frontmatter field holding the relationship type (e.g. 'family', 'colleague').
+     * Optional — me-anchored graph distance applies to any entity; the relationship
+     * field only refines scoring for entities that carry one (typically people).
+     */
+    field?: string;
+    /**
+     * Weight map from relationship type to score [0, 1].
+     * Default: { family: 1.0, friend: 0.75, colleague: 0.5, professional: 0.4, acquaintance: 0.25 }
+     */
+    weights?: Record<string, number>;
+}
+
+export interface GoalAlignmentDimensionConfig {
+    /** Max hops to search for a connected active goal. Default: 3. */
+    maxHops?: number;
+}
+
+export interface BehavioralDimensionConfig {
+    // Interaction-frequency scoring is automatic — no config needed
+}
+
+export interface SpatialDimensionConfig {
+    /** Frontmatter field holding { lat: number; lng: number }. Default: 'coordinates'. */
+    coordinatesField: string;
+    /** Distance (km) at which spatial score reaches 0. Default: 50. */
+    maxKm?: number;
+}
+
+export interface RecencyDimensionConfig {
+    /** Half-life in days for exponential recency decay. Default: 30. */
+    halfLifeDays?: number;
+}
+
+/**
+ * The canonical relevance dimension vocabulary (see docs/RELEVANCE-DIMENSIONS.md).
+ * A context type opts into a subset; it does not invent new dimensions.
+ *
+ * The two graph dimensions differ by anchor point:
+ *   - socialProximity — BFS from the "me" node (closeness to the user; stable)
+ *   - contextProximity — BFS from the current query anchors (relevance to now)
+ */
+export type RelevanceDimensionDef =
+    | { type: 'temporal';         weight?: number; config: TemporalDimensionConfig }
+    | { type: 'semantic';         weight?: number; config?: SemanticDimensionConfig }
+    | { type: 'spatial';          weight?: number; config: SpatialDimensionConfig }
+    | { type: 'socialProximity';  weight?: number; config?: SocialProximityDimensionConfig }
+    | { type: 'goalAlignment';    weight?: number; config?: GoalAlignmentDimensionConfig }
+    | { type: 'behavioral';       weight?: number; config?: BehavioralDimensionConfig }
+    | { type: 'recency';          weight?: number; config?: RecencyDimensionConfig }
+    | { type: 'contextProximity'; weight?: number; config?: ContextProximityDimensionConfig };
+
 
 export interface EntityTypeConfig {
     name: string;
@@ -188,8 +206,8 @@ export interface EntityTypeConfig {
     calendarDurationField?: string; // field key for period duration (duration)
     /** Temporal window configuration — drives relevance filtering and auto-archive */
     temporal?: TemporalConfig;
-    /** Non-temporal relevance scoring configuration */
-    relevance?: RelevanceConfig;
+    /** Relevance dimension definitions — the canonical relevance vocabulary (see docs/RELEVANCE-DIMENSIONS.md) */
+    dimensions?: RelevanceDimensionDef[];
     /** @deprecated Use temporal.windowDaysBefore instead */
     timeWindowDaysPast?: number;
     /** @deprecated Use temporal.windowDaysAfter instead */

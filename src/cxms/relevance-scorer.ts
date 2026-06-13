@@ -1,44 +1,40 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// CxMS RELEVANCE SCORER
-// Composite relevance scoring for non-temporal context types.
+// CxMS RELEVANCE SCORER (v2)
+// Composite relevance scoring over the canonical dimension vocabulary.
+// See docs/RELEVANCE-DIMENSIONS.md.
 //
-// Nine signals, each [0, 1]. Only signals with active config are included.
-// Declared weights are normalized to sum to 1.0 automatically.
+// A context type opts into a subset of dimensions (RelevanceDimensionDef[]).
+// Each active dimension produces a signal in [0, 1]; the score is the weighted
+// sum, with per-type baseline weights modulated by per-request multipliers and
+// re-normalized to sum to 1.
 //
-// Signal          Source                      Needs
-// ─────────────── ─────────────────────────── ──────────────────────────────
-// semantic        vector cosine similarity    EmbeddingIndex + query
-// recency         exponential decay (updated) node.meta.updated
-// graphProximity  BFS hop distance            entity graph edges
-// coOccurrence    shared edges with anchors   entity graph edges
-// centrality      total degree                entity graph edges
-// spatial         haversine distance          node coordinates + currentLocation
-// goalAlignment   BFS to active goal node     entity graph + goal type nodes
-// socialProximity BFS from "me" node (owner)  meNodeKey + entity graph edges
-// behavioral      log-scale interaction freq  BehavioralIndex
+// Dimension        Anchor / source              Signal
+// ─────────────── ──────────────────────────── ──────────────────────────────
+// temporal         node's stored date window    graded salience curve (filter = >0)
+// semantic         vector cosine similarity     EmbeddingIndex + query
+// spatial          haversine distance           node coords + currentLocation
+// socialProximity  BFS from the "me" node       graph + relationship refinement
+// goalAlignment    BFS to active goal node      graph + active goal nodes
+// behavioral       log-scale interaction freq   BehavioralIndex
+// recency          exponential decay (updated)  node.meta.updated
+// contextProximity BFS from current anchors     graph edges
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { IndexNode, IndexEdge } from '../entities/entity-index.js';
-import type { RelevanceConfig } from '../entities/entity-type-config.js';
+import type { RelevanceDimensionDef } from '../entities/entity-type-config.js';
+import type { NodeDimensions } from './types.js';
 import type { BehavioralIndex } from './behavioral-index.js';
+import { temporalSalience, todayStr } from '../entities/temporal-filter.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DEFAULTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_WEIGHTS = {
-    semantic:        0.40,
-    recency:         0.25,
-    graphProximity:  0.20,
-    coOccurrence:    0.10,
-    centrality:      0.05,
-};
-
-const DEFAULT_RECENCY_HALF_LIFE   = 30;
-const DEFAULT_GRAPH_DEPTH         = 2;
-const DEFAULT_MAX_DISTANCE_KM     = 50;
-const DEFAULT_GOAL_MAX_HOPS       = 3;
-const DEFAULT_SOCIAL_MAX_HOPS     = 4;
+const DEFAULT_RECENCY_HALF_LIFE = 30;
+const DEFAULT_GRAPH_DEPTH        = 2;
+const DEFAULT_MAX_DISTANCE_KM    = 50;
+const DEFAULT_GOAL_MAX_HOPS      = 3;
+const DEFAULT_SOCIAL_MAX_HOPS    = 4;
 const DEFAULT_SOCIAL_WEIGHTS: Record<string, number> = {
     family:       1.00,
     friend:       0.75,
@@ -67,15 +63,77 @@ export interface ScorerContext {
     edges: IndexEdge[];
     anchorKeys: Set<string>;
     now: Date;
+    /** Today as YYYY-MM-DD, for the temporal salience curve. Defaults to now. */
+    today?: string;
     currentLocation?: Coordinates;
     activeGoalKeys?: Set<string>;
     behavioralIndex?: BehavioralIndex;
     /**
-     * The hub node for social proximity BFS — graph distance from this node
-     * determines how socially close each candidate is. The caller resolves
-     * which node to use; the scorer treats it as an opaque composite key.
+     * The "me" node key — graph distance from here is the user-centric social
+     * proximity signal. The caller resolves it; the scorer treats it as opaque.
      */
     focalNodeKey?: string;
+}
+
+/** Per-request weight multipliers, keyed by dimension name, centered at 1.0. */
+export type RequestWeightMultipliers = Partial<Record<string, number>>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GRAPH HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Build an adjacency map once so per-candidate BFS doesn't rescan all edges. */
+interface Graph {
+    adjacency: Map<string, { neighbor: string; label?: string }[]>;
+    degree: Map<string, number>;
+}
+
+function buildGraph(edges: IndexEdge[]): Graph {
+    const adjacency = new Map<string, { neighbor: string; label?: string }[]>();
+    const degree = new Map<string, number>();
+    const add = (from: string, to: string, label?: string) => {
+        let list = adjacency.get(from);
+        if (!list) { list = []; adjacency.set(from, list); }
+        list.push({ neighbor: to, label });
+        degree.set(from, (degree.get(from) ?? 0) + 1);
+    };
+    for (const edge of edges) {
+        add(edge.source, edge.target, edge.label);
+        add(edge.target, edge.source, edge.label);
+    }
+    return { adjacency, degree };
+}
+
+function bfsHops(
+    startKey: string,
+    targetKeys: Set<string>,
+    graph: Graph,
+    maxDepth: number,
+    allowedLabels?: string[],
+): number {
+    if (targetKeys.has(startKey)) return 0;
+    const visited = new Set<string>([startKey]);
+    let frontier: string[] = [startKey];
+    for (let depth = 0; depth < maxDepth; depth++) {
+        const next: string[] = [];
+        for (const key of frontier) {
+            for (const { neighbor, label } of graph.adjacency.get(key) ?? []) {
+                if (allowedLabels && label && !allowedLabels.includes(label)) continue;
+                if (visited.has(neighbor)) continue;
+                visited.add(neighbor);
+                if (targetKeys.has(neighbor)) return depth + 1;
+                next.push(neighbor);
+            }
+        }
+        frontier = next;
+    }
+    return Infinity;
+}
+
+function hopsToScore(hops: number, maxDepth: number): number {
+    if (hops === 0) return 1.0;
+    if (hops === Infinity) return 0.0;
+    return 1 - hops / (maxDepth + 1);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -88,55 +146,6 @@ function recencyScore(updatedAt: string | undefined, halfLifeDays: number, now: 
     if (isNaN(d.getTime())) return 0.5;
     const days = (now.getTime() - d.getTime()) / 86_400_000;
     return Math.pow(0.5, days / halfLifeDays);
-}
-
-function bfsHops(
-    startKey: string,
-    targetKeys: Set<string>,
-    edges: IndexEdge[],
-    maxDepth: number,
-    allowedLabels?: string[],
-): number {
-    if (targetKeys.has(startKey)) return 0;
-    const visited = new Set<string>([startKey]);
-    const queue: { key: string; depth: number }[] = [{ key: startKey, depth: 0 }];
-    while (queue.length > 0) {
-        const { key, depth } = queue.shift()!;
-        if (depth >= maxDepth) continue;
-        for (const edge of edges) {
-            if (edge.source !== key && edge.target !== key) continue;
-            if (allowedLabels && edge.label && !allowedLabels.includes(edge.label)) continue;
-            const neighbor = edge.source === key ? edge.target : edge.source;
-            if (visited.has(neighbor)) continue;
-            visited.add(neighbor);
-            if (targetKeys.has(neighbor)) return depth + 1;
-            queue.push({ key: neighbor, depth: depth + 1 });
-        }
-    }
-    return Infinity;
-}
-
-function graphProximityScore(hops: number, maxDepth: number): number {
-    if (hops === 0) return 1.0;
-    if (hops === Infinity) return 0.0;
-    return 1 - hops / (maxDepth + 1);
-}
-
-function coOccurrenceScore(nodeKey: string, anchorKeys: Set<string>, edges: IndexEdge[]): number {
-    if (anchorKeys.size === 0) return 0;
-    let shared = 0;
-    for (const edge of edges) {
-        const touchesNode   = edge.source === nodeKey || edge.target === nodeKey;
-        const touchesAnchor = anchorKeys.has(edge.source) || anchorKeys.has(edge.target);
-        if (touchesNode && touchesAnchor) shared++;
-    }
-    return Math.min(1, shared / Math.max(1, anchorKeys.size));
-}
-
-function centralityScore(nodeKey: string, edges: IndexEdge[], maxDegree: number): number {
-    if (maxDegree === 0) return 0;
-    const degree = edges.filter(e => e.source === nodeKey || e.target === nodeKey).length;
-    return Math.min(1, degree / maxDegree);
 }
 
 /** Haversine great-circle distance in km. */
@@ -167,73 +176,33 @@ function spatialScore(
     return Math.max(0, 1 - km / maxKm);
 }
 
-function goalAlignmentScore(
-    nodeKey: string,
-    activeGoalKeys: Set<string>,
-    edges: IndexEdge[],
-    maxHops: number,
-): number {
-    if (activeGoalKeys.size === 0) return 0;
-    const hops = bfsHops(nodeKey, activeGoalKeys, edges, maxHops);
-    return graphProximityScore(hops, maxHops);
-}
-
 /**
- * Social proximity signal.
- * Primary: BFS distance from the focal node — the closer in the graph, the
- * higher the score (1 hop ≈ 0.8, 2 hops ≈ 0.6, etc.).
- * Fallback: static relationship-type weight from the entity's metadata.
+ * Social / User Proximity — closeness to the user.
+ * Primary: BFS hop distance from the "me" node (applies to ANY entity, not just
+ * people). Refined by a relationship-type weight when the node carries one.
  */
 function socialProximityScore(
     nodeKey: string,
     meta: Record<string, unknown>,
-    relationshipField: string,
+    relationshipField: string | undefined,
     weightMap: Record<string, number>,
-    ctx: ScorerContext,
+    graph: Graph,
+    focalNodeKey: string | undefined,
 ): number {
-    if (ctx.focalNodeKey) {
-        if (nodeKey === ctx.focalNodeKey) return 1.0;
-        const hops = bfsHops(nodeKey, new Set([ctx.focalNodeKey]), ctx.edges, DEFAULT_SOCIAL_MAX_HOPS);
-        if (hops !== Infinity) return graphProximityScore(hops, DEFAULT_SOCIAL_MAX_HOPS);
+    let proximity = 0;
+    if (focalNodeKey) {
+        if (nodeKey === focalNodeKey) return 1.0;
+        const hops = bfsHops(nodeKey, new Set([focalNodeKey]), graph, DEFAULT_SOCIAL_MAX_HOPS);
+        if (hops !== Infinity) proximity = hopsToScore(hops, DEFAULT_SOCIAL_MAX_HOPS);
     }
-    const rel = meta[relationshipField];
-    if (typeof rel !== 'string') return 0;
-    return weightMap[rel.toLowerCase()] ?? 0;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// WEIGHT NORMALIZATION
-// ─────────────────────────────────────────────────────────────────────────────
-
-function buildActiveWeights(
-    config: RelevanceConfig,
-    hasSpatial: boolean,
-    hasGoal: boolean,
-    hasSocial: boolean,
-    hasBehavioral: boolean,
-): Record<string, number> {
-    const declared = config.weights ?? {};
-
-    // Start with always-active base signals
-    const active: Record<string, number> = {
-        semantic:       declared.semantic       ?? DEFAULT_WEIGHTS.semantic,
-        recency:        declared.recency        ?? DEFAULT_WEIGHTS.recency,
-        graphProximity: declared.graphProximity ?? DEFAULT_WEIGHTS.graphProximity,
-        coOccurrence:   declared.coOccurrence   ?? DEFAULT_WEIGHTS.coOccurrence,
-        centrality:     declared.centrality     ?? DEFAULT_WEIGHTS.centrality,
-    };
-
-    // Add optional signals only when configured
-    if (hasSpatial)    active.spatial         = declared.spatial         ?? 0.20;
-    if (hasGoal)       active.goalAlignment   = declared.goalAlignment   ?? 0.20;
-    if (hasSocial)     active.socialProximity = declared.socialProximity ?? 0.20;
-    if (hasBehavioral) active.behavioral      = declared.behavioral      ?? 0.15;
-
-    // Normalize so weights sum to 1.0
-    const total = Object.values(active).reduce((s, v) => s + v, 0);
-    if (total === 0) return active;
-    for (const k of Object.keys(active)) active[k] /= total;
-    return active;
+    // Relationship refinement: scale graph proximity by relationship weight, or
+    // fall back to the relationship weight alone when there's no graph path.
+    const rel = relationshipField ? meta[relationshipField] : undefined;
+    if (typeof rel === 'string') {
+        const relWeight = weightMap[rel.toLowerCase()] ?? 0;
+        return proximity > 0 ? proximity * relWeight : relWeight;
+    }
+    return proximity;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -242,73 +211,86 @@ function buildActiveWeights(
 
 export function scoreNodes(
     candidates: IndexNode[],
-    config: RelevanceConfig,
+    dimensions: RelevanceDimensionDef[],
     ctx: ScorerContext,
+    requestWeights?: RequestWeightMultipliers,
 ): RelevanceScore[] {
-    const halfLife      = config.recencyHalfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE;
-    const maxDepth      = config.graphDepth          ?? DEFAULT_GRAPH_DEPTH;
-    const allowedRel    = config.anchorRelationships;
+    if (dimensions.length === 0) return [];
 
-    // Spatial config
-    const spatialCfg    = config.spatial;
-    const hasSpatial    = !!(spatialCfg && ctx.currentLocation);
-    const coordField    = spatialCfg?.coordinatesField ?? 'coordinates';
-    const maxKm         = spatialCfg?.maxDistanceKm   ?? DEFAULT_MAX_DISTANCE_KM;
+    const graph = buildGraph(ctx.edges);
+    const today = ctx.today ?? todayStr();
 
-    // Goal alignment config
-    const goalCfg       = config.goalAlignment;
-    const hasGoal       = !!(goalCfg && ctx.activeGoalKeys && ctx.activeGoalKeys.size > 0);
-    const goalMaxHops   = goalCfg?.maxHops ?? DEFAULT_GOAL_MAX_HOPS;
-
-    // Social proximity config
-    const socialCfg     = config.socialProximity;
-    const hasSocial     = !!socialCfg;
-    const relField      = socialCfg?.relationshipField ?? 'relationship';
-    const socialWeights = { ...DEFAULT_SOCIAL_WEIGHTS, ...(socialCfg?.weights ?? {}) };
-
-    // Behavioral config
-    const hasBehavioral = !!ctx.behavioralIndex?.isLoaded;
-
-    const weights = buildActiveWeights(config, hasSpatial, hasGoal, hasSocial, hasBehavioral);
-
-    // Pre-compute max degree for centrality
-    const degreeMap = new Map<string, number>();
-    for (const edge of ctx.edges) {
-        degreeMap.set(edge.source, (degreeMap.get(edge.source) ?? 0) + 1);
-        degreeMap.set(edge.target, (degreeMap.get(edge.target) ?? 0) + 1);
+    // Resolve baseline weights (def.weight ?? equal) modulated by per-request
+    // multipliers (default 1.0), then normalize over the active dimensions.
+    const weights: Record<string, number> = {};
+    for (const def of dimensions) {
+        const baseline = def.weight ?? 1;
+        const mult = requestWeights?.[def.type] ?? 1;
+        weights[def.type] = Math.max(0, baseline * mult);
     }
-    const maxDegree = Math.max(0, ...degreeMap.values());
+    const weightTotal = Object.values(weights).reduce((s, w) => s + w, 0);
+    if (weightTotal > 0) {
+        for (const k of Object.keys(weights)) weights[k] /= weightTotal;
+    }
 
     const scores: RelevanceScore[] = candidates.map(node => {
         const key = `${node.type}:${node.id}`;
+        const meta = node.meta as Record<string, unknown>;
+        const nodeDims = (meta.dimensions ?? {}) as NodeDimensions;
+        const signals: Record<string, number> = {};
 
-        const signals: Record<string, number> = {
-            semantic:       (ctx.vectorSimilarity.get(key) ?? 0),
-            recency:        recencyScore(node.meta.updated as string | undefined, halfLife, ctx.now),
-            graphProximity: graphProximityScore(
-                bfsHops(key, ctx.anchorKeys, ctx.edges, maxDepth, allowedRel), maxDepth
-            ),
-            coOccurrence:   coOccurrenceScore(key, ctx.anchorKeys, ctx.edges),
-            centrality:     centralityScore(key, ctx.edges, maxDegree),
-        };
-
-        if (hasSpatial) {
-            signals.spatial = spatialScore(node.meta, coordField, ctx.currentLocation!, maxKm);
-        }
-        if (hasGoal) {
-            signals.goalAlignment = goalAlignmentScore(key, ctx.activeGoalKeys!, ctx.edges, goalMaxHops);
-        }
-        if (hasSocial) {
-            signals.socialProximity = socialProximityScore(key, node.meta, relField, socialWeights, ctx);
-        }
-        if (hasBehavioral) {
-            signals.behavioral = ctx.behavioralIndex!.getScore(key);
+        for (const def of dimensions) {
+            switch (def.type) {
+                case 'temporal':
+                    signals.temporal = temporalSalience(nodeDims.temporal, today);
+                    break;
+                case 'semantic':
+                    signals.semantic = ctx.vectorSimilarity.get(key) ?? 0;
+                    break;
+                case 'recency':
+                    signals.recency = recencyScore(
+                        (meta.updated as string | undefined) ?? nodeDims.recency?.updatedAt,
+                        def.config?.halfLifeDays ?? DEFAULT_RECENCY_HALF_LIFE,
+                        ctx.now,
+                    );
+                    break;
+                case 'spatial':
+                    signals.spatial = ctx.currentLocation
+                        ? spatialScore(meta, def.config.coordinatesField, ctx.currentLocation, def.config.maxKm ?? DEFAULT_MAX_DISTANCE_KM)
+                        : 0;
+                    break;
+                case 'socialProximity':
+                    signals.socialProximity = socialProximityScore(
+                        key, meta, def.config?.field,
+                        { ...DEFAULT_SOCIAL_WEIGHTS, ...(def.config?.weights ?? {}) },
+                        graph, ctx.focalNodeKey,
+                    );
+                    break;
+                case 'goalAlignment':
+                    signals.goalAlignment = ctx.activeGoalKeys && ctx.activeGoalKeys.size > 0
+                        ? hopsToScore(
+                            bfsHops(key, ctx.activeGoalKeys, graph, def.config?.maxHops ?? DEFAULT_GOAL_MAX_HOPS),
+                            def.config?.maxHops ?? DEFAULT_GOAL_MAX_HOPS,
+                        )
+                        : 0;
+                    break;
+                case 'behavioral':
+                    signals.behavioral = ctx.behavioralIndex?.isLoaded ? ctx.behavioralIndex.getScore(key) : 0;
+                    break;
+                case 'contextProximity':
+                    signals.contextProximity = ctx.anchorKeys.size > 0
+                        ? hopsToScore(
+                            bfsHops(key, ctx.anchorKeys, graph, def.config?.maxHops ?? DEFAULT_GRAPH_DEPTH, def.config?.followEdgeLabels),
+                            def.config?.maxHops ?? DEFAULT_GRAPH_DEPTH,
+                        )
+                        : 0;
+                    break;
+            }
         }
 
         const total = Object.entries(weights).reduce(
-            (sum, [k, w]) => sum + w * (signals[k] ?? 0), 0
+            (sum, [k, w]) => sum + w * (signals[k] ?? 0), 0,
         );
-
         return { key, total, signals };
     });
 

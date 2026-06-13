@@ -487,16 +487,19 @@ export class EntityIndex {
      * Requires the EmbeddingIndex to be loaded for the semantic signal; falls back to
      * graph + recency only if embeddings are unavailable.
      *
-     * @param query        The user's query text (used for semantic similarity)
-     * @param entityType   Optional type filter
-     * @param anchorKeys   Keys of already-fetched nodes (seeds for graph proximity)
-     * @param config       RelevanceConfig from the entity type definition
+     * @param query          The user's query text (used for semantic similarity)
+     * @param entityType     Optional type filter
+     * @param anchorKeys     Keys of already-fetched nodes (seeds for context proximity)
+     * @param dimensions     The entity type's relevance dimensions (v2)
+     * @param requestWeights Per-request weight multipliers from query classification
+     * @param currentLocation Optional location for the spatial dimension
      */
     async searchByRelevance(
         query: string,
         entityType: EntityTypeName | undefined,
         anchorKeys: Set<string>,
-        config: import('../entities/entity-type-config.js').RelevanceConfig,
+        dimensions: import('../entities/entity-type-config.js').RelevanceDimensionDef[],
+        requestWeights?: import('../cxms/relevance-scorer.js').RequestWeightMultipliers,
         currentLocation?: import('../cxms/relevance-scorer.js').Coordinates,
     ): Promise<IndexSearchResult[]> {
         const { scoreNodes } = await import('../cxms/relevance-scorer.js');
@@ -507,17 +510,17 @@ export class EntityIndex {
             ? this.getNodes(entityType)
             : this.getNodes();
 
-        // Vector similarity
+        // Vector similarity (only when the semantic dimension is active)
         const vectorSimilarity = new Map<string, number>();
         const embeddingIndex = getEmbeddingIndex();
-        if (embeddingIndex.isLoaded && query) {
+        if (dimensions.some(d => d.type === 'semantic') && embeddingIndex.isLoaded && query) {
             const results = await embeddingIndex.search(query, candidates.length, entityType);
             for (const r of results) vectorSimilarity.set(r.key, r.similarity);
         }
 
         // Active goal keys — nodes of type 'goal' that are not done/completed
         const activeGoalKeys = new Set<string>();
-        if (config.goalAlignment) {
+        if (dimensions.some(d => d.type === 'goalAlignment')) {
             for (const node of this.getNodes('goal' as EntityTypeName)) {
                 const status = node.meta.status as string | undefined;
                 if (!status || !['done', 'completed', 'achieved'].includes(status.toLowerCase())) {
@@ -526,16 +529,18 @@ export class EntityIndex {
             }
         }
 
-        // Behavioral index
+        // Behavioral index (only load when the behavioral dimension is active)
         const behavioralIndex = getBehavioralIndex();
-        if (!behavioralIndex.isLoaded) await behavioralIndex.load().catch(() => {});
+        if (dimensions.some(d => d.type === 'behavioral') && !behavioralIndex.isLoaded) {
+            await behavioralIndex.load().catch(() => {});
+        }
 
-        // Resolve the focal node for social proximity BFS.
+        // Resolve the focal node for social/user proximity BFS.
         // Phaibel core knows the "me" concept; the scorer just needs a key.
         const meNode = this.getMeNode();
         const focalNodeKey = meNode ? `${meNode.type}:${meNode.id}` : undefined;
 
-        const scores = scoreNodes(candidates, config, {
+        const scores = scoreNodes(candidates, dimensions, {
             vectorSimilarity,
             edges: this.edges,
             anchorKeys,
@@ -544,7 +549,7 @@ export class EntityIndex {
             activeGoalKeys,
             behavioralIndex,
             focalNodeKey,
-        });
+        }, requestWeights);
 
         return scores.map(s => ({
             node: this.nodes.get(s.key)!,

@@ -4,11 +4,14 @@ import type { IntentResult } from './intent-classifier.js';
 import type { ContextManifest } from './context-manifest.js';
 import { serializeManifest } from './context-manifest.js';
 import { parseJsonResponse } from '../utils/json-parser.js';
-import { loadEntityTypes } from '../entities/entity-type-config.js';
+import { loadEntityTypes, type EntityTypeConfig } from '../entities/entity-type-config.js';
 import { debug } from '../utils/debug.js';
+import type { ClassificationResult } from './request-classifier.js';
+import type { RequestWeights } from './request-weights.js';
+import { buildFetchRequests } from './request-weights.js';
 
 export interface FetchRequest {
-    type: string;
+    type?: string;   // entity type filter; omit or '*' to search all types
     query?: string;
     ids?: string[];
     limit?: number;
@@ -158,15 +161,20 @@ export async function fulfillRequests(
     requests: FetchRequest[],
     entityIndex: EntityIndex,
     anchorKeys: Set<string> = new Set(),
+    requestWeights?: RequestWeights,
 ): Promise<IndexNode[]> {
     const entityTypes = await loadEntityTypes();
     const typeConfigMap = new Map(entityTypes.map(t => [t.name, t]));
 
     const results: IndexNode[] = [];
     for (const req of requests) {
+        // Normalise type: treat '*' or empty string as all-type
+        const typeKey = (req.type && req.type !== '*') ? req.type : undefined;
+
         if (req.ids && req.ids.length > 0) {
             for (const id of req.ids) {
-                const node = entityIndex.getNode(`${req.type}:${id}`);
+                if (!typeKey) continue;
+                const node = entityIndex.getNode(`${typeKey}:${id}`);
                 if (node) results.push(node);
             }
             continue;
@@ -174,13 +182,13 @@ export async function fulfillRequests(
 
         const query = req.query ?? '';
         const limit = req.limit ?? 10;
-        const typeConfig = typeConfigMap.get(req.type);
+        const typeConfig = typeKey ? typeConfigMap.get(typeKey) : undefined;
 
         // Date-based filter: if query contains YYYY-MM-DD, match against entity meta
         const dateMatch = query.match(DATE_PATTERN);
         if (dateMatch) {
             const targetDate = dateMatch[1];
-            const found = entityIndex.getNodes(req.type)
+            const found = entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName | undefined)
                 .filter(n => Object.values(n.meta).some(v =>
                     typeof v === 'string' && v.startsWith(targetDate)
                 ))
@@ -189,31 +197,107 @@ export async function fulfillRequests(
             continue;
         }
 
-        // Relevance-scored fetch: used when the type has a RelevanceConfig and no date filter
-        if (typeConfig?.relevance && !typeConfig.temporal) {
+        // Relevance-scored fetch when the type declares relevance dimensions (v2).
+        // Temporal types flow through here too — temporal is now a scored dimension
+        // whose nonzero support acts as the in-window filter (no separate path).
+        if (typeConfig?.dimensions && typeConfig.dimensions.length > 0) {
             try {
                 const scored = await entityIndex.searchByRelevance(
                     query,
-                    req.type as import('../entities/entity.js').EntityTypeName,
+                    typeKey as import('../entities/entity.js').EntityTypeName | undefined,
                     anchorKeys,
-                    typeConfig.relevance,
+                    typeConfig.dimensions,
+                    requestWeights,
+                    undefined,
                 );
                 results.push(...scored.slice(0, limit).map(r => r.node));
                 continue;
             } catch (err) {
-                debug('context-loop', `Relevance scoring failed for ${req.type}, falling back: ${err}`);
+                debug('context-loop', `Relevance scoring failed for ${typeKey}, falling back: ${err}`);
             }
         }
 
         if (query) {
-            const found = entityIndex.search(query, req.type).slice(0, limit);
-            results.push(...found.map(r => r.node));
+            const found = entityIndex.search(query, typeKey as import('../entities/entity.js').EntityTypeName | undefined).slice(0, limit);
+            if (found.length > 0) {
+                results.push(...found.map(r => r.node));
+            } else if (typeKey) {
+                // Keyword search returned nothing for a typed request — fall back to
+                // all entities of this type (query was likely just the type name or
+                // a phrase with no keyword match in entity content).
+                const fallback = entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName).slice(0, limit);
+                results.push(...fallback);
+            }
         } else {
-            const found = entityIndex.getNodes(req.type).slice(0, limit);
+            const found = entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName | undefined).slice(0, limit);
             results.push(...found);
         }
     }
     return results;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CLASSIFICATION-DRIVEN FETCH
+// Replaces runContextLoop for the full pipeline: deterministic, 0 LLM calls.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Fetch relevant context nodes using signals from the classification result.
+ *
+ * One request per identified subject (with entity type + optional date tag),
+ * plus a fallback general query.  Each request is fulfilled via
+ * relevance-scored search when dimension config is available, otherwise
+ * keyword search.  Temporal date filtering applies when an isoDate was
+ * extracted by the classifier.
+ *
+ * Replaces `runContextLoop` for task/remember/create/none categories,
+ * eliminating 1–3 LLM calls on the critical path.
+ */
+export async function fetchContextByClassification(
+    classification: ClassificationResult,
+    requestWeights: RequestWeights,
+    entityIndex: EntityIndex,
+    entityTypes: EntityTypeConfig[],
+    maxNodes = 20,
+): Promise<GatheredContext> {
+    const requests = buildFetchRequests(classification);
+    // Map to FetchRequest (type is optional, which fulfillRequests now supports)
+    const fetchReqs: FetchRequest[] = requests.map(r => ({
+        type:  r.entityType,
+        query: r.query,
+        limit: r.limit,
+    }));
+
+    const nodes = await fulfillRequests(fetchReqs, entityIndex, new Set(), requestWeights);
+
+    // Deduplicate and cap
+    const seen = new Set<string>();
+    const unique: IndexNode[] = [];
+    for (const n of nodes) {
+        const key = `${n.type}:${n.id}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(n);
+        }
+        if (unique.length >= maxNodes) break;
+    }
+
+    // Record behavioral signals (fire-and-forget)
+    const keys = unique.map(n => `${n.type}:${n.id}`);
+    if (keys.length > 0) {
+        import('../cxms/behavioral-index.js')
+            .then(({ getBehavioralIndex }) => getBehavioralIndex().recordMany(keys))
+            .catch(() => {});
+    }
+
+    const typesSeen = [...new Set(unique.map(n => n.type))].join(', ');
+    const summary = unique.length > 0
+        ? `${unique.length} entities (${typesSeen}) via classification-driven fetch`
+        : 'No entities matched the request';
+
+    debug('chat', `fetchContextByClassification: ${unique.length} nodes, rounds=1, types=${typesSeen || 'none'}`);
+
+    return { nodes: unique, summary, rounds: 1 };
 }
 
 /** Convert a UTC ISO string (ending in Z) to a local ISO string with timezone offset. */

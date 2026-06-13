@@ -15,6 +15,7 @@ import { promises as fs } from 'fs';
 import { loadEntityTypes } from '../../entities/entity-type-config.js';
 import { listEntities } from '../../entities/entity.js';
 import { shouldArchiveNode, todayStr } from '../../entities/temporal-filter.js';
+import type { NodeDimensions } from '../../cxms/types.js';
 import { getVaultRoot } from '../../state/manager.js';
 import { debug } from '../../utils/debug.js';
 
@@ -72,7 +73,9 @@ export async function runTemporalArchive(): Promise<TemporalArchiveResult> {
     const types = await loadEntityTypes();
 
     for (const t of types) {
-        if (!t.temporal?.deleteAfterDays) continue;
+        const hasLegacyArchive = !!t.temporal?.deleteAfterDays;
+        const hasDimensionArchive = t.dimensions?.some(d => d.type === 'temporal' && d.config.archiveDelay !== undefined);
+        if (!hasLegacyArchive && !hasDimensionArchive) continue;
 
         let entities: Awaited<ReturnType<typeof listEntities>>;
         try {
@@ -84,12 +87,25 @@ export async function runTemporalArchive(): Promise<TemporalArchiveResult> {
         }
 
         for (const entity of entities) {
-            if (!shouldArchiveNode(entity.meta as Record<string, unknown>, t.temporal, today)) {
+            const meta = entity.meta as Record<string, unknown>;
+
+            // v2: check pre-computed archiveAfter from node dimensions
+            const dims = meta.dimensions as NodeDimensions | undefined;
+            const archiveAfterDate = dims?.temporal?.archiveAfter;
+            const shouldArchiveViaNew = archiveAfterDate ? archiveAfterDate <= today : false;
+
+            // v1 legacy fallback
+            const shouldArchiveViaLegacy = t.temporal
+                ? shouldArchiveNode(meta, t.temporal, today)
+                : false;
+
+            if (!shouldArchiveViaNew && !shouldArchiveViaLegacy) {
                 result.skipped++;
                 continue;
             }
 
-            const anchorDate = String(entity.meta[t.temporal.field] ?? '').split('T')[0];
+            const anchorDate = archiveAfterDate
+                ?? (t.temporal ? String(meta[t.temporal.field] ?? '').split('T')[0] : '');
             const title = String(entity.meta.title ?? entity.meta.id ?? 'unknown');
 
             try {

@@ -19,6 +19,7 @@ import {
     ensureEntityDir,
     nodeFilename,
 } from '../entities/entity.js';
+import { computeNodeDimensions } from './dimension-calculator.js';
 import {
     loadEntityTypes,
     getEntityType,
@@ -636,6 +637,11 @@ async function handleCreateNode(req: http.IncomingMessage, res: http.ServerRespo
         return true;
     }
 
+    // Compute and attach relevance dimensions before write
+    if (typeConfig.dimensions?.length) {
+        meta.dimensions = computeNodeDimensions(meta as Record<string, unknown>, typeConfig);
+    }
+
     // Write file
     const dir = await ensureEntityDir(typeName);
     const filename = nodeFilename(body.title as string, id);
@@ -694,6 +700,11 @@ async function handleUpdateNode(
             unprocessable(res, formatValidationErrors(errors));
             return true;
         }
+    }
+
+    // Recompute dimensions with updated field values
+    if (typeConfig.dimensions?.length) {
+        updatedMeta.dimensions = computeNodeDimensions(updatedMeta as Record<string, unknown>, typeConfig);
     }
 
     const content = body.content !== undefined ? (body.content as string) : entity.content;

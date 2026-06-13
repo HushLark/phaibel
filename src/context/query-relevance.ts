@@ -200,8 +200,8 @@ export async function analyzeQueryRelevance(
         }
     }
 
-    // 4. Vector similarity — surface types with RelevanceConfig whose entities
-    //    score semantically close to the query, even without keyword overlap
+    // 4. Vector similarity — surface types whose entities score semantically
+    //    close to the query, even without keyword overlap
     const embeddingIndex = getEmbeddingIndex();
     if (embeddingIndex.isLoaded && userInput.trim()) {
         try {

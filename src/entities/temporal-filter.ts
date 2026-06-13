@@ -10,7 +10,8 @@
 // A node with no date value is always treated as relevant (no date = timeless).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { TemporalConfig } from './entity-type-config.js';
+import type { TemporalConfig, TemporalDimensionConfig } from './entity-type-config.js';
+import type { TemporalNodeDimension } from '../cxms/types.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATE HELPERS
@@ -127,6 +128,92 @@ export function filterByTemporalWindow<T extends Record<string, unknown>>(
         if (!anchor) return true;
         return anchor >= from && anchor <= to;
     });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DIMENSION-BASED TEMPORAL FILTER (v2)
+// Uses the pre-computed TemporalNodeDimension stored on the node.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Returns true if the node falls within the relevance window defined by its
+ * temporal dimension config and the node's pre-computed start/end dates.
+ *
+ * relevantStart = start − windowBefore
+ * relevantEnd   = (anchor=period ? end : start) + windowAfter
+ *
+ * A node without a temporal dimension is always considered relevant.
+ */
+export function isNodeTemporallyRelevantByDimension(
+    dim: TemporalNodeDimension | undefined,
+    config: TemporalDimensionConfig,
+    today = todayStr(),
+): boolean {
+    if (!dim) return true;
+
+    const relevantStart = addDays(dim.start, -config.windowBefore);
+    const windowBase    = dim.anchor === 'period' && dim.end ? dim.end : dim.start;
+    const relevantEnd   = addDays(windowBase, config.windowAfter);
+
+    return today >= relevantStart && today <= relevantEnd;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPORAL SALIENCE CURVE (v2)
+// Graded [0,1] relevance over time — replaces the binary in/out window.
+// See docs/RELEVANCE-DIMENSIONS.md §4.
+//
+// Fixed trapezoid; only the ramp widths vary (windowBefore/windowAfter, already
+// baked into the pre-computed relevantStart/relevantEnd on the node):
+//
+//   0 before relevantStart → attack ramp → 1 across the peak → decay ramp → 0 at zero
+//
+//   period (event): peak plateau spans [start, end]; salience cools after the event.
+//   point  (task):  peak plateau spans [start, relevantEnd] — an overdue task holds
+//                   near-peak through its grace window, then decays.
+//
+// The curve's nonzero support is the candidacy filter: temporalSalience > 0 ⇔ in window.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Whole-day number for a YYYY-MM-DD string (UTC midnight epoch days). */
+function dayNumber(dateStr: string): number {
+    return Math.floor(new Date(dateStr + 'T00:00:00Z').getTime() / 86_400_000);
+}
+
+/**
+ * Graded temporal relevance in [0, 1] for a node, given today's date.
+ *
+ * A node with no temporal dimension is timeless → always 1.
+ * Returns 0 once the node is fully outside its window (before relevantStart or
+ * at/after the zero point), which is also the archival threshold.
+ */
+export function temporalSalience(
+    dim: TemporalNodeDimension | undefined,
+    today = todayStr(),
+): number {
+    if (!dim) return 1;
+
+    const t = dayNumber(today);
+    const start = dayNumber(dim.start);
+
+    const riseStart = dayNumber(dim.relevantStart ?? dim.start);
+    const peakStart = start;
+    const peakEnd = dim.anchor === 'period'
+        ? dayNumber(dim.end ?? dim.start)
+        : dayNumber(dim.relevantEnd ?? dim.start); // point holds peak through overdue window
+    const zero = dayNumber(dim.archiveAfter ?? dim.relevantEnd ?? dim.end ?? dim.start);
+
+    // Clamp control points to a monotonic ordering in case of odd config.
+    const a = riseStart;
+    const b = Math.max(a, peakStart);
+    const c = Math.max(b, peakEnd);
+    const d = Math.max(c, zero);
+
+    if (t < a) return 0;
+    if (t < b) return (t - a) / (b - a);   // attack
+    if (t <= c) return 1;                   // peak plateau
+    if (t < d) return 1 - (t - c) / (d - c); // decay
+    return 0;
 }
 
 /**
