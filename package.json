@@ -46,6 +46,7 @@
     "eval": "tsx evals/run-eval.ts",
     "eval:loop": "tsx evals/loop.ts",
     "eval:compare": "tsx evals/compare.ts",
+    "synthetic:generate": "tsx tests/synthetic/generate.ts",
     "headless": "node tests/headless/repl.ts"
   },
   "dependencies": {
