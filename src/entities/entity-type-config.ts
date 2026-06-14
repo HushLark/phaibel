@@ -191,6 +191,20 @@ export type RelevanceDimensionDef =
     | { type: 'contextProximity'; weight?: number; config?: ContextProximityDimensionConfig };
 
 
+/**
+ * The six base categories — the top-level ontology of a person's life.
+ * Every context type rolls up to exactly one. Each carries a default relevance
+ * profile (BASE_CATEGORY_DIMENSIONS); specific subtypes inherit and sharpen it.
+ * (See docs/RELEVANCE-DIMENSIONS.md.)
+ *   human  — people
+ *   place  — locations
+ *   thing  — objects, notes, documents, records
+ *   event  — period-anchored happenings you attend (duration)
+ *   task   — point-anchored actions you complete (a checkbox with a deadline)
+ *   goal   — what you're working toward (the "why"; hub for alignment)
+ */
+export type BaseCategory = 'human' | 'place' | 'thing' | 'event' | 'task' | 'goal';
+
 export interface EntityTypeConfig {
     name: string;
     plural: string;
@@ -208,10 +222,111 @@ export interface EntityTypeConfig {
     temporal?: TemporalConfig;
     /** Relevance dimension definitions — the canonical relevance vocabulary (see docs/RELEVANCE-DIMENSIONS.md) */
     dimensions?: RelevanceDimensionDef[];
+    /** Which base category this type rolls up to. Drives inherited relevance + specificity. */
+    baseCategory?: BaseCategory;
+    /** A more-general type this one specializes (e.g. immediate-family → person). Adds specificity. */
+    parent?: string;
     /** @deprecated Use temporal.windowDaysBefore instead */
     timeWindowDaysPast?: number;
     /** @deprecated Use temporal.windowDaysAfter instead */
     timeWindowDaysFuture?: number;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BASE CATEGORY RELEVANCE PROFILES
+// Default dimension weights per base category (docs/RELEVANCE-DIMENSIONS.md §3).
+// A type with no own `dimensions` inherits its parent's, falling back to these.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const BASE_CATEGORY_DIMENSIONS: Record<BaseCategory, RelevanceDimensionDef[]> = {
+    human: [
+        { type: 'socialProximity',  weight: 3, config: { field: 'type' } },
+        { type: 'behavioral',       weight: 3 },
+        { type: 'semantic',         weight: 2 },
+        { type: 'contextProximity', weight: 2 },
+        { type: 'recency',          weight: 2 },
+        { type: 'goalAlignment',    weight: 1 },
+    ],
+    place: [
+        { type: 'spatial',          weight: 3, config: { coordinatesField: 'coordinates' } },
+        { type: 'behavioral',       weight: 2 },
+        { type: 'semantic',         weight: 2 },
+        { type: 'socialProximity',  weight: 1 },
+        { type: 'recency',          weight: 1 },
+        { type: 'contextProximity', weight: 1 },
+    ],
+    thing: [
+        { type: 'semantic',         weight: 3 },
+        { type: 'contextProximity', weight: 3 },
+        { type: 'goalAlignment',    weight: 2 },
+        { type: 'behavioral',       weight: 2 },
+        { type: 'recency',          weight: 2 },
+        { type: 'socialProximity',  weight: 1 },
+    ],
+    event: [
+        { type: 'temporal',         weight: 3, config: { anchor: 'period', startField: 'startDate', durationField: 'duration', windowBefore: 3, windowAfter: 14, archiveDelay: 30 } },
+        { type: 'spatial',          weight: 2, config: { coordinatesField: 'coordinates' } },
+        { type: 'socialProximity',  weight: 2 },
+        { type: 'semantic',         weight: 2 },
+        { type: 'recency',          weight: 2 },
+        { type: 'contextProximity', weight: 2 },
+        { type: 'goalAlignment',    weight: 1 },
+        { type: 'behavioral',       weight: 1 },
+    ],
+    task: [
+        { type: 'temporal',         weight: 3, config: { anchor: 'point', startField: 'dueDate', windowBefore: 2, windowAfter: 60 } },
+        { type: 'goalAlignment',    weight: 3 },
+        { type: 'semantic',         weight: 2 },
+        { type: 'contextProximity', weight: 2 },
+        { type: 'recency',          weight: 2 },
+        { type: 'socialProximity',  weight: 1 },
+        { type: 'behavioral',       weight: 1 },
+    ],
+    goal: [
+        // Long-horizon and persistent: low recency, no window; a hub other
+        // entities link to, so context proximity dominates.
+        { type: 'contextProximity', weight: 3 },
+        { type: 'semantic',         weight: 2 },
+        { type: 'recency',          weight: 1 },
+        { type: 'behavioral',       weight: 1 },
+    ],
+};
+
+/** Per-query specificity bonus: final score is multiplied by (1 + β·specificity). */
+export const SPECIFICITY_BONUS = 0.2;
+
+/**
+ * Resolve a type's effective relevance dimensions: its own, else its parent's
+ * (recursively), else its base category's default profile, else none.
+ */
+export function resolveDimensions(
+    cfg: EntityTypeConfig | undefined,
+    byName: Map<string, EntityTypeConfig>,
+    seen: Set<string> = new Set(),
+): RelevanceDimensionDef[] {
+    if (!cfg || seen.has(cfg.name)) return [];
+    if (cfg.dimensions && cfg.dimensions.length > 0) return cfg.dimensions;
+    seen.add(cfg.name);
+    if (cfg.parent) {
+        const inherited = resolveDimensions(byName.get(cfg.parent), byName, seen);
+        if (inherited.length > 0) return inherited;
+    }
+    if (cfg.baseCategory) return BASE_CATEGORY_DIMENSIONS[cfg.baseCategory] ?? [];
+    return [];
+}
+
+/**
+ * Specificity = number of parent links to the base/generic type (0 for a
+ * generic base type, 1 for a direct subtype, etc.). Drives the specificity bonus.
+ */
+export function getSpecificity(
+    cfg: EntityTypeConfig | undefined,
+    byName: Map<string, EntityTypeConfig>,
+    seen: Set<string> = new Set(),
+): number {
+    if (!cfg || !cfg.parent || seen.has(cfg.name)) return 0;
+    seen.add(cfg.name);
+    return 1 + getSpecificity(byName.get(cfg.parent), byName, seen);
 }
 
 interface EntityTypesFile {

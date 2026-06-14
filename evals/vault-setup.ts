@@ -55,54 +55,12 @@ let originalCwd: string;
 
 // Entity types to include by default in eval vaults (superset for full testing)
 const EVAL_ENTITY_TYPES = [
-    // person is redefined below with eval-specific fields (role) — exclude the
-    // default to avoid a duplicate 'person' type in the eval config.
-    ...DEFAULT_ENTITY_TYPES.filter(t => t.name !== 'person'),
-    {
-        name: 'goal',
-        plural: 'goals',
-        directory: 'goals',
-        description: 'Long-term objectives to work toward',
-        defaultTags: ['goal'],
-        fields: [
-            { key: 'status', type: 'enum', label: 'Status', values: ['active', 'achieved', 'abandoned'], default: 'active', required: true },
-            { key: 'priority', type: 'enum', label: 'Priority', values: ['low', 'medium', 'high'], default: 'medium', required: true },
-            { key: 'targetDate', type: 'date', label: 'Target Date', required: false },
-        ],
-        completionField: 'status',
-        completionValue: 'achieved',
-        dimensions: [
-            { type: 'semantic',         weight: 3 },
-            { type: 'contextProximity', weight: 2 },
-            { type: 'recency',          weight: 2 },
-            { type: 'temporal',         weight: 1, config: { anchor: 'point', startField: 'targetDate', windowBefore: 30, windowAfter: 30 } },
-        ],
-    },
-    {
-        name: 'person',
-        plural: 'people',
-        directory: 'people',
-        description: 'Contacts and people you interact with',
-        defaultTags: ['person'],
-        fields: [
-            { key: 'email', type: 'string', label: 'Email', required: false },
-            { key: 'phone', type: 'string', label: 'Phone', required: false },
-            { key: 'company', type: 'string', label: 'Company', required: false },
-            { key: 'role', type: 'string', label: 'Role', required: false },
-            { key: 'type', type: 'string', label: 'Relationship Type', required: false },
-        ],
-        // Human category — mirrors the default person type's dimensions.
-        dimensions: [
-            { type: 'socialProximity',  weight: 3, config: { field: 'type' } },
-            { type: 'behavioral',       weight: 3 },
-            { type: 'semantic',         weight: 2 },
-            { type: 'contextProximity', weight: 2 },
-            { type: 'recency',          weight: 2 },
-            { type: 'goalAlignment',    weight: 1 },
-        ],
-    },
+    // Use the production defaults (person, goal, event, task, … now carry
+    // baseCategory). Only add eval-specific extras below.
+    ...DEFAULT_ENTITY_TYPES,
     {
         name: 'recurrence',
+        baseCategory: 'task' as const,
         plural: 'recurrences',
         directory: 'recurrences',
         description: 'Recurring tasks or habits',
@@ -110,10 +68,20 @@ const EVAL_ENTITY_TYPES = [
         fields: [
             { key: 'cadence', type: 'enum', label: 'Cadence', values: ['daily', 'weekly', 'monthly'], default: 'weekly', required: true },
         ],
-        dimensions: [
-            { type: 'semantic',         weight: 2 },
-            { type: 'contextProximity', weight: 1 },
-            { type: 'recency',          weight: 1 },
+    },
+    // Example subtype — a more specific Human. Inherits person's relevance
+    // profile and earns a specificity bonus over a generic person.
+    {
+        name: 'immediate_family',
+        baseCategory: 'human' as const,
+        parent: 'person',
+        plural: 'immediate_family',
+        directory: 'immediate-family',
+        description: 'Spouse, children, parents — the people closest to you',
+        defaultTags: ['family'],
+        fields: [
+            { key: 'type', type: 'string', label: 'Relationship Type', required: false },
+            { key: 'relation', type: 'string', label: 'Relation', required: false },
         ],
     },
 ];

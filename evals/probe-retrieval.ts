@@ -18,7 +18,7 @@ function classification(over: Partial<ClassificationResult>): ClassificationResu
 
 const day = (o: number) => { const d = new Date(); d.setDate(d.getDate() + o); return d.toISOString().slice(0, 10); };
 
-async function probe(label: string, seed: VaultSeedEntity[], c: ClassificationResult, expectTitles: string[], notExpect: string[] = []) {
+async function probe(label: string, seed: VaultSeedEntity[], c: ClassificationResult, expectTitles: string[], notExpect: string[] = [], expectFirst?: string) {
     await createEvalVault(seed);
     const idx = getEntityIndex();
     await idx.build();
@@ -28,10 +28,12 @@ async function probe(label: string, seed: VaultSeedEntity[], c: ClassificationRe
     const got = (t: string) => titles.some(x => x.toLowerCase().includes(t.toLowerCase()));
     const hitsOk = expectTitles.every(got);
     const missOk = notExpect.every(t => !got(t));
-    console.log(`\n[${hitsOk && missOk ? 'PASS' : 'FAIL'}] ${label}`);
+    const firstOk = !expectFirst || (titles[0]?.toLowerCase().includes(expectFirst.toLowerCase()) ?? false);
+    console.log(`\n[${hitsOk && missOk && firstOk ? 'PASS' : 'FAIL'}] ${label}`);
     console.log(`   retrieved ${gathered.nodes.length}: [${titles.join(' | ')}]`);
     if (!hitsOk) console.log(`   MISSING: ${expectTitles.filter(t => !got(t)).join(', ')}`);
     if (!missOk) console.log(`   LEAKED:  ${notExpect.filter(got).join(', ')}`);
+    if (!firstOk) console.log(`   EXPECTED FIRST: ${expectFirst} (got "${titles[0] ?? '∅'}")`);
     await destroyEvalVault();
 }
 
@@ -110,6 +112,19 @@ async function main() {
         ],
         classification({ summary: 'tasks', subjects: [{ text: 'tasks', entityType: 'task' }] }),
         ['Renew passport', 'Reply to Dana'],
+    );
+
+    // 7b. Specificity: a more-specific type (immediate_family) outranks an
+    //     equally-relevant generic person in the merged, score-sorted fetch.
+    await probe(
+        'specificity: immediate_family ranks above generic person',
+        [
+            { entityType: 'person', title: 'Riley Brooks', body: 'A contact named Riley.' },
+            { entityType: 'immediate_family', title: 'Riley Carter', fields: { type: 'family', relation: 'sister' }, body: 'My sister Riley.' },
+        ],
+        // Untyped subject so both types are fetched cross-type and merged.
+        classification({ summary: 'Riley', subjects: [{ text: 'Riley' }] }),
+        ['Riley Carter'], [], 'Riley Carter',
     );
 
     // 8. Me-node: onboarding (ensureSelfPerson) creates a resolvable "me" node —

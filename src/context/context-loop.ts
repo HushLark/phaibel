@@ -4,7 +4,7 @@ import type { IntentResult } from './intent-classifier.js';
 import type { ContextManifest } from './context-manifest.js';
 import { serializeManifest } from './context-manifest.js';
 import { parseJsonResponse } from '../utils/json-parser.js';
-import { loadEntityTypes, type EntityTypeConfig } from '../entities/entity-type-config.js';
+import { loadEntityTypes, resolveDimensions, getSpecificity, SPECIFICITY_BONUS, type EntityTypeConfig } from '../entities/entity-type-config.js';
 import { debug } from '../utils/debug.js';
 import type { ClassificationResult } from './request-classifier.js';
 import type { RequestWeights } from './request-weights.js';
@@ -116,7 +116,7 @@ Rules:
 
         if (decision.action === 'fetch' && Array.isArray(decision.requests)) {
             const anchorKeys = new Set(fetched.map(n => `${n.type}:${n.id}`));
-            const newNodes = await fulfillRequests(decision.requests, entityIndex, anchorKeys);
+            const newNodes = (await fulfillRequests(decision.requests, entityIndex, anchorKeys)).map(r => r.node);
             let added = 0;
             const addedKeys: string[] = [];
             for (const node of newNodes) {
@@ -157,16 +157,42 @@ Rules:
 // ISO date pattern: 2026-05-05 (possibly with field prefix like "due:2026-05-05")
 const DATE_PATTERN = /\b(\d{4}-\d{2}-\d{2})\b/;
 
+/** A retrieved node with a comparable relevance score for cross-type ranking. */
+export interface ScoredNode { node: IndexNode; score: number; }
+
+// Tier base scores keep heterogeneous fetch branches on one comparable scale
+// (relevance dominates; keyword/fallback sit below); the per-node specificity
+// multiplier then lets a specific-typed node edge out an equally-relevant
+// generic one. See docs/RELEVANCE-DIMENSIONS.md.
+const TIER_ID       = 1.00;
+const TIER_DATE     = 0.70;
+const TIER_KEYWORD  = 0.45;
+const TIER_FALLBACK = 0.15;
+const relevanceTier = (s: number) => 0.4 + 0.5 * s; // [0,1] → [0.4,0.9]
+
 export async function fulfillRequests(
     requests: FetchRequest[],
     entityIndex: EntityIndex,
     anchorKeys: Set<string> = new Set(),
     requestWeights?: RequestWeights,
-): Promise<IndexNode[]> {
+): Promise<ScoredNode[]> {
     const entityTypes = await loadEntityTypes();
     const typeConfigMap = new Map(entityTypes.map(t => [t.name, t]));
 
-    const results: IndexNode[] = [];
+    // Specificity multiplier per type (1 + β·depth-below-base), cached.
+    const specCache = new Map<string, number>();
+    const specMult = (typeName: string): number => {
+        let m = specCache.get(typeName);
+        if (m === undefined) {
+            m = 1 + SPECIFICITY_BONUS * getSpecificity(typeConfigMap.get(typeName), typeConfigMap);
+            specCache.set(typeName, m);
+        }
+        return m;
+    };
+
+    const results: ScoredNode[] = [];
+    const add = (node: IndexNode, base: number) => results.push({ node, score: base * specMult(node.type) });
+
     for (const req of requests) {
         // Normalise type: treat '*' or empty string as all-type
         const typeKey = (req.type && req.type !== '*') ? req.type : undefined;
@@ -175,7 +201,7 @@ export async function fulfillRequests(
             for (const id of req.ids) {
                 if (!typeKey) continue;
                 const node = entityIndex.getNode(`${typeKey}:${id}`);
-                if (node) results.push(node);
+                if (node) add(node, TIER_ID);
             }
             continue;
         }
@@ -193,24 +219,26 @@ export async function fulfillRequests(
                     typeof v === 'string' && v.startsWith(targetDate)
                 ))
                 .slice(0, limit);
-            results.push(...found);
+            for (const n of found) add(n, TIER_DATE);
             continue;
         }
 
-        // Relevance-scored fetch when the type declares relevance dimensions (v2).
-        // Temporal types flow through here too — temporal is now a scored dimension
-        // whose nonzero support acts as the in-window filter (no separate path).
-        if (typeConfig?.dimensions && typeConfig.dimensions.length > 0) {
+        // Relevance-scored fetch when the type declares relevance dimensions
+        // (own, inherited from parent, or its base-category default). Temporal
+        // types flow through here too — temporal is a scored dimension whose
+        // nonzero support acts as the in-window filter (no separate path).
+        const dims = resolveDimensions(typeConfig, typeConfigMap);
+        if (dims.length > 0) {
             try {
                 const scored = await entityIndex.searchByRelevance(
                     query,
                     typeKey as import('../entities/entity.js').EntityTypeName | undefined,
                     anchorKeys,
-                    typeConfig.dimensions,
+                    dims,
                     requestWeights,
                     undefined,
                 );
-                results.push(...scored.slice(0, limit).map(r => r.node));
+                for (const r of scored.slice(0, limit)) add(r.node, relevanceTier(r.score));
                 continue;
             } catch (err) {
                 debug('context-loop', `Relevance scoring failed for ${typeKey}, falling back: ${err}`);
@@ -220,17 +248,14 @@ export async function fulfillRequests(
         if (query) {
             const found = entityIndex.search(query, typeKey as import('../entities/entity.js').EntityTypeName | undefined).slice(0, limit);
             if (found.length > 0) {
-                results.push(...found.map(r => r.node));
+                for (const r of found) add(r.node, TIER_KEYWORD);
             } else if (typeKey) {
                 // Keyword search returned nothing for a typed request — fall back to
-                // all entities of this type (query was likely just the type name or
-                // a phrase with no keyword match in entity content).
-                const fallback = entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName).slice(0, limit);
-                results.push(...fallback);
+                // all entities of this type (query was likely just the type name).
+                for (const n of entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName).slice(0, limit)) add(n, TIER_FALLBACK);
             }
         } else {
-            const found = entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName | undefined).slice(0, limit);
-            results.push(...found);
+            for (const n of entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName | undefined).slice(0, limit)) add(n, TIER_FALLBACK);
         }
     }
     return results;
@@ -268,19 +293,21 @@ export async function fetchContextByClassification(
         limit: r.limit,
     }));
 
-    const nodes = await fulfillRequests(fetchReqs, entityIndex, new Set(), requestWeights);
+    const scored = await fulfillRequests(fetchReqs, entityIndex, new Set(), requestWeights);
 
-    // Deduplicate and cap
-    const seen = new Set<string>();
-    const unique: IndexNode[] = [];
-    for (const n of nodes) {
-        const key = `${n.type}:${n.id}`;
-        if (!seen.has(key)) {
-            seen.add(key);
-            unique.push(n);
-        }
-        if (unique.length >= maxNodes) break;
+    // Merge across requests: dedup keeping the highest score per node, then rank
+    // by score (specificity-boosted) and cap. This is what makes a specific-typed
+    // node outrank an equally-relevant generic one across types.
+    const byKey = new Map<string, ScoredNode>();
+    for (const sn of scored) {
+        const key = `${sn.node.type}:${sn.node.id}`;
+        const prev = byKey.get(key);
+        if (!prev || sn.score > prev.score) byKey.set(key, sn);
     }
+    const unique = [...byKey.values()]
+        .sort((a, b) => b.score - a.score)
+        .slice(0, maxNodes)
+        .map(s => s.node);
 
     // Record behavioral signals (fire-and-forget)
     const keys = unique.map(n => `${n.type}:${n.id}`);

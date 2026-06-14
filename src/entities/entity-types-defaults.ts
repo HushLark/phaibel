@@ -9,6 +9,7 @@ import type { EntityTypeConfig } from './entity-type-config.js';
 export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
     {
         name: 'task',
+        baseCategory: 'task',
         plural: 'tasks',
         directory: 'todos',
         description: 'Actionable items to complete',
@@ -48,6 +49,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
     },
     {
         name: 'note',
+        baseCategory: 'thing',
         plural: 'notes',
         directory: 'notes',
         description: 'Free-form notes and references',
@@ -66,6 +68,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
     },
     {
         name: 'event',
+        baseCategory: 'event',
         plural: 'events',
         directory: 'events',
         description: 'Calendar events and appointments',
@@ -100,6 +103,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
     },
     {
         name: 'person',
+        baseCategory: 'human',
         plural: 'people',
         directory: 'people',
         description: 'People — contacts, colleagues, family, friends',
@@ -127,6 +131,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
     },
     {
         name: 'company',
+        baseCategory: 'thing',
         plural: 'companies',
         directory: 'companies',
         description: 'Companies and organizations',
@@ -153,6 +158,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
     },
     {
         name: 'todont',
+        baseCategory: 'thing',
         plural: 'todonts',
         directory: 'todonts',
         description: 'Things to deliberately NOT do',
@@ -167,7 +173,23 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             { type: 'recency',          weight: 1 },
         ],
     },
+    {
+        name: 'goal',
+        baseCategory: 'goal',
+        plural: 'goals',
+        directory: 'goals',
+        description: 'Outcomes you are working toward — the "why" that tasks and events serve',
+        defaultTags: ['goal'],
+        fields: [
+            { key: 'status',     type: 'enum', label: 'Status', values: ['active', 'achieved', 'abandoned'], default: 'active', required: true },
+            { key: 'priority',   type: 'enum', label: 'Priority', values: ['low', 'medium', 'high'], default: 'medium', required: true },
+            { key: 'targetDate', type: 'date', label: 'Target Date', required: false },
+        ],
+        completionField: 'status',
+        completionValue: 'achieved',
+        // Inherits the 'goal' base-category relevance profile (long-horizon, hub).
+    },
 ];
 
 /** Names of built-in types that cannot be removed. */
-export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'person', 'company', 'todont']);
+export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'person', 'company', 'todont', 'goal']);
