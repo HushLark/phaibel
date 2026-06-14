@@ -283,6 +283,7 @@ export function filterCatalogNodes(
         const key = node.key;
         if (
             key === 'search_all_entities' ||
+            key === 'create_entity' ||
             key === 'create_content_type' ||
             key === 'update_content_type' ||
             key === 'link_entities' ||

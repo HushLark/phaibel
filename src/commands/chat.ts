@@ -33,7 +33,7 @@ import { analyzeQueryRelevance, filterCatalogNodes } from '../context/query-rele
 import type { RelevantType } from '../context/query-relevance.js';
 import { buildMomentContext, momentToGlobals } from '../context/moment.js';
 import { updateProfile, validateScores, invalidateProfileCache, type BigFiveSample } from '../personality/big-five.js';
-import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename } from '../entities/entity.js';
+import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename, listEntities } from '../entities/entity.js';
 import { getEntityType } from '../entities/entity-type-config.js';
 import { classifyRequest, toIntentResult, BLOCKED_RESPONSE } from '../context/request-classifier.js';
 import { CATEGORY_PROCESSES, CATEGORY_PROCESS_KEY } from '../feral/processes/category-processes.js';
@@ -665,8 +665,9 @@ ${historyBlock}
 ${serializeGatheredContext(gathered)}
 
 Each entity type has create_*, list_*, find_*, update_*, delete_*, complete_*, set_{type}_{field} catalog nodes.
-CRITICAL: Match entity types precisely — event≠task. Use create_event for appointments/meetings, create_task for todos.
-For new content types (recipe, vehicle, etc.), select "create_content_type". Use "link_entities" to connect related entities.
+CRITICAL: Match entity types precisely — event≠task. Use create_event for appointments/meetings (including 1:1s and recurring meetings), create_task for todos.
+When a person's relationship is stated, also select "set_person_type" to record it (manager/report/coworker→colleague; spouse/child/parent/sibling→family; friend→friend; vendor/client→professional) — this powers user-centric relevance.
+For new content types (recipe, vehicle, etc.), select BOTH "create_content_type" AND "create_entity" — the type alone saves nothing; "create_entity" stores the actual item in it. Use "link_entities" to connect related entities.
 For field values on creation, also select "set_context_value" to stage fields in context.
 
 AVAILABLE CATALOG NODES:
@@ -675,7 +676,7 @@ ${catalogSummary}
 RULES:
 - Always include "start" and "stop". Select only nodes needed for the request.
 - Prefer entity nodes (create_*, complete_*, find_*) over llm_chat for data operations.
-- For unknown content types, select "create_content_type". For multiple entities, select multiple create_* nodes.
+- For unknown content types, select "create_content_type" AND "create_entity" together (type without entity = lost data). For multiple entities, select multiple create_* nodes.
 - Proactively link related entities. Prefer action over questions — use sensible defaults.
 - When the user mentions a flight number, URL, product, or needs live/external data, include "perplexity_sonar" to look it up, then update the created/found entity with the results.
 
@@ -1032,7 +1033,8 @@ After composing your response, rate BOTH the user and yourself on these 5 traits
 - emotionalStability (1=tense/reactive, 5=calm/composed)
 
 ASSUMED CONTEXT NODES:
-If the user casually mentions people, places, projects, or other notable entities that don't already exist in context, include them in "assumed_nodes" so they can be saved automatically. Only include entities that are clearly worth remembering — not throwaway mentions. Each assumed node needs: contextType (must match an available type like "person", "note", etc.), title, and any fields you can infer.
+If the user casually mentions people, places, projects, or other notable entities that don't already exist in context, include them in "assumed_nodes" so they can be saved automatically. Only include entities that are clearly worth remembering — not throwaway mentions. Do NOT re-add an entity already created or present in this turn's context. Each assumed node needs: contextType (must match an available type like "person", "note", etc.), title, and any fields you can infer.
+For a "person", always infer a relationship "type" field from how they're described, using one of: family (spouse, child, parent, sibling, relative), friend, colleague (coworker, manager, direct report, teammate), professional (vendor, client, contact at another company), acquaintance. E.g. "my manager Sam" → {"contextType":"person","title":"Sam","type":"colleague"}; "my daughter Emma" → {"contextType":"person","title":"Emma","type":"family"}.
 
 Do NOT include fenced code blocks (\`\`\`) anywhere in the "response" value.
 
@@ -1125,6 +1127,18 @@ async function createAssumedNodes(
             debug('chat', `Assumed node skipped — unknown type: ${node.contextType}`);
             continue;
         }
+
+        // Dedup: skip if an entity of this type with a matching title already
+        // exists. The main process (this turn) or a prior turn likely created it
+        // — without this guard every mentioned entity is duplicated on each turn.
+        try {
+            const titleLc = node.title.trim().toLowerCase();
+            const existing = await listEntities(node.contextType, { metaOnly: true });
+            if (existing.some(e => String(e.meta.title ?? e.meta.name ?? '').trim().toLowerCase() === titleLc)) {
+                debug('chat', `Assumed node skipped — already exists: ${node.contextType}/${node.title}`);
+                continue;
+            }
+        } catch { /* best-effort dedup */ }
 
         const id = generateNodeId();
         const now = new Date().toISOString();

@@ -55,7 +55,9 @@ let originalCwd: string;
 
 // Entity types to include by default in eval vaults (superset for full testing)
 const EVAL_ENTITY_TYPES = [
-    ...DEFAULT_ENTITY_TYPES,
+    // person is redefined below with eval-specific fields (role) — exclude the
+    // default to avoid a duplicate 'person' type in the eval config.
+    ...DEFAULT_ENTITY_TYPES.filter(t => t.name !== 'person'),
     {
         name: 'goal',
         plural: 'goals',

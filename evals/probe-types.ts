@@ -39,7 +39,9 @@ const CASES: Case[] = [
 const timeout = (ms: number) => new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), ms));
 
 async function run() {
-    for (const c of CASES) {
+    const filter = process.env.PROBE_FILTER;
+    const cases = filter ? CASES.filter(c => (c.kind + ' ' + c.input).toLowerCase().includes(filter.toLowerCase())) : CASES;
+    for (const c of cases) {
         await createEvalVault([]);
         const before = new Set((await loadEntityTypes()).map(t => t.name));
         let err = '';
@@ -52,15 +54,21 @@ async function run() {
             err = e instanceof Error ? e.message : String(e);
         }
 
+        // createAssumedNodes is fire-and-forget — let it settle before snapshot,
+        // and don't reset the index (its dedup reads the live index).
+        await new Promise(r => setTimeout(r, 2500));
         invalidateCache();
-        resetEntityIndex();
         const afterTypes = await loadEntityTypes();
         const newTypes = afterTypes.map(t => t.name).filter(n => !before.has(n));
 
         const created: string[] = [];
-        for (const t of afterTypes) {
-            const ents = await listEntities(t.name).catch(() => []);
-            for (const e of ents) created.push(`${t.name}:${String(e.meta.title ?? e.meta.name ?? '?')}`);
+        for (const tname of new Set(afterTypes.map(t => t.name))) {
+            const ents = await listEntities(tname).catch(() => []);
+            for (const e of ents) {
+                const title = String(e.meta.title ?? e.meta.name ?? '?');
+                const rel = e.meta.type ? ` (type=${String(e.meta.type)})` : '';
+                created.push(`${tname}:${title}${rel}`);
+            }
         }
 
         const verdict = newTypes.length > 0 ? `CREATED [${newTypes.join(', ')}]` : 'used existing';

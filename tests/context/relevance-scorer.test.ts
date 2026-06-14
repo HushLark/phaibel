@@ -96,6 +96,20 @@ describe('scoreNodes', () => {
         expect(socialBoosted).toBeGreaterThan(socialNeutral);
     });
 
+    it('normalizes free-form relationship values onto weight buckets', () => {
+        // No "me" graph path → social proximity falls back to the relationship
+        // weight. The LLM writes free-form values ("daughter", "direct_report"),
+        // which must map to family (1.0) > colleague (0.5).
+        const dims: RelevanceDimensionDef[] = [{ type: 'socialProximity', config: { field: 'type' } }];
+        const daughter = node('person', 'kid', { type: 'daughter' });
+        const report = node('person', 'report', { type: 'direct_report' });
+        const ctx = baseCtx(); // no focalNodeKey → relationship-weight only
+        const ranked = scoreNodes([report, daughter], dims, ctx);
+        expect(ranked[0].key).toBe('person:kid');
+        expect(ranked.find(r => r.key === 'person:kid')!.signals.socialProximity)
+            .toBeGreaterThan(ranked.find(r => r.key === 'person:report')!.signals.socialProximity);
+    });
+
     it('returns no scores when the type declares no dimensions', () => {
         expect(scoreNodes([node('note', 'a')], [], baseCtx())).toEqual([]);
     });

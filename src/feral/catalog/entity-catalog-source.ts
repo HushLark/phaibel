@@ -46,6 +46,19 @@ export class EntityCatalogSource implements CatalogSource {
             configuration: {},
         });
 
+        // Generic entity creator — required to create an entity in a type that has
+        // no create_{type} node yet (i.e. a type just made by create_content_type).
+        // Takes entity_type explicitly. Per-type create_{type} nodes are preferred
+        // for existing types; this is the fallback the type-creation pattern needs.
+        nodes.push({
+            key: 'create_entity',
+            nodeCodeKey: 'create_entity',
+            name: 'Create Entity (any type)',
+            group: 'entity',
+            description: 'Creates an entity of ANY content type. Use immediately after create_content_type to save the entity in the newly created type. Requires entity_type, entity_title, and optionally entity_body / extra_fields.',
+            configuration: {},
+        });
+
         // Update existing entity type — add fields to a content type that already exists
         nodes.push({
             key: 'update_content_type',

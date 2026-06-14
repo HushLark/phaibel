@@ -44,6 +44,25 @@ const DEFAULT_SOCIAL_WEIGHTS: Record<string, number> = {
     acquaintance: 0.25,
 };
 
+// Map free-form relationship values (what the LLM actually writes) onto the
+// weight buckets — the model rarely emits the exact bucket name.
+const RELATIONSHIP_SYNONYMS: Record<string, string> = {
+    spouse: 'family', wife: 'family', husband: 'family', partner: 'family',
+    daughter: 'family', son: 'family', child: 'family', kid: 'family',
+    parent: 'family', mother: 'family', father: 'family', mom: 'family', dad: 'family',
+    sibling: 'family', brother: 'family', sister: 'family', relative: 'family',
+    manager: 'colleague', boss: 'colleague', report: 'colleague', 'direct report': 'colleague',
+    direct_report: 'colleague', coworker: 'colleague', teammate: 'colleague', work: 'colleague',
+    vendor: 'professional', client: 'professional', contact: 'professional', customer: 'professional',
+};
+
+/** Normalize a relationship value to a weight-bucket key. */
+function normalizeRelationship(rel: string): string {
+    const k = rel.trim().toLowerCase().replace(/[-\s]+/g, '_');
+    if (k in DEFAULT_SOCIAL_WEIGHTS) return k;
+    return RELATIONSHIP_SYNONYMS[k] ?? RELATIONSHIP_SYNONYMS[rel.trim().toLowerCase()] ?? k;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -199,8 +218,8 @@ function socialProximityScore(
     // Relationship refinement: scale graph proximity by relationship weight, or
     // fall back to the relationship weight alone when there's no graph path.
     const rel = relationshipField ? meta[relationshipField] : undefined;
-    if (typeof rel === 'string') {
-        const relWeight = weightMap[rel.toLowerCase()] ?? 0;
+    if (typeof rel === 'string' && rel.trim()) {
+        const relWeight = weightMap[normalizeRelationship(rel)] ?? 0;
         return proximity > 0 ? proximity * relWeight : relWeight;
     }
     return proximity;
