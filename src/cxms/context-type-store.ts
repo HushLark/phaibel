@@ -122,19 +122,14 @@ ${completionNote}
 - When the user refers to "${config.plural}" or "${config.name}", this is the context type to use.
 `;
 
-    // Store the full config in frontmatter, body is the human-readable description
-    const meta: Record<string, unknown> = {
-        name: config.name,
-        plural: config.plural,
-        directory: `context-types/${config.name}`,
-        description: config.description,
-        fields: config.fields,
-    };
-    if (config.defaultTags) meta.defaultTags = config.defaultTags;
-    if (config.completionField) meta.completionField = config.completionField;
-    if (config.completionValue) meta.completionValue = config.completionValue;
-    if (config.spawner) meta.spawner = config.spawner;
-    if (config.calendarDateField) meta.calendarDateField = config.calendarDateField;
+    // Store the FULL config in frontmatter (lossless — relevance variables and
+    // all), body is the human-readable description. The directory is normalized
+    // to this type's own folder. Undefined keys are dropped so the file stays clean.
+    const meta: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(config)) {
+        if (v !== undefined) meta[k] = v;
+    }
+    meta.directory = `context-types/${config.name}`;
 
     const phaibelMd = matter.stringify(body, meta);
     await storage.writeFile(paths.join(typeDir, '.cxms.md'), phaibelMd);
@@ -188,13 +183,17 @@ export async function removeContextTypeDir(name: string): Promise<void> {
     if (!root) throw new Error('No foundation found');
     const { storage, paths } = getPlatform();
     const typeDir = paths.join(root, 'context-types', name);
-    // Remove all files in the directory, then the directory itself
     try {
+        if (storage.rmdir) {
+            // Preferred: recursive directory removal in one call.
+            await storage.rmdir(typeDir, { recursive: true });
+            return;
+        }
+        // Fallback for platforms without rmdir: empty the directory, then drop it.
         const entries = await storage.readdir(typeDir);
         for (const entry of entries) {
             await storage.unlink(paths.join(typeDir, entry));
         }
-        // Remove the now-empty directory by unlinking it
         await storage.unlink(typeDir);
     } catch {
         // Directory doesn't exist — nothing to remove

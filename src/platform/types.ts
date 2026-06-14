@@ -24,6 +24,9 @@ export interface StorageProvider {
     /** Throws if path does not exist (like fs.access). */
     access(filePath: string): Promise<void>;
     unlink(filePath: string): Promise<void>;
+    /** Optional: remove a directory (recursively if requested). Platforms that
+     * don't implement this fall back to emptying + unlinking the directory. */
+    rmdir?(dirPath: string, opts?: { recursive?: boolean }): Promise<void>;
     stat(filePath: string): Promise<FileStat>;
     /** Optional: resolve symlinks to real path. Falls back to identity if not implemented. */
     realpath?(filePath: string): Promise<string>;

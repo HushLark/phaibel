@@ -42,6 +42,10 @@ class NodeStorageProvider implements StorageProvider {
         await fs.unlink(filePath);
     }
 
+    async rmdir(dirPath: string, opts?: { recursive?: boolean }): Promise<void> {
+        await fs.rm(dirPath, { recursive: opts?.recursive ?? false, force: true });
+    }
+
     async stat(filePath: string): Promise<FileStat> {
         const stats = await fs.stat(filePath);
         return {

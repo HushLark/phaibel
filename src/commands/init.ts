@@ -7,7 +7,6 @@ import path from 'path';
 import os from 'os';
 import { findFoundationRoot } from '../state/manager.js';
 import { loadEntityTypes } from '../entities/entity-type-config.js';
-import { writeAllContextTypes } from '../cxms/context-type-store.js';
 import { setApiKey, PROVIDER_MODELS, getConfiguredProviders } from '../config.js';
 import { startDaemon } from '../service/daemon.js';
 import { SYSTEM_DIR } from '../paths.js';
@@ -106,17 +105,12 @@ This Foundation is the agent's memory. Content is stored as Markdown files with 
             await fs.mkdir(path.join(cwd, dir), { recursive: true });
         }
 
-        // Seed context types from defaults
+        // Built-in context types come from code — there is no registry to seed.
+        // Create their node directories (top-level) plus the context-types/ root
+        // where user-created types live directory-native.
         const entityTypes = await loadEntityTypes();
-        // Update directories to v5 format
-        const contextTypes = entityTypes.map(t => ({
-            ...t,
-            directory: `context-types/${t.name}`,
-        }));
-        await writeAllContextTypes(contextTypes);
-
-        // Create context type node directories
-        for (const t of contextTypes) {
+        await fs.mkdir(path.join(cwd, 'context-types'), { recursive: true });
+        for (const t of entityTypes) {
             await fs.mkdir(path.join(cwd, t.directory), { recursive: true });
         }
 
@@ -138,9 +132,9 @@ logs/
         console.log(chalk.gray(`\nCreated:`));
         console.log(chalk.gray(`  .cxms.md             - Root context`));
         console.log(chalk.gray(`  profiles/            - User & agent profiles`));
-        console.log(chalk.gray(`  context-types/       - Context type schemas`));
-        for (const t of contextTypes) {
-            console.log(chalk.gray(`    ${t.name}/`));
+        console.log(chalk.gray(`  context-types/       - User-created context type schemas`));
+        for (const t of entityTypes) {
+            console.log(chalk.gray(`    ${t.directory}/`));
         }
         console.log(chalk.gray(`  collections/         - Key/value collections`));
         console.log(chalk.gray(`  feral/               - Feral CCF engine`));

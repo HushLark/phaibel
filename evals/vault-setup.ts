@@ -12,6 +12,7 @@ import { createEntityMeta, writeEntity, listEntities, entityFilename } from '../
 import { resetEntityIndex } from '../src/entities/entity-index.js';
 import { resetEmbeddingIndex } from '../src/entities/embedding-index.js';
 import { DEFAULT_ENTITY_TYPES } from '../src/entities/entity-types-defaults.js';
+import { writeContextType } from '../src/cxms/context-type-store.js';
 import type { VaultSeedEntity, VaultSnapshot, SnapshotEntity } from './types.js';
 
 // Bundled skill for skill-scenario testing — daily-briefing
@@ -62,7 +63,7 @@ const EVAL_ENTITY_TYPES = [
         name: 'recurrence',
         baseCategory: 'task' as const,
         plural: 'recurrences',
-        directory: 'recurrences',
+        directory: 'context-types/recurrence',
         description: 'Recurring tasks or habits',
         defaultTags: ['recurrence'],
         fields: [
@@ -76,7 +77,7 @@ const EVAL_ENTITY_TYPES = [
         baseCategory: 'person' as const,
         parent: 'person',
         plural: 'immediate_family',
-        directory: 'immediate-family',
+        directory: 'context-types/immediate_family',
         description: 'Spouse, children, parents — the people closest to you',
         defaultTags: ['family'],
         fields: [
@@ -87,8 +88,8 @@ const EVAL_ENTITY_TYPES = [
 ];
 
 /**
- * Create a temporary vault with `.vault.md`, `.state.json`, entity-types.json,
- * and entity directories. Optionally seed entities.
+ * Create a temporary vault with `.phaibel.md`, `.state.json`, directory-native
+ * context types, and entity directories. Optionally seed entities.
  */
 export async function createEvalVault(
     seed?: VaultSeedEntity[],
@@ -123,13 +124,8 @@ export async function createEvalVault(
     await fs.mkdir(configDir, { recursive: true });
     await fs.mkdir(path.join(configDir, 'logs'), { recursive: true });
 
-    // Entity types config
-    await fs.writeFile(
-        path.join(configDir, 'entity-types.json'),
-        JSON.stringify({ version: 1, entityTypes: EVAL_ENTITY_TYPES }, null, 2),
-    );
-
-    // Create entity directories
+    // Create entity directories. Built-in types come from code; eval-specific
+    // extras are persisted directory-native below.
     for (const et of EVAL_ENTITY_TYPES) {
         await fs.mkdir(path.join(vaultDir, et.directory), { recursive: true });
     }
@@ -146,6 +142,16 @@ export async function createEvalVault(
     invalidateEntityTypeCache();
     resetEntityIndex();
     resetEmbeddingIndex();
+
+    // Persist eval-specific extra types directory-native (matches production:
+    // built-ins come from code, user/eval types live in context-types/{name}).
+    const builtinNames = new Set(DEFAULT_ENTITY_TYPES.map(t => t.name));
+    for (const et of EVAL_ENTITY_TYPES) {
+        if (!builtinNames.has(et.name)) {
+            await writeContextType(et as Parameters<typeof writeContextType>[0]);
+        }
+    }
+    invalidateEntityTypeCache();
 
     // Seed entities
     if (seed && seed.length > 0) {

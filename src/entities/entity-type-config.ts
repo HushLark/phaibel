@@ -1,14 +1,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// ENTITY TYPE CONFIG
-// Loads entity type definitions from {vault}/.phaibel/entity-types.json.
-// Falls back to built-in defaults if the file doesn't exist.
-// Users can add, modify, or extend entity types by editing the JSON file.
+// ENTITY TYPE CONFIG (Phaibel domain over CxMS)
+// Built-in types come from code (DEFAULT_ENTITY_TYPES). User-created types are
+// directory-native: each lives in (Foundation)/context-types/{name}/.cxms.md,
+// holding its full config in frontmatter alongside its nodes. There is no
+// central registry file — persistence is delegated to the CxMS context-type
+// store (imported dynamically to avoid an import cycle).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getPlatform } from '../platform/index.js';
 import { DEFAULT_ENTITY_TYPES, BUILT_IN_TYPE_NAMES } from './entity-types-defaults.js';
 import { debug } from '../utils/debug.js';
-import { getEntityTypesPath, getVaultConfigDir } from '../paths.js';
 import { getVaultRoot } from '../state/manager.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -263,11 +264,6 @@ export function getSpecificity(
     return 1 + getSpecificity(byName.get(cfg.parent), byName, seen);
 }
 
-interface EntityTypesFile {
-    version: number;
-    entityTypes: EntityTypeConfig[];
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // CACHE
 // ─────────────────────────────────────────────────────────────────────────────
@@ -289,103 +285,49 @@ export function invalidateCache(): void {
 export async function loadEntityTypes(): Promise<EntityTypeConfig[]> {
     if (_cache) return _cache;
 
+    // Built-in types come from code (always current — no per-vault copy to keep
+    // in sync). User-created types live directory-native in the CxMS foundation
+    // at (Foundation)/context-types/{name}/.cxms.md. There is no central registry.
+    const types: EntityTypeConfig[] = DEFAULT_ENTITY_TYPES.map(d => ({ ...d }));
     try {
-        const { storage } = getPlatform();
-        const typesPath = await getEntityTypesPath();
-        const raw = await storage.readFile(typesPath, 'utf-8');
-        const parsed: EntityTypesFile = JSON.parse(raw);
-        if (!Array.isArray(parsed.entityTypes)) {
-            throw new Error('entity-types.json missing entityTypes array');
-        }
-        // Merge new built-in properties into saved configs for built-in types
-        // so that new features (e.g. calendarDateField) propagate to existing vaults
-        const defaultsByName = new Map(DEFAULT_ENTITY_TYPES.map(d => [d.name, d]));
-        let dirty = false;
-        for (const saved of parsed.entityTypes) {
-            const builtin = defaultsByName.get(saved.name);
-            if (!builtin) continue;
-            if (saved.calendarDateField === undefined && builtin.calendarDateField) {
-                saved.calendarDateField = builtin.calendarDateField;
-                dirty = true;
-            }
-            if (saved.calendarEndField === undefined && builtin.calendarEndField) {
-                saved.calendarEndField = builtin.calendarEndField;
-                dirty = true;
-            }
-            if (saved.calendarDurationField === undefined && builtin.calendarDurationField) {
-                saved.calendarDurationField = builtin.calendarDurationField;
-                dirty = true;
-            }
-            if (saved.completionField === undefined && builtin.completionField) {
-                saved.completionField = builtin.completionField;
-                saved.completionValue = builtin.completionValue;
-                dirty = true;
-            }
-            if (saved.spawner === undefined && builtin.spawner) {
-                saved.spawner = builtin.spawner;
-                dirty = true;
-            }
-            if (saved.temporal === undefined && builtin.temporal) {
-                saved.temporal = builtin.temporal;
-                dirty = true;
-            }
-            // Sync field types from defaults (e.g. date → datetime migration)
-            const builtinFields = new Map(builtin.fields.map(f => [f.key, f]));
-            for (const savedField of saved.fields) {
-                const builtinField = builtinFields.get(savedField.key);
-                if (builtinField && savedField.type !== builtinField.type) {
-                    savedField.type = builtinField.type;
-                    dirty = true;
-                }
-                if (builtinField && savedField.label !== builtinField.label) {
-                    savedField.label = builtinField.label;
-                    dirty = true;
-                }
-                if (builtinField && savedField.required !== builtinField.required) {
-                    savedField.required = builtinField.required;
-                    dirty = true;
+        const { loadContextTypesFromStore } = await import('../cxms/context-type-store.js');
+        const stored = await loadContextTypesFromStore();
+        if (stored) {
+            const byName = new Map(types.map(t => [t.name, t]));
+            for (const s of stored) {
+                const existing = byName.get(s.name);
+                if (existing) {
+                    // A stored override of a built-in: merge it in, but keep the
+                    // built-in's node directory (built-ins live at top-level dirs).
+                    Object.assign(existing, s, { directory: existing.directory });
+                } else {
+                    types.push(s);
+                    byName.set(s.name, s);
                 }
             }
         }
-        // Persist merged changes so they stick across restarts
-        if (dirty) {
-            await saveEntityTypes(parsed.entityTypes);
-        }
-        _cache = parsed.entityTypes;
-        return _cache;
     } catch (err) {
-        debug('entity-types', `Using built-in defaults: ${err}`);
-        _cache = DEFAULT_ENTITY_TYPES;
-        return _cache;
+        debug('entity-types', `Context-type store unavailable, using built-in defaults only: ${err}`);
     }
+    _cache = types;
+    return _cache;
 }
 
 /**
- * Save entity type configs to the vault file.
- */
-export async function saveEntityTypes(types: EntityTypeConfig[]): Promise<void> {
-    const { storage } = getPlatform();
-    const dir = await getVaultConfigDir();
-    await storage.mkdir(dir, { recursive: true });
-    const typesPath = await getEntityTypesPath();
-    const file: EntityTypesFile = { version: 1, entityTypes: types };
-    await storage.writeFile(typesPath, JSON.stringify(file, null, 2));
-    invalidateCache();
-}
-
-/**
- * Write entity-types.json with built-in defaults if it doesn't already exist.
- * Called by `phaibel init`.
+ * Ensure the foundation's type directories exist. Built-in types come from code,
+ * so there is no registry to seed — this just makes the on-disk homes:
+ * context-types/ for user-created types, plus each built-in's node directory.
  */
 export async function initEntityTypes(): Promise<void> {
     try {
-        const typesPath = await getEntityTypesPath();
-        await getPlatform().storage.access(typesPath);
-        debug('entity-types', 'entity-types.json already exists — skipping init');
-    } catch {
-        await saveEntityTypes(DEFAULT_ENTITY_TYPES);
-        const typesPath = await getEntityTypesPath();
-        debug('entity-types', `Created ${typesPath}`);
+        const { storage, paths } = getPlatform();
+        const root = await getVaultRoot();
+        await storage.mkdir(paths.join(root, 'context-types'), { recursive: true });
+        for (const t of DEFAULT_ENTITY_TYPES) {
+            await storage.mkdir(paths.join(root, t.directory), { recursive: true });
+        }
+    } catch (err) {
+        debug('entity-types', `initEntityTypes directory setup skipped: ${err}`);
     }
 }
 
@@ -440,50 +382,12 @@ export async function addEntityType(config: EntityTypeConfig): Promise<void> {
             throw new Error(`calendarDateField "${config.calendarDateField}" must be a date, datetime, date-fixed, or date-floating field, got "${field.type}".`);
         }
     }
-    types.push(config);
-    await saveEntityTypes(types);
-
-    // Create entity directory + .cxms.md context file
-    try {
-        const { storage, paths } = getPlatform();
-        const vaultRoot = await getVaultRoot();
-        const entityDir = paths.join(vaultRoot, config.directory);
-        await storage.mkdir(entityDir, { recursive: true });
-
-        const vaultMdPath = paths.join(entityDir, '.cxms.md');
-        const fieldLines = config.fields.map(f => {
-            let desc = `- **${f.key}** (${f.type})`;
-            if (f.label) desc += ` — ${f.label}`;
-            if (f.type === 'enum' && f.values) desc += `: ${f.values.join(', ')}`;
-            if (f.default !== undefined) desc += ` [default: ${f.default}]`;
-            return desc;
-        });
-
-        const completionNote = config.completionField
-            ? `\nCompletion: set \`${config.completionField}\` to \`${config.completionValue ?? 'done'}\` to mark as complete.\n`
-            : '';
-
-        const content = `# ${config.plural.charAt(0).toUpperCase() + config.plural.slice(1)}
-
-${config.description || `A collection of ${config.plural}.`}
-
-## Fields
-
-${fieldLines.join('\n')}
-${completionNote}
-## Guidelines
-
-- Use the exact field names above when creating or updating ${config.plural}.
-- Titles should be concise and descriptive.
-- When the user refers to "${config.plural}" or "${config.name}", this is the entity type to use.
-`;
-
-        await storage.writeFile(vaultMdPath, content);
-        debug('entity-types', `Created ${vaultMdPath}`);
-    } catch (err) {
-        debug('entity-types', `Failed to create .cxms.md for ${config.name}: ${err}`);
-        // Non-fatal — type is already registered
-    }
+    // User-created types are directory-native: the type's directory holds both its
+    // .cxms.md (full lossless config) and its nodes.
+    if (!config.directory) config.directory = `context-types/${config.name}`;
+    const { writeContextType } = await import('../cxms/context-type-store.js');
+    await writeContextType(config);
+    invalidateCache();
 }
 
 /**
@@ -491,10 +395,10 @@ ${completionNote}
  */
 export async function updateEntityType(name: string, config: EntityTypeConfig): Promise<void> {
     const types = await loadEntityTypes();
-    const idx = types.findIndex(t => t.name === name);
-    if (idx === -1) throw new Error(`Entity type "${name}" not found.`);
-    types[idx] = config;
-    await saveEntityTypes(types);
+    if (!types.find(t => t.name === name)) throw new Error(`Entity type "${name}" not found.`);
+    const { writeContextType } = await import('../cxms/context-type-store.js');
+    await writeContextType({ ...config, name });
+    invalidateCache();
 }
 
 /**
@@ -505,9 +409,10 @@ export async function removeEntityType(name: string): Promise<void> {
         throw new Error(`"${name}" is a built-in type and cannot be removed.`);
     }
     const types = await loadEntityTypes();
-    const filtered = types.filter(t => t.name !== name);
-    if (filtered.length === types.length) throw new Error(`Entity type "${name}" not found.`);
-    await saveEntityTypes(filtered);
+    if (!types.find(t => t.name === name)) throw new Error(`Entity type "${name}" not found.`);
+    const { removeContextTypeDir } = await import('../cxms/context-type-store.js');
+    await removeContextTypeDir(name);
+    invalidateCache();
 }
 
 export { BUILT_IN_TYPE_NAMES };
