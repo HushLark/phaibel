@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import { getResponse, refreshResponseCache } from '../responses.js';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
-import { loadState, saveState, getUserName, getUserGender } from '../state/manager.js';
+import { loadState, saveState, getUserName, getUserGender, ensureSelfPerson } from '../state/manager.js';
 
 export const setupCommand = new Command('setup')
     .description('Update your name and preferences')
@@ -38,6 +38,7 @@ export const setupCommand = new Command('setup')
         state.userName = userName;
         state.gender = gender as 'male' | 'female' | 'other';
         await saveState(state);
+        await ensureSelfPerson(userName, gender);
 
         await refreshResponseCache();
 

@@ -4,6 +4,8 @@ import { createEvalVault, destroyEvalVault } from './vault-setup.js';
 import { getEntityIndex } from '../src/entities/entity-index.js';
 import { loadEntityTypes } from '../src/entities/entity-type-config.js';
 import { fetchContextByClassification } from '../src/context/context-loop.js';
+import { ensureSelfPerson } from '../src/state/manager.js';
+import { listEntities } from '../src/entities/entity.js';
 import type { ClassificationResult } from '../src/context/request-classifier.js';
 import type { VaultSeedEntity } from './types.js';
 
@@ -109,6 +111,22 @@ async function main() {
         classification({ summary: 'tasks', subjects: [{ text: 'tasks', entityType: 'task' }] }),
         ['Renew passport', 'Reply to Dana'],
     );
+
+    // 8. Me-node: onboarding (ensureSelfPerson) creates a resolvable "me" node —
+    //    the anchor for social/user proximity — and is idempotent.
+    {
+        await createEvalVault([]);
+        await ensureSelfPerson('Gary', 'male');
+        await ensureSelfPerson('Gary', 'male'); // second call must not duplicate
+        const idx = getEntityIndex();
+        await idx.build();
+        const me = idx.getMeNode();
+        const people = await listEntities('person');
+        const ok = !!me && people.length === 1;
+        console.log(`\n[${ok ? 'PASS' : 'FAIL'}] me-node: ensureSelfPerson → getMeNode resolves, idempotent`);
+        console.log(`   getMeNode: ${me ? (me.meta.title ?? me.name) : 'null'} | person count: ${people.length}`);
+        await destroyEvalVault();
+    }
 }
 
 main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });

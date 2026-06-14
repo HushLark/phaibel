@@ -277,4 +277,47 @@ export async function saveProfile(profile: {
     state.workCalUrl = profile.workCalUrl;
     state.interviewComplete = true;
     await saveState(state);
+    await ensureSelfPerson(state.userName, state.gender);
+}
+
+/**
+ * Ensure a "me" person node exists for the vault owner — the anchor for
+ * user-centric relevance (social / context proximity; see
+ * docs/RELEVANCE-DIMENSIONS.md). Without it `getMeNode()` returns null and the
+ * me-anchored social-proximity signal can't fire.
+ *
+ * Idempotent: created on first profile save (onboarding), name kept in sync on
+ * later edits. Best-effort — never throws into the onboarding/profile flow.
+ * Uses a dynamic import because entities → state/manager is a static dependency.
+ */
+export async function ensureSelfPerson(userName: string | undefined, gender?: string): Promise<void> {
+    const name = userName?.trim();
+    if (!name) return;
+    try {
+        const { listEntities, createEntityMeta, ensureEntityDir, writeEntity, nodeFilename } =
+            await import('../entities/entity.js');
+        const { join } = await import('path');
+
+        const people = await listEntities('person').catch(() => []);
+        const existing = people.find(p => p.meta.isMe === true);
+        if (existing) {
+            const current = String(existing.meta.name ?? existing.meta.title ?? '');
+            if (current !== name) {
+                existing.meta.name = name;
+                if (gender) existing.meta.gender = gender;
+                await writeEntity(existing.filepath, existing.meta, existing.content);
+            }
+            return;
+        }
+
+        const meta: Record<string, unknown> = { ...createEntityMeta('person', name, { tags: ['me'] }) };
+        meta.isMe = true;
+        if (gender) meta.gender = gender;
+        const dir = await ensureEntityDir('person');
+        const filepath = join(dir, nodeFilename(name, meta.id as string));
+        await writeEntity(filepath, meta, '');
+        debug('state', `Created self person node: ${name}`);
+    } catch (err) {
+        debug('state', `ensureSelfPerson failed: ${err}`);
+    }
 }
