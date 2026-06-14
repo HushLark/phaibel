@@ -42,7 +42,7 @@ export class EntityCatalogSource implements CatalogSource {
             nodeCodeKey: 'create_entity_type',
             name: 'Create Content Type',
             group: 'entity',
-            description: 'Creates a new content type (entity type) with LLM-designed fields. Use when the user mentions a kind of thing that doesn\'t exist yet (e.g. "recipe", "habit", "bookmark"). Requires type_name (singular slug) and description (what it represents).',
+            description: 'Creates a new content type (entity type) with LLM-designed fields, rolled up to a base category (person/place/thing/event/task/goal) so it gets a relevance profile. Use when the user mentions a recurring KIND of thing that no existing type captures (e.g. "concert", "client", "recipe"). Prefer specific-but-reusable kinds over generic note/event; avoid one-shot hyper-specific types. Requires type_name (singular slug) and description.',
             configuration: {},
         });
 

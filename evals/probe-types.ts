@@ -71,7 +71,10 @@ async function run() {
             }
         }
 
-        const verdict = newTypes.length > 0 ? `CREATED [${newTypes.join(', ')}]` : 'used existing';
+        const newTypeDetail = afterTypes
+            .filter(t => newTypes.includes(t.name))
+            .map(t => `${t.name}{base=${t.baseCategory ?? '∅'}${t.parent ? `, parent=${t.parent}` : ''}}`);
+        const verdict = newTypes.length > 0 ? `CREATED [${newTypeDetail.join(', ')}]` : 'used existing';
         console.log(`\n■ ${c.persona} ${c.kind}\n  "${c.input}"`);
         console.log(`  → ${verdict}`);
         console.log(`  entities: ${created.join('  ·  ') || '(none)'}${err ? `  [ERR ${err}]` : ''}`);

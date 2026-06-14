@@ -667,7 +667,8 @@ ${serializeGatheredContext(gathered)}
 Each entity type has create_*, list_*, find_*, update_*, delete_*, complete_*, set_{type}_{field} catalog nodes.
 CRITICAL: Match entity types precisely — event≠task. Use create_event for appointments/meetings (including 1:1s and recurring meetings), create_task for todos.
 When a person's relationship is stated, also select "set_person_type" to record it (manager/report/coworker→colleague; spouse/child/parent/sibling→family; friend→friend; vendor/client→professional) — this powers user-centric relevance.
-For new content types (recipe, vehicle, etc.), select BOTH "create_content_type" AND "create_entity" — the type alone saves nothing; "create_entity" stores the actual item in it. Use "link_entities" to connect related entities.
+CONTENT-TYPE SPECIFICITY: when the user mentions a recurring KIND of thing in their life that an existing type doesn't capture well (a concert, a recital, a client, a 1:1, a property), prefer creating a specific-but-reusable type for it over dumping it into generic note/event — specific types carry sharper relevance. Reuse an existing type if one already fits; use the generic type only for true one-offs. Don't invent hyper-specific one-shot types ("taylor_swift_concert").
+For new content types, select BOTH "create_content_type" AND "create_entity" — the type alone saves nothing; "create_entity" stores the actual item in it. Use "link_entities" to connect related entities.
 For field values on creation, also select "set_context_value" to stage fields in context.
 
 AVAILABLE CATALOG NODES:

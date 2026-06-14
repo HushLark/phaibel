@@ -20,6 +20,7 @@ import type { ConfigurationDescription, ResultDescription } from '../../configur
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
 import { addEntityType, type EntityTypeConfig, type FieldDef } from '../../../entities/entity-type-config.js';
+import { BASE_CATEGORIES, type BaseCategory } from '../../../entities/base-categories.js';
 import { getModelForCapability } from '../../../llm/router.js';
 
 const ALREADY_EXISTS = 'already_exists';
@@ -34,6 +35,8 @@ Rules:
 - The object must have these top-level keys:
     plural        : string  (plural form of the type name)
     description   : string  (short description ≤ 80 chars)
+    baseCategory  : one of: person | place | thing | event | task | goal
+    parent        : string | null   (an existing more-general type this specializes, or null)
     fields        : array of field objects (see below)
     completionField : string | null   (which field tracks done/complete state, or null)
     completionValue : string | null   (the value that means done, or null)
@@ -54,7 +57,13 @@ Rules:
 - Prefer "date" for date-only fields and "datetime" for fields that need a time component.
 - calendarDateField: If the type has a date or datetime field that represents WHEN this thing happens or is due, set calendarDateField to that field's key so it appears on the user's timeline. Examples: a flight's "departureDate", an appointment's "date", a deadline's "dueDate". Set to null if the type has no meaningful temporal anchor.
 - The object must also include:
-    calendarDateField : string | null   (which date/datetime field places this entity on the timeline)`;
+    calendarDateField : string | null   (which date/datetime field places this entity on the timeline)
+- baseCategory: which life primitive this rolls up to — it gives the type a relevance profile. Choose:
+    person (people) · place (locations) · thing (objects, notes, records) ·
+    event (things that happen over a span — meetings, concerts, trips) ·
+    task (things to do with a deadline) · goal (outcomes you work toward).
+- parent: if a more-general existing type clearly fits, set it (e.g. a "concert" specializes "event"); else null.
+- SPECIFICITY: aim for a type that is specific to the user's life yet REUSABLE next month — a recurring kind, not a one-off. Good: "concert", "recital", "client", "1:1". Too generic: falling back to event/note when the kind clearly recurs. Too specific (avoid): "taylor_swift_concert", "tuesday_soccer".`;
 
 export class CreateEntityTypeNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [
@@ -119,6 +128,8 @@ export class CreateEntityTypeNodeCode extends AbstractNodeCode {
         let schema: {
             plural?: string;
             description?: string;
+            baseCategory?: string;
+            parent?: string | null;
             fields?: FieldDef[];
             completionField?: string | null;
             completionValue?: string | null;
@@ -139,14 +150,27 @@ export class CreateEntityTypeNodeCode extends AbstractNodeCode {
         }
 
         const plural = (schema.plural ?? typeName + 's').trim();
+        // Roll the new type up to a base category so it inherits a relevance
+        // profile and participates in specificity. Default to 'thing' if the
+        // model omitted/garbled it — never leave a created type uncategorized.
+        const baseCategory: BaseCategory =
+            BASE_CATEGORIES.includes(schema.baseCategory as BaseCategory)
+                ? (schema.baseCategory as BaseCategory)
+                : 'thing';
         const config: EntityTypeConfig = {
             name: typeName,
             plural,
             directory: `context-types/${typeName}`,
             description: schema.description ?? description,
             defaultTags: [typeName],
+            baseCategory,
             fields: schema.fields,
         };
+        // Only set parent when it names a real, different existing type.
+        if (schema.parent && schema.parent !== typeName) {
+            const { getEntityType } = await import('../../../entities/entity-type-config.js');
+            if (await getEntityType(schema.parent)) config.parent = schema.parent;
+        }
 
         if (schema.completionField) {
             config.completionField = schema.completionField;
