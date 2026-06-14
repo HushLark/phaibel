@@ -73,7 +73,7 @@ const EVAL_ENTITY_TYPES = [
     // profile and earns a specificity bonus over a generic person.
     {
         name: 'immediate_family',
-        baseCategory: 'human' as const,
+        baseCategory: 'person' as const,
         parent: 'person',
         plural: 'immediate_family',
         directory: 'immediate-family',

@@ -196,14 +196,14 @@ export type RelevanceDimensionDef =
  * Every context type rolls up to exactly one. Each carries a default relevance
  * profile (BASE_CATEGORY_DIMENSIONS); specific subtypes inherit and sharpen it.
  * (See docs/RELEVANCE-DIMENSIONS.md.)
- *   human  — people
+ *   person — people
  *   place  — locations
  *   thing  — objects, notes, documents, records
  *   event  — period-anchored happenings you attend (duration)
  *   task   — point-anchored actions you complete (a checkbox with a deadline)
  *   goal   — what you're working toward (the "why"; hub for alignment)
  */
-export type BaseCategory = 'human' | 'place' | 'thing' | 'event' | 'task' | 'goal';
+export type BaseCategory = 'person' | 'place' | 'thing' | 'event' | 'task' | 'goal';
 
 export interface EntityTypeConfig {
     name: string;
@@ -239,7 +239,7 @@ export interface EntityTypeConfig {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const BASE_CATEGORY_DIMENSIONS: Record<BaseCategory, RelevanceDimensionDef[]> = {
-    human: [
+    person: [
         { type: 'socialProximity',  weight: 3, config: { field: 'type' } },
         { type: 'behavioral',       weight: 3 },
         { type: 'semantic',         weight: 2 },

@@ -16,20 +16,20 @@ function registry(...types: EntityTypeConfig[]): Map<string, EntityTypeConfig> {
 
 describe('getSpecificity', () => {
     it('is 0 for a generic base type (no parent)', () => {
-        const person = t({ name: 'person', baseCategory: 'human' });
+        const person = t({ name: 'person', baseCategory: 'person' });
         expect(getSpecificity(person, registry(person))).toBe(0);
     });
 
     it('is 1 for a direct subtype', () => {
-        const person = t({ name: 'person', baseCategory: 'human' });
-        const family = t({ name: 'immediate_family', baseCategory: 'human', parent: 'person' });
+        const person = t({ name: 'person', baseCategory: 'person' });
+        const family = t({ name: 'immediate_family', baseCategory: 'person', parent: 'person' });
         expect(getSpecificity(family, registry(person, family))).toBe(1);
     });
 
     it('counts the full parent chain', () => {
-        const person = t({ name: 'person', baseCategory: 'human' });
-        const family = t({ name: 'family', baseCategory: 'human', parent: 'person' });
-        const child = t({ name: 'child', baseCategory: 'human', parent: 'family' });
+        const person = t({ name: 'person', baseCategory: 'person' });
+        const family = t({ name: 'family', baseCategory: 'person', parent: 'person' });
+        const child = t({ name: 'child', baseCategory: 'person', parent: 'family' });
         expect(getSpecificity(child, registry(person, family, child))).toBe(2);
     });
 
@@ -49,8 +49,8 @@ describe('resolveDimensions', () => {
     });
 
     it('inherits the parent\'s dimensions when it has none of its own', () => {
-        const person = t({ name: 'person', baseCategory: 'human', dimensions: [{ type: 'socialProximity', weight: 7 }] });
-        const family = t({ name: 'immediate_family', baseCategory: 'human', parent: 'person' });
+        const person = t({ name: 'person', baseCategory: 'person', dimensions: [{ type: 'socialProximity', weight: 7 }] });
+        const family = t({ name: 'immediate_family', baseCategory: 'person', parent: 'person' });
         const dims = resolveDimensions(family, registry(person, family));
         expect(dims[0].weight).toBe(7);
     });

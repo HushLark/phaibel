@@ -103,7 +103,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
     },
     {
         name: 'person',
-        baseCategory: 'human',
+        baseCategory: 'person',
         plural: 'people',
         directory: 'people',
         description: 'People — contacts, colleagues, family, friends',
@@ -118,7 +118,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             { key: 'company',      type: 'reference',  label: 'Company',          targetType: 'company', required: false },
             { key: 'birthday',     type: 'date-fixed', label: 'Birthday',         required: false },
         ],
-        // Human category: closeness to you (me-anchored, refined by the 'type'
+        // Person category: closeness to you (me-anchored, refined by the 'type'
         // relationship field) and interaction frequency dominate. Timeless.
         dimensions: [
             { type: 'socialProximity',  weight: 3, config: { field: 'type' } },
