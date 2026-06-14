@@ -4,7 +4,8 @@ import type { IntentResult } from './intent-classifier.js';
 import type { ContextManifest } from './context-manifest.js';
 import { serializeManifest } from './context-manifest.js';
 import { parseJsonResponse } from '../utils/json-parser.js';
-import { loadEntityTypes, resolveDimensions, getSpecificity, SPECIFICITY_BONUS, type EntityTypeConfig } from '../entities/entity-type-config.js';
+import { loadEntityTypes, getSpecificity, SPECIFICITY_BONUS, type EntityTypeConfig } from '../entities/entity-type-config.js';
+import { resolveDomainDimensions } from '../entities/base-categories.js';
 import { debug } from '../utils/debug.js';
 import type { ClassificationResult } from './request-classifier.js';
 import type { RequestWeights } from './request-weights.js';
@@ -227,7 +228,7 @@ export async function fulfillRequests(
         // (own, inherited from parent, or its base-category default). Temporal
         // types flow through here too — temporal is a scored dimension whose
         // nonzero support acts as the in-window filter (no separate path).
-        const dims = resolveDimensions(typeConfig, typeConfigMap);
+        const dims = resolveDomainDimensions(typeConfig, typeConfigMap);
         if (dims.length > 0) {
             try {
                 const scored = await entityIndex.searchByRelevance(

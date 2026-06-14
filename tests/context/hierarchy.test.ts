@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
     resolveDimensions,
     getSpecificity,
-    BASE_CATEGORY_DIMENSIONS,
     type EntityTypeConfig,
 } from '../../src/entities/entity-type-config.js';
+import { BASE_CATEGORY_DIMENSIONS, resolveDomainDimensions } from '../../src/entities/base-categories.js';
 
 function t(over: Partial<EntityTypeConfig> & { name: string }): EntityTypeConfig {
     return { plural: over.name + 's', directory: over.name, fields: [], ...over };
@@ -55,9 +55,14 @@ describe('resolveDimensions', () => {
         expect(dims[0].weight).toBe(7);
     });
 
-    it('falls back to the base-category profile when neither own nor parent dims exist', () => {
+    it('generic resolveDimensions does NOT know base categories (returns [] with no own/parent dims)', () => {
         const place = t({ name: 'place', baseCategory: 'place' });
-        const dims = resolveDimensions(place, registry(place));
+        expect(resolveDimensions(place, registry(place))).toEqual([]);
+    });
+
+    it('domain resolveDomainDimensions falls back to the base-category profile', () => {
+        const place = t({ name: 'place', baseCategory: 'place' });
+        const dims = resolveDomainDimensions(place, registry(place));
         expect(dims).toEqual(BASE_CATEGORY_DIMENSIONS.place);
         expect(dims.some(d => d.type === 'spatial')).toBe(true);
     });
