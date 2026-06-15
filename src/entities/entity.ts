@@ -160,6 +160,9 @@ export type Entity = NoteEntity | TaskEntity | EventEntity | ResearchEntity | Go
  */
 export const ME_NODE_ID = 'ME000000';
 
+/** Titles that refer to the vault owner — resolved to the me-node on lookup. */
+export const ME_ALIASES = new Set(['me', 'myself', 'i', 'self', 'you', 'my', 'owner', 'user']);
+
 /**
  * Generate a unique node id: 8 lowercase alphanumeric characters.
  * e.g. "a1b2c3d4", "x9y8z7w6"
@@ -467,6 +470,22 @@ export async function findEntityByTitle(
     // Fast path: use in-memory index if built
     const index = getEntityIndex();
     if (index.isBuilt) {
+        // "Me" aliases always resolve to the one special node (the vault owner),
+        // so relationships like "my wife → me" link cleanly even when the user is
+        // referenced as "me"/"you"/"self" rather than by name.
+        if (entityType === 'person' && ME_ALIASES.has(titleOrFilename.trim().toLowerCase())) {
+            const meNode = index.getMeNode();
+            if (meNode) {
+                try {
+                    const rawContent = await storage.readFile(meNode.filepath, 'utf-8');
+                    const { meta, content } = parseEntity(meNode.filepath, rawContent);
+                    return { filepath: meNode.filepath, meta, content };
+                } catch (err) {
+                    debug('entities', `Me-node read failed: ${err}`);
+                }
+            }
+        }
+
         const node = index.findByTitle(entityType, titleOrFilename);
         if (node) {
             try {
