@@ -5,7 +5,6 @@ export const FrontmatterSchema = z.object({
     title: z.string(),
     created: z.string(),
     modified: z.string().optional(),
-    tags: z.array(z.string()).default([]),
     status: z.enum(['active', 'done', 'blocked', 'archived']).optional(),
 });
 

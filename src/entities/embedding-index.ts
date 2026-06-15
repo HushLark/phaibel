@@ -64,11 +64,8 @@ function cosineSimilarity(a: number[], b: number[]): number {
     return denom === 0 ? 0 : dot / denom;
 }
 
-function buildEmbeddingText(node: Pick<IndexNode, 'title' | 'tags' | 'summary' | 'bodySnippet'>): string {
+function buildEmbeddingText(node: Pick<IndexNode, 'title' | 'summary' | 'bodySnippet'>): string {
     const parts = [node.title];
-    if (node.tags.length > 0) {
-        parts.push(`tags: ${node.tags.join(', ')}`);
-    }
     if (node.summary) {
         parts.push(node.summary);
     }
@@ -190,7 +187,7 @@ export class EmbeddingIndex {
         return result;
     }
 
-    async upsert(key: string, node: Pick<IndexNode, 'title' | 'tags' | 'summary' | 'bodySnippet'>): Promise<void> {
+    async upsert(key: string, node: Pick<IndexNode, 'title' | 'summary' | 'bodySnippet'>): Promise<void> {
         const text = buildEmbeddingText(node);
         const existing = this.store.entries[key];
 

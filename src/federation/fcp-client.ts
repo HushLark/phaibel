@@ -173,7 +173,7 @@ export async function listRemoteTypes(
 export async function createRemoteNode(
     source: SourceConfig,
     typeName: string,
-    data: { title: string; tags?: string[]; content?: string; [key: string]: unknown },
+    data: { title: string; content?: string; [key: string]: unknown },
     timeoutMs = 5000,
 ): Promise<{ id: string; title: string; type: string }> {
     assertWritable(source);

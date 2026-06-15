@@ -28,7 +28,6 @@ const BASE_OPTS: CxfExportOpts = {
 function node(overrides: Partial<IndexNode> & { id: string; type: string; title: string }): IndexNode {
     return {
         filepath: `/vault/${overrides.type}s/${overrides.id}.md`,
-        tags: [],
         summary: '',
         bodySnippet: '',
         meta: { created: '2026-04-01T00:00:00Z', ...overrides.meta },
@@ -133,7 +132,6 @@ describe('Persona: Soccer Mom', () => {
 
     const match = node({
         id: 'event-soccer-u12-001', type: 'event', title: 'U12 Match vs Westside',
-        tags: ['soccer', 'u12'],
         meta: {
             created: '2026-04-01T00:00:00Z',
             startDate: '2026-04-25T14:00:00Z',
@@ -149,7 +147,6 @@ describe('Persona: Soccer Mom', () => {
 
     const snacks = node({
         id: 'task-snacks-002', type: 'task', title: 'Bring snacks for post-game',
-        tags: ['soccer'],
         meta: { created: '2026-04-01T00:00:00Z', status: 'open', priority: 'medium', dueDate: '2026-04-25' },
     });
 
@@ -170,7 +167,6 @@ describe('Persona: Soccer Mom', () => {
         expect(n?.['schema:startDate']).toBe('2026-04-25T14:00:00Z');
         expect(n?.['schema:duration']).toBe('PT1H30M');
         expect(n?.['schema:location']).toBe('Riverside Park, Field 3');
-        expect(n?.['schema:keywords']).toEqual(['soccer', 'u12']);
     });
 
     it('expands person links as cxf:attendees with correct roles', () => {
@@ -238,7 +234,6 @@ describe('Persona: CEO', () => {
 
     const boardDeck = node({
         id: 'task-board-deck-001', type: 'task', title: 'Prepare Q3 board deck',
-        tags: ['board', 'q3'],
         meta: {
             created: '2026-04-01T00:00:00Z', status: 'in-progress', priority: 'critical', dueDate: '2026-04-28',
             links: [{ target: 'person:person-bob-smith-c3d4', label: 'assigned-to' }],
@@ -263,7 +258,6 @@ describe('Persona: CEO', () => {
 
     const micromanage = node({
         id: 'todont-micromanage-i9j0', type: 'todont', title: "Don't micromanage delivery",
-        tags: ['leadership'],
         meta: {
             created: '2026-02-01T00:00:00Z', status: 'in-progress',
             reason: 'Kills team autonomy and slows delivery velocity.',
@@ -336,7 +330,6 @@ describe('Persona: Engineering Manager', () => {
 
     const blockedTask = node({
         id: 'task-deploy-prod-b001', type: 'task', title: 'Deploy v2 to production',
-        tags: ['release'],
         meta: {
             created: '2026-04-10T00:00:00Z', status: 'blocked', priority: 'critical',
             links: [{ target: 'person:person-alice-dev-0001', label: 'responsible' }],
@@ -376,19 +369,16 @@ describe('Persona: Engineering Manager', () => {
 describe('Persona: Busy Parent', () => {
     const dentist = node({
         id: 'event-dentist-001', type: 'event', title: "Kids' dentist appointment",
-        tags: ['family', 'health'],
         meta: { created: '2026-04-01T00:00:00Z', startDate: '2026-05-10T09:00:00Z', location: 'City Dental' },
     });
 
     const packLunch = node({
         id: 'task-pack-lunch-002', type: 'task', title: 'Pack school lunches',
-        tags: ['daily', 'school'],
         meta: { created: '2026-04-01T00:00:00Z', status: 'open' },
     });
 
     const schoolNote = node({
         id: 'note-school-update-003', type: 'note', title: 'School newsletter notes',
-        tags: ['school'],
         meta: { created: '2026-04-15T00:00:00Z' },
     });
 
@@ -413,11 +403,6 @@ describe('Persona: Busy Parent', () => {
         expect(n?.['schema:dateCreated']).toBe('2026-04-15T00:00:00Z');
     });
 
-    it('tags appear in schema:keywords', () => {
-        const { document } = serializeToCxf([dentist], [eventType()], [], BASE_OPTS);
-        const n = graphNode(document, 'event-dentist-001');
-        expect(n?.['schema:keywords']).toEqual(['family', 'health']);
-    });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -436,7 +421,6 @@ describe('Persona: Researcher', () => {
 
     const researchEntity = node({
         id: 'research-llm-perf-001', type: 'research', title: 'LLM performance benchmarks',
-        tags: ['ai', 'benchmarks'],
         meta: {
             created: '2026-03-15T00:00:00Z', status: 'in-progress',
             hypothesis: 'Larger models are not always better on specialized tasks.',
@@ -495,7 +479,6 @@ describe('Persona: Freelancer', () => {
 
     const acme = node({
         id: 'client-acme-co-001', type: 'client', title: 'Acme Corp',
-        tags: ['saas', 'enterprise'],
         meta: {
             created: '2026-01-15T00:00:00Z', status: 'active',
             company: 'Acme Corp', budget: 15000,
@@ -516,7 +499,6 @@ describe('Persona: Freelancer', () => {
         expect(n?.['@type']).toBe('cxf:Context');
         expect(n?.['cxf:nativeType']).toBe('client');
         expect(n?.['schema:name']).toBe('Acme Corp');
-        expect(n?.['schema:keywords']).toEqual(['saas', 'enterprise']);
     });
 
     it('client schema includes description and field definitions', () => {

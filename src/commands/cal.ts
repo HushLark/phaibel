@@ -300,7 +300,7 @@ async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> 
                 unchanged++;
             }
         } else {
-            const baseMeta = createEntityMeta('event', ev.title, { tags: ['calendar'] });
+            const baseMeta = createEntityMeta('event', ev.title);
             const meta: Record<string, unknown> = {
                 ...baseMeta,
                 startDate: ev.startDate,

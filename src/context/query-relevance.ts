@@ -308,7 +308,6 @@ export function filterCatalogNodes(
                 key === `load_vault_context_${et.name}` ||
                 key === `review_${et.name}` ||
                 key === `questions_${et.name}` ||
-                key === `add_tag_${et.name}` ||
                 key.startsWith(`set_${et.name}_`)
             ) {
                 return relevantTypeNames.has(et.name);

@@ -49,7 +49,6 @@ const executiveProfile: WebProfile = {
         {
             name: 'stakeholder', plural: 'stakeholders', directory: 'stakeholders',
             description: 'Key stakeholders — board members, investors, partners, customers',
-            defaultTags: ['stakeholder'],
             fields: [
                 { key: 'role',         type: 'string', label: 'Role' },
                 { key: 'influence',    type: 'enum',   label: 'Influence',    values: ['low', 'medium', 'high', 'critical'] },
@@ -60,7 +59,6 @@ const executiveProfile: WebProfile = {
         {
             name: 'decision', plural: 'decisions', directory: 'decisions',
             description: 'Key decisions made or under consideration',
-            defaultTags: ['decision'],
             fields: [
                 { key: 'status',  type: 'enum',   label: 'Status',  values: ['pending', 'decided', 'reversed'], default: 'pending', required: true },
                 { key: 'date',    type: 'date',   label: 'Date' },
@@ -71,7 +69,6 @@ const executiveProfile: WebProfile = {
         {
             name: 'strategic-goal', plural: 'strategic-goals', directory: 'strategic-goals',
             description: 'Strategic goals and OKRs',
-            defaultTags: ['goal'],
             fields: [
                 { key: 'status',     type: 'enum', label: 'Status',     values: ['active', 'achieved', 'abandoned'], default: 'active', required: true },
                 { key: 'targetDate', type: 'date', label: 'Target Date' },
@@ -111,7 +108,6 @@ const managerProfile: WebProfile = {
         {
             name: 'project', plural: 'projects', directory: 'projects',
             description: 'Ongoing projects and initiatives',
-            defaultTags: ['project'],
             fields: [
                 { key: 'status',     type: 'enum',   label: 'Status',      values: ['planning', 'active', 'on-hold', 'complete'], default: 'active', required: true },
                 { key: 'dueDate',    type: 'date',   label: 'Due Date' },
@@ -123,7 +119,6 @@ const managerProfile: WebProfile = {
         {
             name: 'one-on-one', plural: 'one-on-ones', directory: 'one-on-ones',
             description: 'Regular 1:1 meetings with team members',
-            defaultTags: ['1:1'],
             fields: [
                 { key: 'person',    type: 'string', label: 'With', required: true },
                 { key: 'cadence',   type: 'enum',   label: 'Cadence', values: ['weekly', 'biweekly', 'monthly'], default: 'weekly' },
@@ -161,7 +156,6 @@ const consultantProfile: WebProfile = {
         {
             name: 'client', plural: 'clients', directory: 'clients',
             description: 'Active and prospective clients',
-            defaultTags: ['client'],
             fields: [
                 { key: 'status',    type: 'enum',   label: 'Status',  values: ['prospect', 'active', 'paused', 'closed'], default: 'active', required: true },
                 { key: 'industry',  type: 'string', label: 'Industry' },
@@ -173,7 +167,6 @@ const consultantProfile: WebProfile = {
         {
             name: 'engagement', plural: 'engagements', directory: 'engagements',
             description: 'Client engagements and project scopes',
-            defaultTags: ['engagement'],
             fields: [
                 { key: 'client',    type: 'string', label: 'Client',   required: true },
                 { key: 'status',    type: 'enum',   label: 'Status',   values: ['scoping', 'active', 'delivered', 'closed'], default: 'active', required: true },
@@ -187,7 +180,6 @@ const consultantProfile: WebProfile = {
         {
             name: 'deliverable', plural: 'deliverables', directory: 'deliverables',
             description: 'Client deliverables and milestones',
-            defaultTags: ['deliverable'],
             fields: [
                 { key: 'client',   type: 'string', label: 'Client' },
                 { key: 'status',   type: 'enum',   label: 'Status', values: ['draft', 'in-review', 'delivered'], default: 'draft', required: true },
@@ -253,7 +245,6 @@ const smallBusinessProfile: WebProfile = {
         {
             name: 'customer', plural: 'customers', directory: 'customers',
             description: 'Customers and leads',
-            defaultTags: ['customer'],
             fields: [
                 { key: 'status',    type: 'enum',   label: 'Status',  values: ['lead', 'active', 'inactive'], default: 'active', required: true },
                 { key: 'email',     type: 'string', label: 'Email' },
@@ -264,7 +255,6 @@ const smallBusinessProfile: WebProfile = {
         {
             name: 'vendor', plural: 'vendors', directory: 'vendors',
             description: 'Suppliers and vendors',
-            defaultTags: ['vendor'],
             fields: [
                 { key: 'category', type: 'string', label: 'Category' },
                 { key: 'contact',  type: 'string', label: 'Contact' },

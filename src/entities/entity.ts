@@ -65,7 +65,6 @@ export interface EntityMeta {
     entityType: EntityTypeName;
     created: string;           // ISO 8601
     updated?: string;          // ISO 8601, set on every save
-    tags: string[];
     description?: string;      // short description / summary (was: summary)
     /** @deprecated use name */
     title?: string;
@@ -154,6 +153,14 @@ export type Entity = NoteEntity | TaskEntity | EventEntity | ResearchEntity | Go
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * The one special node in the system: the Person representing the vault owner.
+ * It carries a fixed, reserved id (uppercase, so it can never collide with a
+ * generated id) — giving "me" a stable, referenceable key (`person:ME000000`)
+ * that the relevance layer anchors social/user proximity on.
+ */
+export const ME_NODE_ID = 'ME000000';
+
+/**
  * Generate a unique node id: 8 lowercase alphanumeric characters.
  * e.g. "a1b2c3d4", "x9y8z7w6"
  */
@@ -203,14 +210,12 @@ export function entityFilename(title: string, id: string): string {
 export function createEntityMeta(
     entityType: EntityTypeName,
     title: string,
-    opts: { tags?: string[] } = {},
 ): EntityMeta {
     return {
         id: generateNodeId(),
         name: title,
         entityType,
         created: new Date().toISOString(),
-        tags: opts.tags ?? [],
     };
 }
 
@@ -227,7 +232,7 @@ export const CORE_FRONTMATTER_KEYS = new Set([
     'id', 'entityType', 'contextType',
     'name', 'title',            // both accepted; written as 'name'
     'description', 'summary',   // both accepted; written as 'description'
-    'tags', 'created', 'updated',
+    'created', 'updated',
 ]);
 
 /**
@@ -366,7 +371,7 @@ export function parseEntity(filepath: string, rawContent: string): { meta: Recor
 
 /**
  * Write an entity to a markdown file using the new simplified-frontmatter format.
- * Core fields (id, name, entityType, description, tags, created, updated) go in
+ * Core fields (id, name, entityType, description, created, updated) go in
  * YAML frontmatter. All domain fields (status, dueDate, priority, etc.) are
  * written as a key:value block at the top of the body.
  */
@@ -546,24 +551,20 @@ export async function findEntityByTitle(
 }
 
 /**
- * Full-text search across entities by title, tags, and body content.
- * Tokenizes query into words and scores matches: title=3pts, tag=2pts, body=1pt per token.
- * Only returns entities where ALL tokens match at least one field.
+ * Full-text search across entities by title, summary, and body content.
+ * Tokenizes query into words and scores matches: title=3pts, summary=1pt,
+ * body=1pt per token. Only returns entities where ALL tokens match at least
+ * one field. Semantic (embedding) similarity is merged in when available.
  */
 export async function searchEntities(
     query: string,
     entityType?: EntityTypeName,
-    options?: { tags?: string[] },
 ): Promise<{ filepath: string; meta: Record<string, unknown>; content: string; score: number }[]> {
     // Fast path: use in-memory index if built
     const index = getEntityIndex();
     if (index.isBuilt) {
-        // Merge explicit tags into query as tag: tokens for the index search
-        const tagPrefix = (options?.tags ?? []).map(t => `tag:${t}`).join(' ');
-        const fullQuery = tagPrefix ? `${tagPrefix} ${query}` : query;
-
         // 1. Keyword search via entity index
-        const keywordResults = index.search(fullQuery, entityType);
+        const keywordResults = index.search(query, entityType);
 
         // 2. Semantic search via embedding index (if available)
         const embeddingIndex = getEmbeddingIndex();
@@ -617,24 +618,8 @@ export async function searchEntities(
     }
 
     // Fallback: filesystem scan
-    const rawTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-
-    // Separate tag:value tokens from regular search tokens
-    const tagTokens: string[] = [];
-    const searchTokens: string[] = [];
-    for (const token of rawTokens) {
-        if (token.startsWith('tag:') || token.startsWith('tags:')) {
-            const tagValue = token.slice(token.indexOf(':') + 1);
-            if (tagValue) tagTokens.push(tagValue);
-        } else {
-            searchTokens.push(token);
-        }
-    }
-
-    // Merge inline tag: tokens with explicit tags option
-    const allFilterTags = [...tagTokens, ...(options?.tags ?? []).map(t => t.toLowerCase())];
-
-    if (searchTokens.length === 0 && allFilterTags.length === 0) return [];
+    const searchTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+    if (searchTokens.length === 0) return [];
 
     // Gather all entities to search
     let allEntities: { filepath: string; meta: Record<string, unknown>; content: string }[];
@@ -647,24 +632,10 @@ export async function searchEntities(
         allEntities = lists.flat();
     }
 
-    // Pre-filter by tags if any tag filters are specified
-    if (allFilterTags.length > 0) {
-        allEntities = allEntities.filter(e => {
-            const entityTags = ((e.meta.tags as string[]) ?? []).map(t => t.toLowerCase());
-            return allFilterTags.some(ft => entityTags.includes(ft));
-        });
-    }
-
-    // If no search tokens, return all tag-matched entities with score 1
-    if (searchTokens.length === 0) {
-        return allEntities.map(e => ({ filepath: e.filepath, meta: e.meta, content: e.content, score: 1 }));
-    }
-
     const results: { filepath: string; meta: Record<string, unknown>; content: string; score: number }[] = [];
 
     for (const entity of allEntities) {
         const title = ((entity.meta.title as string) ?? '').toLowerCase();
-        const tags = ((entity.meta.tags as string[]) ?? []).map(t => t.toLowerCase());
         const body = entity.content.toLowerCase();
 
         let score = 0;
@@ -673,7 +644,6 @@ export async function searchEntities(
         for (const token of searchTokens) {
             let matched = false;
             if (title.includes(token)) { score += 3; matched = true; }
-            if (tags.some(tag => tag.includes(token))) { score += 2; matched = true; }
             if (body.includes(token)) { score += 1; matched = true; }
             if (!matched) { allMatched = false; break; }
         }
@@ -694,21 +664,12 @@ export async function searchEntities(
  */
 export async function listEntities(
     entityType: EntityTypeName,
-    options?: { tags?: string[]; metaOnly?: boolean },
+    options?: { metaOnly?: boolean },
 ): Promise<{ filepath: string; meta: Record<string, unknown>; content: string }[]> {
     // Fast path: use in-memory index when available
     const index = getEntityIndex();
     if (index.isBuilt) {
-        let nodes = index.getNodes(entityType);
-
-        // Filter by tags if requested
-        if (options?.tags && options.tags.length > 0) {
-            const filterTags = options.tags.map(t => t.toLowerCase());
-            nodes = nodes.filter(n => {
-                const nodeTags = n.tags.map(t => t.toLowerCase());
-                return filterTags.some(ft => nodeTags.includes(ft));
-            });
-        }
+        const nodes = index.getNodes(entityType);
 
         if (options?.metaOnly) {
             // Return index data directly — no disk reads
@@ -761,15 +722,6 @@ export async function listEntities(
     } catch (err) {
         debug('entities', err);
         // Directory doesn't exist
-    }
-
-    // Filter by tags if requested (case-insensitive exact match)
-    if (options?.tags && options.tags.length > 0) {
-        const filterTags = options.tags.map(t => t.toLowerCase());
-        return entities.filter(e => {
-            const entityTags = ((e.meta.tags as string[]) ?? []).map(t => t.toLowerCase());
-            return filterTags.some(ft => entityTags.includes(ft));
-        });
     }
 
     return entities;

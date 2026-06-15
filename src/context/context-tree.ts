@@ -39,7 +39,6 @@ export interface ContextTreeField {
 export interface ContextTreeLeaf {
     key: string;        // "type:id"
     title: string;
-    tags: string[];
     summary: string;
     meta: Record<string, unknown>;
     content?: string;   // full body — only when scope demands it
@@ -89,7 +88,6 @@ function indexNodeToLeaf(node: IndexNode, includeContent?: string): ContextTreeL
     return {
         key: `${node.type}:${node.id}`,
         title: node.title,
-        tags: node.tags,
         summary: node.summary,
         meta: node.meta,
         content: includeContent,

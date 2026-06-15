@@ -198,7 +198,6 @@ async function runTypeWizard(existing?: EntityTypeConfig): Promise<EntityTypeCon
         plural: plural.trim() || resolvedName + 's',
         directory: directory.trim() || plural.trim() || resolvedName + 's',
         description: description.trim() || undefined,
-        defaultTags: existing?.defaultTags ?? [resolvedName],
         fields,
     };
 

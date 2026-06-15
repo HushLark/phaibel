@@ -23,7 +23,6 @@ export interface CxfParsedNode {
     type: string;
     title: string;
     status?: string;
-    tags: string[];
     created?: string;
     updated?: string;
     archived: boolean;
@@ -144,7 +143,6 @@ function parseJsonLdNode(entry: Record<string, unknown>): CxfParsedNode | null {
         vaultId,
         type: String(entry['cxf:nativeType'] ?? ''),
         title: String(entry['schema:name'] ?? ''),
-        tags: [],
         archived: entry['cxf:archived'] === true,
         deleted: entry['cxf:deleted'] === true,
         fields: {},
@@ -152,9 +150,6 @@ function parseJsonLdNode(entry: Record<string, unknown>): CxfParsedNode | null {
     };
 
     if (entry['cxf:status']) node.status = String(entry['cxf:status']);
-
-    const keywords = entry['schema:keywords'];
-    if (Array.isArray(keywords)) node.tags = keywords.map(String);
 
     if (entry['schema:dateCreated']) node.created = String(entry['schema:dateCreated']);
     if (entry['schema:dateModified']) node.updated = String(entry['schema:dateModified']);

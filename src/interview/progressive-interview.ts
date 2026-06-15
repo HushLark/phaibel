@@ -13,7 +13,7 @@ import type { EntityTypeConfig, FieldDef } from '../entities/entity-type-config.
 
 // Fields that are always present or managed by the system — never ask about them.
 const SKIP_FIELDS = new Set([
-    'id', 'created', 'updated', 'tags', 'entityType', 'contextType',
+    'id', 'created', 'updated', 'entityType', 'contextType',
     'sourceId', 'isMe', 'name', 'title', 'description', 'summary',
 ]);
 
@@ -149,5 +149,5 @@ export async function applyProgressiveAnswers(
     const colonIdx = entityKey.indexOf(':');
     const type = entityKey.slice(0, colonIdx);
     const id = entityKey.slice(colonIdx + 1);
-    await index.addOrUpdate(type, id, node.name, node.filepath, node.tags, node.description);
+    await index.addOrUpdate(type, id, node.name, node.filepath, node.description);
 }

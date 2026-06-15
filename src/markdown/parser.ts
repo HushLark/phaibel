@@ -60,7 +60,6 @@ export async function createMarkdownFile(
     const frontmatter: Frontmatter = {
         title,
         created: today,
-        tags: options.tags ?? [],
         ...options,
     };
 

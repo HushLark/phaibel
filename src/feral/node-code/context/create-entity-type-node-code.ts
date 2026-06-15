@@ -162,7 +162,6 @@ export class CreateEntityTypeNodeCode extends AbstractNodeCode {
             plural,
             directory: `context-types/${typeName}`,
             description: schema.description ?? description,
-            defaultTags: [typeName],
             baseCategory,
             fields: schema.fields,
         };

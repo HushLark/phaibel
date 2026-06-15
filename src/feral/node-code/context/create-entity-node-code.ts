@@ -34,7 +34,6 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         { key: 'entity_type', name: 'Entity Type', description: 'The entity type to create (any configured entity type, e.g. task, note, event, goal).', type: 'string' },
         { key: 'entity_title', name: 'Entity Title', description: 'Title for the entity. Supports {context_key} interpolation. Sets "title" in context.', type: 'string', isOptional: true },
         { key: 'entity_body', name: 'Entity Body', description: 'Body/content for the entity. Supports {context_key} interpolation. Sets "content" in context.', type: 'string', isOptional: true },
-        { key: 'tags', name: 'Tags', description: 'Comma-separated tags for the entity (e.g. "urgent,year-of-the-house"). Supports {context_key} interpolation.', type: 'string', isOptional: true },
         { key: 'extra_fields', name: 'Extra Fields', description: 'Comma-separated list of extra context keys to include in metadata (e.g. status,priority,dueDate).', type: 'string', default: '', isOptional: true },
     ];
     static readonly resultDescriptions: ResultDescription[] = [
@@ -61,11 +60,6 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         if (configBody) {
             context.set('content', this.interpolate(configBody, context));
         }
-        const configTags = this.getOptionalConfigValue('tags') as string | null;
-        if (configTags) {
-            const interpolated = this.interpolate(configTags, context);
-            context.set('tags', interpolated.split(',').map(t => t.trim()).filter(Boolean));
-        }
 
         const title = context.get('title') as string;
         if (!title) {
@@ -81,10 +75,9 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         }
 
         const content = (context.get('content') as string) ?? '';
-        const tags = (context.get('tags') as string[]) ?? [];
 
         const dir = await ensureEntityDir(entityType);
-        const entityMeta = createEntityMeta(entityType, title, { tags });
+        const entityMeta = createEntityMeta(entityType, title);
         const id = entityMeta.id;
         const filepath = getPlatform().paths.join(dir, entityFilename(title, id));
 
@@ -122,20 +115,12 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
                 if (val === undefined && field.required && field.default !== undefined) {
                     meta[field.key] = field.default;
                 }
-                // Infer missing required string fields from tags or body content
-                if (val === undefined && field.required && field.type === 'string') {
-                    // Check if any tag matches a reasonable value for this field
-                    const tagMatch = tags.find(t =>
-                        t.toLowerCase() !== entityType && t.length > 1
-                    );
-                    if (tagMatch) {
-                        meta[field.key] = tagMatch;
-                    } else if (content) {
-                        // Try to extract from body — look for "is a/an {value}"
-                        const bodyMatch = content.match(new RegExp(`is (?:a |an )?([\\w]+)`, 'i'));
-                        if (bodyMatch) {
-                            meta[field.key] = bodyMatch[1].toLowerCase();
-                        }
+                // Infer missing required string fields from body content
+                if (val === undefined && field.required && field.type === 'string' && content) {
+                    // Try to extract from body — look for "is a/an {value}"
+                    const bodyMatch = content.match(new RegExp(`is (?:a |an )?([\\w]+)`, 'i'));
+                    if (bodyMatch) {
+                        meta[field.key] = bodyMatch[1].toLowerCase();
                     }
                 }
             }
@@ -167,13 +152,13 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         // Update entity index incrementally
         const index = getEntityIndex();
         if (index.isBuilt) {
-            await index.addOrUpdate(entityType, id, title, filepath, tags, summary);
+            await index.addOrUpdate(entityType, id, title, filepath, summary);
         }
 
         // Update embedding index
         const embeddingIndex = getEmbeddingIndex();
         if (embeddingIndex.isLoaded) {
-            await embeddingIndex.upsert(`${entityType}:${id}`, { title, tags, summary: summary ?? '', bodySnippet: '' });
+            await embeddingIndex.upsert(`${entityType}:${id}`, { title, summary: summary ?? '', bodySnippet: content.slice(0, 500) });
         }
 
         // Record in analytics (fire-and-forget)

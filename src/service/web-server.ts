@@ -341,8 +341,6 @@ export class WebServer {
                 const includeSchema = url.searchParams.get('include_schema') !== 'false';
                 const includeGraph = url.searchParams.get('include_graph') !== 'false';
                 const excludeArchived = url.searchParams.get('exclude_archived') === 'true';
-                const tagsParam = url.searchParams.get('tags');
-                const filterTags = tagsParam ? tagsParam.split(',').map(t => t.trim()).filter(Boolean) : [];
                 const filterTypes = typesParam ? typesParam.split(',').map(t => t.trim()).filter(Boolean) : [];
                 const sinceUnix = since ? parseInt(since, 10) : null;
                 const sinceIso = sinceUnix ? new Date(sinceUnix * 1000).toISOString() : null;
@@ -358,7 +356,6 @@ export class WebServer {
                     const upd = (n.meta.updated ?? n.meta.created) as string | undefined;
                     return upd ? upd >= sinceIso : true;
                 });
-                if (filterTags.length) nodes = nodes.filter(n => filterTags.every(t => n.tags.includes(t)));
 
                 const exportTime = Math.floor(Date.now() / 1000);
                 const vaultId = `vault-${(state.userName ?? 'unknown').toLowerCase().replace(/[^a-z0-9]/g, '-')}-01`;
@@ -948,7 +945,6 @@ export class WebServer {
             const rootVaultFile = `---
 title: "${vaultName} Vault"
 created: ${today}
-tags: [context, system, root]
 ---
 
 # ${vaultName}

@@ -197,7 +197,6 @@ export interface EntityTypeConfig {
     plural: string;
     directory: string;          // subdirectory name within the project
     description?: string;
-    defaultTags?: string[];
     fields: FieldDef[];
     completionField?: string;   // e.g. 'status'
     completionValue?: string;   // e.g. 'done'

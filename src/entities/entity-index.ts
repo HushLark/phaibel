@@ -9,7 +9,7 @@
 
 import { getPlatform } from '../platform/index.js';
 import { getVaultRoot } from '../state/manager.js';
-import { parseEntity, type EntityTypeName, type EntityLink } from './entity.js';
+import { parseEntity, ME_NODE_ID, type EntityTypeName, type EntityLink } from './entity.js';
 import { loadEntityTypes } from './entity-type-config.js';
 import { extractPeopleMentions, extractEntityRefs } from '../context/mentions.js';
 import { debug } from '../utils/debug.js';
@@ -25,7 +25,6 @@ export interface IndexNode {
     /** @deprecated use name */
     title: string;           // alias kept for backward compat
     filepath: string;
-    tags: string[];
     description: string;     // short description (was: summary)
     /** @deprecated use description */
     summary: string;         // alias kept for backward compat
@@ -121,7 +120,6 @@ export class EntityIndex {
                             name: nodeName,
                             title: nodeName,        // alias
                             filepath,
-                            tags: Array.isArray(meta.tags) ? (meta.tags as string[]) : [],
                             description: nodeDesc,
                             summary: nodeDesc,       // alias
                             bodySnippet: content.slice(0, 500),
@@ -247,7 +245,7 @@ export class EntityIndex {
      * Add or update a single node and re-scan its content for edges.
      * Avoids a full rebuild when a single entity is created or modified.
      */
-    async addOrUpdate(type: EntityTypeName, id: string, name: string, filepath: string, tags?: string[], description?: string): Promise<void> {
+    async addOrUpdate(type: EntityTypeName, id: string, name: string, filepath: string, description?: string): Promise<void> {
         const { storage } = getPlatform();
         const key = EntityIndex.key(type, id);
 
@@ -262,7 +260,7 @@ export class EntityIndex {
         } catch { /* keep defaults */ }
 
         // Upsert node
-        this.nodes.set(key, { id, type, name, title: name, filepath, tags: tags ?? [], description: description ?? '', summary: description ?? '', bodySnippet, meta });
+        this.nodes.set(key, { id, type, name, title: name, filepath, description: description ?? '', summary: description ?? '', bodySnippet, meta });
 
         // Remove old outbound edges from this node
         this.edges = this.edges.filter(e => e.source !== key);
@@ -316,26 +314,14 @@ export class EntityIndex {
     // ── Search ──────────────────────────────────────────────────────────
 
     /**
-     * Search nodes by query against title, tags, and summary.
-     * Tokenizes query; scoring: title=3, tag=2, summary=1 per token.
-     * All tokens must match at least one field.
+     * Search nodes by query against title, summary, and body.
+     * Tokenizes query; scoring: title=3, summary=1, body=1 per token.
+     * All tokens must match at least one field. Semantic relevance is the
+     * primary retrieval signal; this keyword pass is the deterministic fallback.
      */
     search(query: string, entityType?: EntityTypeName): IndexSearchResult[] {
-        const rawTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-
-        // Separate tag:value tokens from regular search tokens
-        const tagTokens: string[] = [];
-        const searchTokens: string[] = [];
-        for (const token of rawTokens) {
-            if (token.startsWith('tag:') || token.startsWith('tags:')) {
-                const tagValue = token.slice(token.indexOf(':') + 1);
-                if (tagValue) tagTokens.push(tagValue);
-            } else {
-                searchTokens.push(token);
-            }
-        }
-
-        if (searchTokens.length === 0 && tagTokens.length === 0) return [];
+        const searchTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+        if (searchTokens.length === 0) return [];
 
         const results: IndexSearchResult[] = [];
 
@@ -344,20 +330,8 @@ export class EntityIndex {
 
             const titleLower = node.name.toLowerCase();
             const nicknameLower = typeof node.meta?.nickname === 'string' ? node.meta.nickname.toLowerCase() : '';
-            const tagsLower = node.tags.map(t => t.toLowerCase());
             const summaryLower = node.description.toLowerCase();
-
-            // Pre-filter by tag tokens if present
-            if (tagTokens.length > 0) {
-                const hasMatchingTag = tagTokens.some(ft => tagsLower.includes(ft));
-                if (!hasMatchingTag) continue;
-            }
-
-            // If no search tokens, return all tag-matched nodes
-            if (searchTokens.length === 0) {
-                results.push({ node, score: 1 });
-                continue;
-            }
+            const bodyLower = node.bodySnippet.toLowerCase();
 
             let score = 0;
             let allMatched = true;
@@ -366,8 +340,8 @@ export class EntityIndex {
                 let matched = false;
                 if (titleLower.includes(token)) { score += 3; matched = true; }
                 if (nicknameLower && nicknameLower.includes(token)) { score += 3; matched = true; }
-                if (tagsLower.some(tag => tag.includes(token))) { score += 2; matched = true; }
                 if (summaryLower.includes(token)) { score += 1; matched = true; }
+                if (bodyLower.includes(token)) { score += 1; matched = true; }
                 if (!matched) { allMatched = false; break; }
             }
 
@@ -469,15 +443,15 @@ export class EntityIndex {
     }
 
     /**
-     * Find the "me" node — the Person entity representing the vault owner.
-     * Identified by `isMe: true` in frontmatter (preferred) or the "me" tag.
+     * Find the "me" node — the one special Person representing the vault owner.
+     * Resolved by its reserved, stable key (`person:ME000000`); falls back to an
+     * `isMe: true` scan for any legacy node that predates the fixed id.
      */
     getMeNode(): IndexNode | null {
+        const byKey = this.nodes.get(`person:${ME_NODE_ID}`);
+        if (byKey) return byKey;
         for (const node of this.nodes.values()) {
             if (node.meta.isMe === true) return node;
-        }
-        for (const node of this.nodes.values()) {
-            if (node.tags.includes('me')) return node;
         }
         return null;
     }

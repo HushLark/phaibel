@@ -13,7 +13,6 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         plural: 'tasks',
         directory: 'todos',
         description: 'Actionable items to complete',
-        defaultTags: ['todo'],
         fields: [
             { key: 'status',   type: 'enum',   label: 'Status',
               values: ['open', 'in-progress', 'done', 'blocked'], default: 'open',   required: true },
@@ -53,7 +52,6 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         plural: 'notes',
         directory: 'notes',
         description: 'Free-form notes and references',
-        defaultTags: ['note'],
         fields: [],
         // Notes have no temporal anchor — always include in context.
         // Thing category: found by content + graph-linkage to current work.
@@ -72,7 +70,6 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         plural: 'events',
         directory: 'events',
         description: 'Calendar events and appointments',
-        defaultTags: ['event'],
         fields: [
             { key: 'startDate', type: 'datetime', label: 'Start Time', required: true },
             { key: 'duration',  type: 'duration', label: 'Duration',   required: false },
@@ -107,7 +104,6 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         plural: 'people',
         directory: 'people',
         description: 'People — contacts, colleagues, family, friends',
-        defaultTags: ['person'],
         fields: [
             { key: 'lastName',     type: 'string',     label: 'Last Name',        required: false },
             { key: 'nickname',     type: 'string',     label: 'Nickname / AKA',   required: false },
@@ -135,7 +131,6 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         plural: 'companies',
         directory: 'companies',
         description: 'Companies and organizations',
-        defaultTags: ['company'],
         fields: [
             { key: 'website',        type: 'string',    label: 'Website',         required: false },
             { key: 'industry',       type: 'string',    label: 'Industry',        required: false },
@@ -162,7 +157,6 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         plural: 'todonts',
         directory: 'todonts',
         description: 'Things to deliberately NOT do',
-        defaultTags: ['todont'],
         fields: [
             { key: 'reason', type: 'string', label: 'Reason', required: false },
         ],
@@ -179,7 +173,6 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         plural: 'goals',
         directory: 'goals',
         description: 'Outcomes you are working toward — the "why" that tasks and events serve',
-        defaultTags: ['goal'],
         fields: [
             { key: 'status',     type: 'enum', label: 'Status', values: ['active', 'achieved', 'abandoned'], default: 'active', required: true },
             { key: 'priority',   type: 'enum', label: 'Priority', values: ['low', 'medium', 'high'], default: 'medium', required: true },

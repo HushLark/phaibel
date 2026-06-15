@@ -162,7 +162,7 @@ const EXAMPLE_PROCESSES = [
             nodes: [
                 { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create_type' } },
                 { key: 'create_type', catalog_node_key: 'create_content_type', configuration: { type_name: 'recipe', description: 'A cooking recipe with ingredients, instructions, prep time, and servings' }, edges: { ok: 'create_entity', already_exists: 'create_entity', error: 'done' } },
-                { key: 'create_entity', catalog_node_key: 'create_entity', configuration: { entity_type: 'recipe', entity_title: 'Chocolate Chip Cookies', entity_body: 'Ingredients: flour, butter, sugar, eggs, chocolate chips.\nBake at 375F for 10 min.', tags: 'dessert,baking' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
+                { key: 'create_entity', catalog_node_key: 'create_entity', configuration: { entity_type: 'recipe', entity_title: 'Chocolate Chip Cookies', entity_body: 'Ingredients: flour, butter, sugar, eggs, chocolate chips.\nBake at 375F for 10 min.' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
                 { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
             ],
         },
@@ -781,7 +781,7 @@ PROCESS FORMAT RULES:
 2. "edges" maps result statuses to next node key. Most nodes produce "ok" and "error". Use {context_key} for interpolation.
 3. Context starts with user_input="${userInput}". Keep processes simple — fewer nodes is better.
 4. For entity creation, ALWAYS set entity_title and entity_body with concrete values.
-5. create_* nodes ONLY accept: entity_type, entity_title, entity_body, tags, extra_fields. To set fields (startDate, priority, etc.): put values in process "context" object, list field names in extra_fields. For multi-entity with different field values, use set_context_value nodes between creates.
+5. create_* nodes ONLY accept: entity_type, entity_title, entity_body, extra_fields. To set fields (startDate, priority, etc.): put values in process "context" object, list field names in extra_fields. For multi-entity with different field values, use set_context_value nodes between creates.
 6. DATE FORMAT: date→YYYY-MM-DD, datetime→ISO 8601 with timezone (e.g. "2026-03-25T14:00:00-06:00"). Events ALWAYS need startDate in context+extra_fields. Include duration in ISO 8601 format (e.g. "PT1H" not "1h", "PT30M" not "30m") or endDate if known. Default startDate to 09:00 if no time given.
 7. CRITICAL: Match entity types precisely. event≠task. Use create_event for appointments/meetings, create_task for todos. Never substitute types.
 8. When referencing existing entities, use EXACT titles from GATHERED CONTEXT. Use valid enum values only.
@@ -1148,7 +1148,6 @@ async function createAssumedNodes(
             title: node.title,
             contextType: node.contextType,
             created: now,
-            tags: (node.tags as string[]) || typeConfig.defaultTags || [],
             source: 'assumed',
         };
 

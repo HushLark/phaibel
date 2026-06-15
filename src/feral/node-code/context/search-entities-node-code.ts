@@ -15,8 +15,7 @@ const NOT_FOUND = 'not_found';
 export class SearchEntitiesNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [
         { key: 'entity_type', name: 'Entity Type', description: 'The entity type to search (optional — omit to search all types).', type: 'string', isOptional: true },
-        { key: 'query', name: 'Query', description: 'Search query string. Supports {context_key} interpolation. Use tag:value syntax for exact tag matching.', type: 'string', isOptional: true },
-        { key: 'tags', name: 'Tags', description: 'Comma-separated tag names to pre-filter by before search (case-insensitive exact match). Can be used with or without a query.', type: 'string', isOptional: true },
+        { key: 'query', name: 'Query', description: 'Search query string. Supports {context_key} interpolation.', type: 'string', isOptional: true },
         { key: 'context_path', name: 'Context Path', description: 'Context key to store search results.', type: 'string', default: 'entities' },
     ];
     static readonly resultDescriptions: ResultDescription[] = [
@@ -29,7 +28,7 @@ export class SearchEntitiesNodeCode extends AbstractNodeCode {
     get allowExtraConfig(): boolean { return true; }
 
     constructor() {
-        super('search_entities', 'Search Entities', 'Full-text search across entity titles, tags, and body content. Returns results scored by relevance.', NodeCodeCategory.DATA);
+        super('search_entities', 'Search Entities', 'Full-text and semantic search across entity titles, summaries, and body content. Returns results scored by relevance.', NodeCodeCategory.DATA);
     }
 
     async process(context: Context): Promise<Result> {
@@ -46,16 +45,13 @@ export class SearchEntitiesNodeCode extends AbstractNodeCode {
                  ?? (context.get('user_input') as string | null);
         }
 
-        const tagsRaw = this.getOptionalConfigValue('tags') as string | null;
-        const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : undefined;
-
-        if (!query && (!tags || tags.length === 0)) {
-            context.set('error', 'No search query or tags provided.');
-            return this.result(ResultStatus.ERROR, 'No search query or tags provided.');
+        if (!query) {
+            context.set('error', 'No search query provided.');
+            return this.result(ResultStatus.ERROR, 'No search query provided.');
         }
 
         try {
-            const matches = await searchEntities(query ?? '', entityType ?? undefined, tags ? { tags } : undefined);
+            const matches = await searchEntities(query, entityType ?? undefined);
 
             if (matches.length === 0) {
                 context.set('error', `No entities found matching "${query}".`);

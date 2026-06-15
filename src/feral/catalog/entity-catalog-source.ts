@@ -32,7 +32,7 @@ export class EntityCatalogSource implements CatalogSource {
             nodeCodeKey: 'search_entities',
             name: 'Search All Entities',
             group: 'entity',
-            description: 'Full-text search across all entity types by keyword. Searches titles, tags, and body content. Returns results ranked by relevance.',
+            description: 'Full-text and semantic search across all entity types. Searches titles, summaries, and body content. Returns results ranked by relevance.',
             configuration: { context_path: 'entities' },
         });
 
@@ -119,7 +119,7 @@ export class EntityCatalogSource implements CatalogSource {
             nodeCodeKey: 'search_entities',
             name: `Search ${cap(plural)}`,
             group: 'entity',
-            description: `Full-text search across ${plural} by keyword${descSuffix}. Searches titles, tags, and body content.`,
+            description: `Full-text and semantic search across ${plural}${descSuffix}. Searches titles, summaries, and body content.`,
             configuration: { entity_type: type, context_path: 'entities' },
         });
 
@@ -226,19 +226,6 @@ export class EntityCatalogSource implements CatalogSource {
             },
         });
 
-        // Add tag — convenience node for appending tags without replacing
-        nodes.push({
-            key: `add_tag_${type}`,
-            nodeCodeKey: 'update_entity',
-            name: `Add Tag to ${cap(type)}`,
-            group: 'entity',
-            description: `Appends one or more tags to an existing ${type} without removing existing tags. Set add_tags to a comma-separated list of tags. Uses entity_title (supports {title} interpolation) to find the entity.`,
-            configuration: {
-                entity_type: type,
-                entity_title: '{title}',
-            },
-        });
-
         // ── set_{type}_{field} nodes ──────────────────────────────────────
         // One catalog node per field so the LLM can target a specific field
         // without needing to wire up the full update_entity patch_fields dance.
@@ -315,7 +302,6 @@ For each item, return a FLAT JSON object (no nesting) with these fields:
 - category: one of the above
 - title: A clear, concise title
 - content: The cleaned-up content in markdown format
-- tags: array of relevant keywords
 
 Plus type-specific fields AT THE TOP LEVEL:
 - task: priority (low/medium/high), dueDate (YYYY-MM-DD), status ("open")
@@ -326,7 +312,7 @@ Plus type-specific fields AT THE TOP LEVEL:
 - note: no extra fields needed
 
 Respond with a JSON array. Even for a single item, return an array:
-[{"category":"task","title":"Buy groceries","content":"Pick up milk and bread","tags":["errands"],"priority":"medium","status":"open"}]
+[{"category":"task","title":"Buy groceries","content":"Pick up milk and bread","priority":"medium","status":"open"}]
 
 Original filename: {filename}
 

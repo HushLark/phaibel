@@ -68,18 +68,16 @@ export class CompleteEntityNodeCode extends AbstractNodeCode {
         const index = getEntityIndex();
         if (index.isBuilt) {
             const entityId = found.meta.id as string;
-            const tags = Array.isArray(found.meta.tags) ? found.meta.tags as string[] : [];
             const summary = (found.meta.summary as string) ?? '';
-            await index.addOrUpdate(entityType, entityId, title, found.filepath, tags, summary);
+            await index.addOrUpdate(entityType, entityId, title, found.filepath, summary);
         }
 
         // Update embedding index
         const embeddingIndex = getEmbeddingIndex();
         if (embeddingIndex.isLoaded) {
             const id = found.meta.id as string;
-            const tags = Array.isArray(found.meta.tags) ? found.meta.tags as string[] : [];
             const summary = (found.meta.summary as string) ?? '';
-            await embeddingIndex.upsert(`${entityType}:${id}`, { title, tags, summary, bodySnippet: '' });
+            await embeddingIndex.upsert(`${entityType}:${id}`, { title, summary, bodySnippet: (found.content ?? '').slice(0, 500) });
         }
 
         return this.result(ResultStatus.OK, `Marked ${entityType} "${title}" as complete.`);

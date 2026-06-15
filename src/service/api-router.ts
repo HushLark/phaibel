@@ -201,7 +201,6 @@ export async function handleApiRoute(
             plural: t.plural,
             directory: t.directory,
             description: t.description,
-            defaultTags: t.defaultTags,
             fields: t.fields,
             completionField: t.completionField,
             completionValue: t.completionValue,
@@ -237,7 +236,6 @@ export async function handleApiRoute(
             plural: body.plural,
             directory: body.directory,
             description: typeof body.description === 'string' ? body.description : undefined,
-            defaultTags: Array.isArray(body.defaultTags) ? body.defaultTags as string[] : [],
             fields: Array.isArray(body.fields) ? body.fields as EntityTypeConfig['fields'] : [],
             completionField: typeof body.completionField === 'string' ? body.completionField : undefined,
             completionValue: typeof body.completionValue === 'string' ? body.completionValue : undefined,
@@ -267,7 +265,6 @@ export async function handleApiRoute(
             plural: typeConfig.plural,
             directory: typeConfig.directory,
             description: typeConfig.description,
-            defaultTags: typeConfig.defaultTags,
             fields: typeConfig.fields,
             completionField: typeConfig.completionField,
             completionValue: typeConfig.completionValue,
@@ -291,7 +288,6 @@ export async function handleApiRoute(
             plural: typeof body.plural === 'string' ? body.plural : typeName + 's',
             directory: typeof body.directory === 'string' ? body.directory : typeName + 's',
             description: typeof body.description === 'string' ? body.description : undefined,
-            defaultTags: Array.isArray(body.defaultTags) ? body.defaultTags as string[] : [],
             fields: Array.isArray(body.fields) ? body.fields as EntityTypeConfig['fields'] : [],
             completionField: typeof body.completionField === 'string' ? body.completionField : undefined,
             completionValue: typeof body.completionValue === 'string' ? body.completionValue : undefined,
@@ -323,14 +319,13 @@ export async function handleApiRoute(
     if (method === 'GET' && pathname === '/api/search') {
         const q = url.searchParams.get('q') ?? '';
         const type = url.searchParams.get('type') || undefined;
-        const tag = url.searchParams.get('tag') || undefined;
 
-        if (!q && !tag) {
-            error(res, 400, 'Query parameter "q" or "tag" is required');
+        if (!q) {
+            error(res, 400, 'Query parameter "q" is required');
             return true;
         }
 
-        const results = await searchEntities(q, type, tag ? { tags: [tag] } : undefined);
+        const results = await searchEntities(q, type);
         json(res, 200, results.map(r => ({
             id: r.meta.id,
             title: r.meta.title,
@@ -398,14 +393,6 @@ export async function handleApiRoute(
             results = results.filter(e => e.meta.status === statusFilter);
         }
 
-        const tagFilter = url.searchParams.get('tag');
-        if (tagFilter) {
-            results = results.filter(e => {
-                const tags = Array.isArray(e.meta.tags) ? e.meta.tags as string[] : [];
-                return tags.some(t => t.toLowerCase() === tagFilter.toLowerCase());
-            });
-        }
-
         const dueFilter = url.searchParams.get('due');
         if (dueFilter) {
             // due=today, due=overdue, due=YYYY-MM-DD
@@ -463,7 +450,6 @@ export async function handleApiRoute(
             id,
             entityType: typeName,
             created: new Date().toISOString(),
-            tags: [...(typeConfig.defaultTags ?? [])],
             ...body,
         };
 
@@ -486,8 +472,7 @@ export async function handleApiRoute(
         // Update index
         const index = getEntityIndex();
         if (index.isBuilt) {
-            const tags = Array.isArray(meta.tags) ? meta.tags as string[] : [];
-            await index.addOrUpdate(typeName, id, String(meta.title), filepath, tags);
+            await index.addOrUpdate(typeName, id, String(meta.title), filepath);
         }
 
         debug('api', `Created ${typeName}: ${meta.title}`);
@@ -562,13 +547,11 @@ export async function handleApiRoute(
             // Update index
             const index = getEntityIndex();
             if (index.isBuilt) {
-                const tags = Array.isArray(updatedMeta.tags) ? updatedMeta.tags as string[] : [];
                 await index.addOrUpdate(
                     typeName,
                     String(updatedMeta.id),
                     String(updatedMeta.title),
                     entity.filepath,
-                    tags,
                 );
             }
 

@@ -76,7 +76,6 @@ async function saveRecurrence(state: RecurrenceState): Promise<string> {
         recurrenceType: state.recurrenceType,
         cadence: state.cadence,
         cadenceDetails: state.cadenceDetails,
-        tags: ['recurrence'],
         created: new Date().toISOString(),
     };
     if (state.priority) meta.priority = state.priority;

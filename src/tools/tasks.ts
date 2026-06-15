@@ -39,7 +39,6 @@ registerServiceTool({
                 status: e.meta.status as string,
                 priority: e.meta.priority as string,
                 dueDate: e.meta.dueDate as string | undefined,
-                tags: (e.meta.tags as string[]) || [],
             }));
 
         if (tasks.length === 0) {
@@ -89,7 +88,6 @@ registerServiceTool({
                 status: e.meta.status as string,
                 priority: e.meta.priority as string,
                 dueDate: e.meta.dueDate as string | undefined,
-                tags: (e.meta.tags as string[]) || [],
             }))
             .sort((a, b) => {
                 const priorityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };

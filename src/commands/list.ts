@@ -86,12 +86,10 @@ function printSimple(items: { file: string; data: Record<string, any> }[]): void
     for (const { file, data } of items) {
         const title = data.title ?? file.replace('.md', '');
         const created = data.created ?? '';
-        const tags = Array.isArray(data.tags) ? data.tags.join(', ') : '';
 
         console.log(
             `  ${chalk.bold.white(title)}` +
-            (created ? chalk.gray(`  ${created}`) : '') +
-            (tags ? chalk.gray(`  [${tags}]`) : ''),
+            (created ? chalk.gray(`  ${created}`) : ''),
         );
     }
 }

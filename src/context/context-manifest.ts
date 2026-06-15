@@ -9,7 +9,7 @@ export interface ContextManifestEntityType {
     description: string;
     fields: string[];
     dateRange?: { earliest: string; latest: string };
-    recentSamples: Array<{ id: string; title: string; tags: string[] }>;
+    recentSamples: Array<{ id: string; title: string }>;
 }
 
 export interface ContextManifest {
@@ -69,7 +69,6 @@ export function buildContextManifest(
             recentSamples: nodes.slice(0, 5).map(n => ({
                 id: n.id,
                 title: n.name,
-                tags: n.tags,
             })),
         });
     }

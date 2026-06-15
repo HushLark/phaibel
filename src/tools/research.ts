@@ -72,7 +72,6 @@ registerServiceTool({
                 filepath: e.filepath,
                 status: e.meta.status as string,
                 sources: (e.meta.sources as string[]) || [],
-                tags: (e.meta.tags as string[]) || [],
             }));
 
         return { success: true, output: { research: items } };

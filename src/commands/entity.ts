@@ -112,7 +112,7 @@ async function addEntity(typeName: string, titleArg?: string): Promise<void> {
 
     // Build and write entity
     const dir = await ensureEntityDir(typeName);
-    const meta = createEntityMeta(typeName, title!, { tags: typeConfig.defaultTags ?? [typeName] });
+    const meta = createEntityMeta(typeName, title!);
     const id = meta.id;
     const filepath = path.join(dir, entityFilename(title!, id));
 

@@ -242,7 +242,6 @@ export async function spawnDateSeries(
             title: childTitle,
             entityType: targetTypeConfig.name,
             created: new Date().toISOString(),
-            tags: [...(targetTypeConfig.defaultTags ?? []), 'recurring'],
             ...applyFieldMapping(spawnerConfig.fieldMapping, template, date),
         };
 
@@ -260,8 +259,7 @@ export async function spawnDateSeries(
         // Update entity index incrementally
         const index = getEntityIndex();
         if (index.isBuilt) {
-            const tags = Array.isArray(childMeta.tags) ? childMeta.tags as string[] : [];
-            await index.addOrUpdate(targetTypeConfig.name, id, childTitle, filepath, tags);
+            await index.addOrUpdate(targetTypeConfig.name, id, childTitle, filepath);
         }
 
         debug('spawner', `Created ${targetTypeConfig.name}: ${childTitle}`);
@@ -325,7 +323,6 @@ export async function spawnTemplate(
             title: child.title,
             entityType: targetTypeConfig.name,
             created: new Date().toISOString(),
-            tags: [...(targetTypeConfig.defaultTags ?? [])],
             ...(child.fields ?? {}),
         };
 
@@ -340,8 +337,7 @@ export async function spawnTemplate(
 
         const index = getEntityIndex();
         if (index.isBuilt) {
-            const tags = Array.isArray(childMeta.tags) ? childMeta.tags as string[] : [];
-            await index.addOrUpdate(targetTypeConfig.name, id, child.title, filepath, tags);
+            await index.addOrUpdate(targetTypeConfig.name, id, child.title, filepath);
         }
 
         debug('spawner', `Spawned ${targetTypeConfig.name}: ${child.title}`);

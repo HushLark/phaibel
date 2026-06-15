@@ -96,7 +96,6 @@ registerServiceTool({
                 priority: e.meta.priority as string,
                 smart: e.meta.smart as Partial<SmartFields> | undefined,
                 milestones: e.meta.milestones as string[] | undefined,
-                tags: (e.meta.tags as string[]) || [],
             }));
 
         return { success: true, output: { goals } };
@@ -137,7 +136,6 @@ registerServiceTool({
                 priority: found.meta.priority,
                 smart: found.meta.smart,
                 milestones: found.meta.milestones,
-                tags: found.meta.tags || [],
             },
             canvasUpdate: {
                 type: 'goal',

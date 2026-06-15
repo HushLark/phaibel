@@ -214,7 +214,7 @@ function generateExamples(config: EntityTypeConfig): string {
             'location: Conference Room A', '```', '');
     } else if (config.name === 'note') {
         lines.push('## Example: Project Ideas', '', '```yaml', 'title: Project Ideas',
-            'tags: [ideas, brainstorm]', '```', '',
+            '```', '',
             'Body content goes here in Markdown.', '');
     } else if (config.name === 'person') {
         lines.push('## Example: Jane Smith', '', '```yaml', 'title: Jane Smith',

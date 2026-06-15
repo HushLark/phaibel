@@ -294,12 +294,12 @@ export async function ensureSelfPerson(userName: string | undefined, gender?: st
     const name = userName?.trim();
     if (!name) return;
     try {
-        const { listEntities, createEntityMeta, ensureEntityDir, writeEntity, nodeFilename } =
+        const { listEntities, createEntityMeta, ensureEntityDir, writeEntity, nodeFilename, ME_NODE_ID } =
             await import('../entities/entity.js');
         const { join } = await import('path');
 
         const people = await listEntities('person').catch(() => []);
-        const existing = people.find(p => p.meta.isMe === true);
+        const existing = people.find(p => p.meta.id === ME_NODE_ID || p.meta.isMe === true);
         if (existing) {
             const current = String(existing.meta.name ?? existing.meta.title ?? '');
             if (current !== name) {
@@ -310,7 +310,8 @@ export async function ensureSelfPerson(userName: string | undefined, gender?: st
             return;
         }
 
-        const meta: Record<string, unknown> = { ...createEntityMeta('person', name, { tags: ['me'] }) };
+        const meta: Record<string, unknown> = { ...createEntityMeta('person', name) };
+        meta.id = ME_NODE_ID;   // reserved, stable key — the one special node
         meta.isMe = true;
         if (gender) meta.gender = gender;
         const dir = await ensureEntityDir('person');

@@ -89,7 +89,6 @@ export class CreateRecurringTaskNodeCode extends AbstractNodeCode {
             title,
             entityType: 'recurrence',
             created: new Date().toISOString(),
-            tags: ['recurring'],
             cadence,
             cadenceDetails,
             targetType,

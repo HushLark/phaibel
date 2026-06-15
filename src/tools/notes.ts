@@ -54,7 +54,6 @@ registerServiceTool({
             title: e.meta.title as string,
             filepath: e.filepath,
             created: e.meta.created as string,
-            tags: (e.meta.tags as string[]) || [],
         }));
 
         return { success: true, output: { notes } };
@@ -92,7 +91,6 @@ registerServiceTool({
                 title: found.meta.title,
                 content: found.content,
                 created: found.meta.created,
-                tags: found.meta.tags || [],
             },
             canvasUpdate: {
                 type: 'note',

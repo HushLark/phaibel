@@ -57,7 +57,6 @@ export const initCommand = new Command('init')
         const rootFile = `---
 title: "${foundationName}"
 created: ${today}
-tags: [context, system, root]
 ---
 
 # ${foundationName}

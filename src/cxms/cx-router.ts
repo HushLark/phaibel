@@ -83,12 +83,6 @@ export async function handleCxRoute(
             return await handleSearch(req, res);
         }
 
-        // GET /cx/tag/{tag}
-        const tagMatch = pathname.match(/^\/cx\/tag\/([^/]+)$/);
-        if (tagMatch && method === 'GET') {
-            return await handleTagSearch(res, decodeURIComponent(tagMatch[1]));
-        }
-
         // GET /cx/date
         if (pathname === '/cx/date' && method === 'GET') {
             return await handleDateToday(res);
@@ -203,7 +197,7 @@ async function handleHealth(res: http.ServerResponse): Promise<boolean> {
 
 async function handleSearch(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
     const raw = await readBody(req);
-    let body: { query?: string; type?: string; tags?: string[] };
+    let body: { query?: string; type?: string };
     try {
         body = JSON.parse(raw || '{}');
     } catch {
@@ -216,7 +210,7 @@ async function handleSearch(req: http.IncomingMessage, res: http.ServerResponse)
         return true;
     }
 
-    const results = await searchEntities(body.query, body.type, { tags: body.tags });
+    const results = await searchEntities(body.query, body.type);
     jsonResponse(res, 200, {
         query: body.query,
         count: results.length,
@@ -225,32 +219,9 @@ async function handleSearch(req: http.IncomingMessage, res: http.ServerResponse)
             title: r.meta.title,
             type: r.meta.entityType || r.meta.contextType,
             score: r.score,
-            tags: r.meta.tags,
             summary: r.meta.summary,
         })),
     });
-    return true;
-}
-
-// ── Tag Search ───────────────────────────────────────────────────────────────
-
-async function handleTagSearch(res: http.ServerResponse, tag: string): Promise<boolean> {
-    const types = await loadEntityTypes();
-    const allResults: Array<{ id: string; title: string; type: string; tags: string[] }> = [];
-
-    for (const t of types) {
-        const entities = await listEntities(t.name, { tags: [tag] });
-        for (const e of entities) {
-            allResults.push({
-                id: e.meta.id as string,
-                title: e.meta.title as string,
-                type: t.name,
-                tags: (e.meta.tags as string[]) || [],
-            });
-        }
-    }
-
-    jsonResponse(res, 200, { tag, count: allResults.length, nodes: allResults });
     return true;
 }
 
@@ -422,7 +393,6 @@ async function handleCreateType(req: http.IncomingMessage, res: http.ServerRespo
         plural: body.plural,
         directory: `context-types/${body.name}`,
         description: body.description,
-        defaultTags: body.defaultTags,
         fields: body.fields || [],
         completionField: body.completionField,
         completionValue: body.completionValue,
@@ -509,14 +479,13 @@ async function handleListNodes(
         return true;
     }
 
-    // Query params: status, tag, window, limit, offset
+    // Query params: status, window, limit, offset
     const statusFilter = url.searchParams.get('status');
-    const tagFilter    = url.searchParams.get('tag');
     const applyWindow  = url.searchParams.get('window') === 'true';
     const limit  = parseInt(url.searchParams.get('limit')  || '0', 10);
     const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
-    let entities = await listEntities(typeName, tagFilter ? { tags: [tagFilter] } : undefined);
+    let entities = await listEntities(typeName);
 
     // Status filter
     if (statusFilter) {
@@ -547,7 +516,6 @@ async function handleListNodes(
             id: e.meta.id,
             title: e.meta.title,
             type: typeName,
-            tags: e.meta.tags || [],
             summary: e.meta.summary,
             created: e.meta.created,
             updated: e.meta.updated,
@@ -578,7 +546,6 @@ async function handleGetNode(res: http.ServerResponse, typeName: string, nodeId:
         id: entity.meta.id,
         title: entity.meta.title,
         type: typeName,
-        tags: entity.meta.tags || [],
         summary: entity.meta.summary,
         created: entity.meta.created,
         updated: entity.meta.updated,
@@ -619,7 +586,6 @@ async function handleCreateNode(req: http.IncomingMessage, res: http.ServerRespo
         title: body.title,
         contextType: typeName,
         created: now,
-        tags: (body.tags as string[]) || typeConfig.defaultTags || [],
         ...extractBodyFields(body, typeConfig),
     };
 
@@ -684,7 +650,6 @@ async function handleUpdateNode(
     // Merge fields
     const updatedMeta = { ...entity.meta };
     if (body.title !== undefined) updatedMeta.title = body.title;
-    if (body.tags !== undefined) updatedMeta.tags = body.tags;
     if (body.summary !== undefined) updatedMeta.summary = body.summary;
     if (body.references !== undefined) updatedMeta.references = body.references;
 

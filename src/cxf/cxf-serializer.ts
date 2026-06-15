@@ -121,7 +121,7 @@ function buildSchema(typeConfig: EntityTypeConfig): Record<string, unknown> {
 
 // Fields already mapped to top-level schema.org or cxf: properties — skip in cxf:fields
 const MAPPED_KEYS = new Set([
-    'id', 'title', 'entityType', 'created', 'updated', 'tags', 'summary', 'body', 'links', 'archivedAt',
+    'id', 'title', 'entityType', 'created', 'updated', 'summary', 'body', 'links', 'archivedAt',
     'startDate', 'endDate', 'dueDate', 'duration', 'location', 'status', 'priority',
 ]);
 
@@ -153,7 +153,6 @@ function buildNode(
     if (m.created) out['schema:dateCreated'] = String(m.created);
     const updated = m.updated ?? m.created;
     if (updated) out['schema:dateModified'] = String(updated);
-    if (node.tags.length) out['schema:keywords'] = node.tags;
 
     out['cxf:archived'] = archived;
     out['cxf:deleted'] = deleted;

@@ -31,7 +31,6 @@ export interface NodeSummary {
     name: string;
     entityType: string;
     description?: string;
-    tags: string[];
     created: string;
     updated?: string;
 }
@@ -81,7 +80,6 @@ export async function searchSummaries(
             name: node.name,
             entityType: node.type,
             description: node.description || undefined,
-            tags: node.tags,
             created: (node.meta.created as string) || '',
             updated: (node.meta.updated as string) || undefined,
         }));
@@ -106,15 +104,13 @@ export async function searchSummaries(
                 const { meta } = parseEntity(filepath, raw);
                 const name = (meta.name as string) || (meta.title as string) || '';
                 const desc = (meta.description as string) || '';
-                const tags = Array.isArray(meta.tags) ? (meta.tags as string[]) : [];
-                const haystack = `${name} ${desc} ${tags.join(' ')}`.toLowerCase();
+                const haystack = `${name} ${desc}`.toLowerCase();
                 if (tokens.every(t => haystack.includes(t))) {
                     summaries.push({
                         id: meta.id as string,
                         name,
                         entityType: typeConfig.name,
                         description: desc || undefined,
-                        tags,
                         created: (meta.created as string) || '',
                         updated: (meta.updated as string) || undefined,
                     });
@@ -194,7 +190,6 @@ export async function getNodeDetails(ids: string[]): Promise<NodeDetail[]> {
                 name: (meta.name as string) || (meta.title as string) || id,
                 entityType,
                 description: (meta.description as string) || (meta.summary as string) || undefined,
-                tags: Array.isArray(meta.tags) ? (meta.tags as string[]) : [],
                 created: (meta.created as string) || '',
                 updated: (meta.updated as string) || undefined,
                 fields,
@@ -214,7 +209,7 @@ export async function getNodeDetails(ids: string[]): Promise<NodeDetail[]> {
 
 function formatSummariesBlock(summaries: NodeSummary[]): string {
     return summaries.map(s =>
-        `[${s.entityType}] ${s.name} (id:${s.id})${s.description ? ` — ${s.description}` : ''}${s.tags.length ? ` [${s.tags.join(', ')}]` : ''} created:${s.created.slice(0, 10)}`
+        `[${s.entityType}] ${s.name} (id:${s.id})${s.description ? ` — ${s.description}` : ''} created:${s.created.slice(0, 10)}`
     ).join('\n');
 }
 
