@@ -14,7 +14,6 @@ import { loadCronConfig } from '../service/cron/scheduler.js';
 import { loadEntityTypes } from '../entities/entity-type-config.js';
 import { listEntities } from '../entities/entity.js';
 import { getPersonality } from '../personalities.js';
-import { loadProfile as loadBigFiveProfile } from '../personality/big-five.js';
 import { getAllUsage } from '../llm/token-usage.js';
 import { getLogsDir } from '../paths.js';
 import { debug } from '../utils/debug.js';
@@ -35,7 +34,6 @@ import type {
 } from './introspection-types.js';
 
 import type { UserProfile, PhaibelProfile } from '../profiles/profile-types.js';
-import type { BigFiveProfile } from '../personality/big-five.js';
 import type { UsageSummary } from '../llm/token-usage.js';
 import type { QueueStatus } from '../service/protocol.js';
 
@@ -89,10 +87,6 @@ export class IntrospectionService {
             systemPromptBlock: personality.systemPromptBlock,
             honorifics: personality.honorifics,
         };
-    }
-
-    async getBigFive(): Promise<BigFiveProfile | null> {
-        return loadBigFiveProfile();
     }
 
     // ── Configuration ────────────────────────────────────────────────────

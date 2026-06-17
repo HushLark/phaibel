@@ -93,13 +93,6 @@ const INTROSPECT_NODES: IntrospectEntry[] = [
         contextPath: 'personality',
     },
     {
-        key: 'get_big_five',
-        name: 'Get Big Five Profile',
-        description: 'Loads the Big Five personality observation profile (EMA scores for user and robot).',
-        target: 'big_five',
-        contextPath: 'big_five_profile',
-    },
-    {
         key: 'get_settings',
         name: 'Get Settings',
         description: 'Shows capability mapping overrides and default provider (no secrets).',

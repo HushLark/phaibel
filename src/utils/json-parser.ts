@@ -124,7 +124,7 @@ export function parseJsonResponse(raw: string): Record<string, unknown> {
  * Extract the "response" field value from a synthesis JSON response even when
  * the JSON is malformed (e.g. the LLM left unescaped double-quotes inside the
  * string value).  Finds the region between `"response": "` and the last `"`
- * that sits before `"personality_observation"` or `"assumed_nodes"`, then
+ * that sits before `"assumed_nodes"`, then
  * unescapes standard JSON escape sequences.
  *
  * Returns null if the field cannot be located.
@@ -138,7 +138,7 @@ export function extractResponseField(raw: string): string | null {
     if (openQuote < 0) return null;
 
     // Anchor on the next top-level key so we know where the value must end.
-    const anchors = ['"personality_observation"', '"assumed_nodes"'];
+    const anchors = ['"assumed_nodes"'];
     let endBoundary = Infinity;
     for (const a of anchors) {
         const idx = raw.indexOf(a, openQuote + 1);

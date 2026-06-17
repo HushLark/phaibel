@@ -46,7 +46,6 @@ export async function handlePiRoute(
 
             // ── New v5.1 endpoints ───────────────────────────────────
             case '/pi/personality':   jsonResponse(res, 200, await service.getPersonality()); return true;
-            case '/pi/big-five':      jsonResponse(res, 200, await service.getBigFive()); return true;
             case '/pi/settings':      jsonResponse(res, 200, await service.getSettings()); return true;
             case '/pi/entity-types':  jsonResponse(res, 200, await service.getEntityTypes()); return true;
             case '/pi/entity-stats':  jsonResponse(res, 200, await service.getEntityStats()); return true;

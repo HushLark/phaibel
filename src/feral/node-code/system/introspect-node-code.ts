@@ -16,7 +16,7 @@ import { NodeCodeCategory } from '../node-code.js';
 import { IntrospectionService } from '../../../introspection/introspection-service.js';
 
 const VALID_TARGETS = [
-    'user_profile', 'agent', 'personality', 'big_five',
+    'user_profile', 'agent', 'personality',
     'providers', 'capabilities', 'settings',
     'service', 'vault', 'cron_schedule',
     'entity_types', 'entity_stats',
@@ -81,7 +81,6 @@ export class IntrospectNodeCode extends AbstractNodeCode {
             case 'user_profile':   return service.getProfile();
             case 'agent':          return service.getAgent();
             case 'personality':    return service.getPersonality();
-            case 'big_five':       return service.getBigFive();
             case 'providers':      return service.getProviders();
             case 'capabilities':   return service.getCapabilities();
             case 'settings':       return service.getSettings();

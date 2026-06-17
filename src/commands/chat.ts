@@ -32,7 +32,6 @@ import { getEntityIndex } from '../entities/entity-index.js';
 import { analyzeQueryRelevance, filterCatalogNodes } from '../context/query-relevance.js';
 import type { RelevantType } from '../context/query-relevance.js';
 import { buildMomentContext, momentToGlobals } from '../context/moment.js';
-import { updateProfile, validateScores, invalidateProfileCache, type BigFiveSample } from '../personality/big-five.js';
 import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename, listEntities } from '../entities/entity.js';
 import { getEntityType } from '../entities/entity-type-config.js';
 import { classifyRequest, toIntentResult, BLOCKED_RESPONSE } from '../context/request-classifier.js';
@@ -1112,14 +1111,6 @@ RESPONSE GUIDELINES:
 ${TOKEN_INSTRUCTIONS}
 ${UI_COMPONENT_INSTRUCTIONS}
 
-PERSONALITY OBSERVATION (Big Five — include with every response):
-After composing your response, rate BOTH the user and yourself on these 5 traits (1-5 scale) based on THIS interaction only. Observe the user's communication style, requests, and behavior. Observe your own response style.
-- extraversion (1=reserved/brief, 5=outgoing/elaborate)
-- conscientiousness (1=casual/loose, 5=disciplined/precise)
-- agreeableness (1=challenging/direct, 5=cooperative/accommodating)
-- openness (1=routine/practical, 5=exploratory/creative)
-- emotionalStability (1=tense/reactive, 5=calm/composed)
-
 ASSUMED CONTEXT NODES:
 If the user casually mentions people, places, projects, or other notable entities that don't already exist in context, include them in "assumed_nodes" so they can be saved automatically. Only include entities that are clearly worth remembering — not throwaway mentions. Do NOT re-add an entity already created or present in this turn's context. Each assumed node needs: contextType (must match an available type like "person", "note", etc.), title, and any fields you can infer.
 For a "person", always infer a relationship "type" field from how they're described, using one of: family (spouse, child, parent, sibling, relative), friend, colleague (coworker, manager, direct report, teammate), professional (vendor, client, contact at another company), acquaintance. E.g. "my manager Sam" → {"contextType":"person","title":"Sam","type":"colleague"}; "my daughter Emma" → {"contextType":"person","title":"Emma","type":"family"}.
@@ -1129,10 +1120,6 @@ Do NOT include fenced code blocks (\`\`\`) anywhere in the "response" value.
 You MUST return valid JSON with this structure:
 {
     "response": "Your natural response to the user (markdown ok)",
-    "personality_observation": {
-        "user": { "extraversion": 3, "conscientiousness": 3, "agreeableness": 3, "openness": 3, "emotionalStability": 3 },
-        "robot": { "extraversion": 3, "conscientiousness": 3, "agreeableness": 3, "openness": 3, "emotionalStability": 3 }
-    },
     "assumed_nodes": []
 }`;
 
@@ -1144,35 +1131,18 @@ You MUST return valid JSON with this structure:
         },
     );
 
-    // Try to parse structured JSON response with personality scores
     let responseText: string;
     try {
         const parsed = parseJsonResponse(rawResponse);
         responseText = (parsed.response as string) || rawResponse.trim();
 
-        // Personality scoring + node extraction are non-critical — isolate so they
-        // cannot override the already-extracted responseText if they throw.
         try {
-            const obs = parsed.personality_observation as Record<string, unknown> | undefined;
-            if (obs) {
-                const userScores = validateScores(obs.user);
-                const robotScores = validateScores(obs.robot);
-                if (userScores && robotScores) {
-                    const sample: BigFiveSample = {
-                        timestamp: new Date().toISOString(),
-                        chatId: chatId || 'unknown',
-                        user: userScores,
-                        robot: robotScores,
-                    };
-                    updateProfile(sample).then(() => invalidateProfileCache()).catch(() => {});
-                }
-            }
             const assumedNodes = parsed.assumed_nodes as Array<{ contextType: string; title: string; [key: string]: unknown }> | undefined;
             if (assumedNodes && assumedNodes.length > 0) {
                 createAssumedNodes(assumedNodes).catch(err => debug('chat', `Assumed node creation failed: ${err}`));
             }
         } catch (e) {
-            debug('chat', `Personality scoring / node extraction failed: ${e}`);
+            debug('chat', `Node extraction failed: ${e}`);
         }
     } catch {
         // JSON parse failed — often caused by unescaped quotes inside the response

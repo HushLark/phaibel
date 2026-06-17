@@ -5,7 +5,6 @@ import type { LLMCapability } from '../schemas/index.js';
 import { getAgentName, getPersonalityId } from '../state/manager.js';
 import { getPersonality } from '../personalities.js';
 import { buildMomentContext, formatMomentBlock } from '../context/moment.js';
-import { getCachedProfile, formatProfileBlock, invalidateProfileCache } from '../personality/big-five.js';
 import { getEntityIndex } from '../entities/entity-index.js';
 
 /**
@@ -44,7 +43,6 @@ export async function getEmbeddings(texts: string[], _dimensions = 384): Promise
 // ── Cached values for system prompt ─────────────────────────────────────────
 let _cachedAgentName = 'Agent';
 let _cachedPersonalityBlock = '';
-let _cachedBigFiveBlock = '';
 let _promptCacheLoaded = false;
 
 /**
@@ -58,10 +56,6 @@ export async function initSystemPromptCache(): Promise<void> {
         const personality = getPersonality(personalityId);
         _cachedPersonalityBlock = personality.systemPromptBlock.replace(/{agentName}/g, _cachedAgentName);
     } catch { /* keep default */ }
-    try {
-        const profile = await getCachedProfile();
-        _cachedBigFiveBlock = formatProfileBlock(profile);
-    } catch { /* keep default */ }
     _promptCacheLoaded = true;
 }
 
@@ -70,7 +64,6 @@ export async function initSystemPromptCache(): Promise<void> {
  */
 export async function refreshSystemPromptCache(): Promise<void> {
     _promptCacheLoaded = false;
-    invalidateProfileCache();
     await initSystemPromptCache();
 }
 
@@ -109,7 +102,7 @@ When ${userName} makes a request, ${agentName} builds a process — a graph of o
 
 ${personalityBlock}
 
-${_cachedBigFiveBlock ? _cachedBigFiveBlock + '\n' : ''}TODAY: ${new Date().toLocaleDateString('en-CA')} (${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })})
+TODAY: ${new Date().toLocaleDateString('en-CA')} (${new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })})
 
 DATE & TIME HANDLING:
 - Dates use YYYY-MM-DD format (e.g. 2026-03-25)

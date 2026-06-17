@@ -4,7 +4,6 @@
 
 // Re-export types from other modules that are returned as-is
 export type { UserProfile, PhaibelProfile } from '../profiles/profile-types.js';
-export type { BigFiveProfile } from '../personality/big-five.js';
 export type { UsageSummary } from '../llm/token-usage.js';
 export type { A2ADiscoveredAgent } from '../agents/a2a-client.js';
 export type { QueueStatus } from '../service/protocol.js';
