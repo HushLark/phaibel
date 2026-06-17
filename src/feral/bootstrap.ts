@@ -79,6 +79,7 @@ import { PromptSelectNodeCode } from './node-code/input/prompt-select-node-code.
 
 // ── Cross-platform catalog sources ───────────────────────────────────────
 import { EntityCatalogSource } from './catalog/entity-catalog-source.js';
+import { LifePrimitivesCatalogSource } from './catalog/life-primitives-catalog-source.js';
 import { OutputCatalogSource } from './catalog/output-catalog-source.js';
 import { UsageCatalogSource } from './catalog/usage-catalog-source.js';
 import { SkillCatalogSource } from './catalog/skill-catalog-source.js';
@@ -349,6 +350,7 @@ export async function bootstrapFeral(
         new BuiltInCatalogSource(nodeCodeFactory),
         new JsonCatalogSource(catalogConfig),
         new EntityCatalogSource(entityTypes),
+        new LifePrimitivesCatalogSource(),
         new OutputCatalogSource(),
         new UsageCatalogSource(trackedModels),
         skillCatalogSource,

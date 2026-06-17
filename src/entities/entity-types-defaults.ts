@@ -74,6 +74,8 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             { key: 'startDate', type: 'datetime', label: 'Start Time', required: true },
             { key: 'duration',  type: 'duration', label: 'Duration',   required: false },
             { key: 'location',  type: 'string',   label: 'Location',   required: false },
+            { key: 'status',    type: 'enum',     label: 'Status',
+              values: ['confirmed', 'tentative', 'cancelled'],           required: false },
         ],
         calendarDateField: 'startDate',
         temporal: {
