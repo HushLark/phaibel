@@ -45,6 +45,8 @@ import { UI_COMPONENT_INSTRUCTIONS } from '../utils/ui-components.js';
 import type { LLMProvider } from '../llm/types.js';
 import { runWithTokenTracker, type ChatTokenTotals } from '../llm/token-usage.js';
 import { getContextWindowTokens } from '../config.js';
+import { DebugTraceCollector, type ProcessNodeRecord } from '../utils/debug-trace.js';
+import type { ProcessNodeBeforeEvent, ProcessNodeAfterEvent } from '../feral/events/events.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RESULTS COMPACTION
@@ -264,10 +266,12 @@ export async function feralChatHeadless(
     history?: ChatHistoryEntry[],
     platform?: BootstrapOptions['platform'],
     clientHints?: ClientHints,
+    onDebugTrace?: (chatId: string, markdown: string) => void | Promise<void>,
 ): Promise<ChatResult> {
     const status = (s: string) => onStatus?.(s);
     const chatId = generateChatId();
     const logger = new ChatLogger(chatId);
+    const tracer = onDebugTrace ? new DebugTraceCollector(chatId, userInput) : undefined;
 
     // Record chat in analytics (fire-and-forget)
     import('../analytics/analytics-service.js')
@@ -281,7 +285,7 @@ export async function feralChatHeadless(
 
     try {
         const { result: response, tokens } = await runWithTokenTracker(() =>
-            _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? [], platform, clientHints)
+            _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? [], platform, clientHints, tracer)
         );
         const totalCostUsd = tokens.calls.reduce((s, c) => s + c.costUsd, 0);
         await logger.log('summary', {
@@ -291,6 +295,28 @@ export async function feralChatHeadless(
             estimatedCostUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
             calls: tokens.calls,
         });
+
+        if (tracer && onDebugTrace) {
+            // Populate per-call LLM data from the token tracker (available on Node.js;
+            // empty on mobile where AsyncLocalStorage is shimmed synchronously).
+            for (const call of tokens.calls) {
+                const msgs = call.prompt?.messages ?? [];
+                tracer.addLlmCall({
+                    step: 'pipeline',
+                    model: call.model,
+                    inputTokens: call.inputTokens,
+                    outputTokens: call.outputTokens,
+                    systemExcerpt: (call.prompt?.system ?? '').slice(0, 500),
+                    userExcerpt: (msgs.find(m => m.role === 'user')?.content ?? '').slice(0, 500),
+                    responseExcerpt: (call.response ?? '').slice(0, 1000),
+                });
+            }
+            tracer.setOutcome(response, { input: tokens.inputTokens, output: tokens.outputTokens });
+            const markdown = tracer.formatMarkdown();
+            // Fire-and-forget — debug upload must never block or throw to the caller.
+            Promise.resolve(onDebugTrace(chatId, markdown)).catch(() => {});
+        }
+
         return { response, tokens };
     }
     catch (error) {
@@ -311,6 +337,7 @@ async function _feralChatHeadlessInner(
     history: ChatHistoryEntry[],
     platform?: BootstrapOptions['platform'],
     clientHints?: ClientHints,
+    tracer?: DebugTraceCollector,
 ): Promise<string> {
     // ── Bootstrap Feral + load entity types + vault context ────────
     const inMemorySource = new InMemoryProcessSource();
@@ -324,12 +351,38 @@ async function _feralChatHeadlessInner(
         getUserName().catch(() => 'friend'),
     ]);
 
+    // Subscribe to process node events so the tracer can record execution timing.
+    const _nodeStartTimes = new Map<string, number>();
+    const _nodeRecords: ProcessNodeRecord[] = [];
+    if (tracer) {
+        runtime.eventDispatcher.on<ProcessNodeBeforeEvent>('process.node.before', (e) => {
+            _nodeStartTimes.set(e.node.key, Date.now());
+        });
+        runtime.eventDispatcher.on<ProcessNodeAfterEvent>('process.node.after', (e) => {
+            const start = _nodeStartTimes.get(e.node.key) ?? Date.now();
+            _nodeRecords.push({
+                nodeKey: e.node.key,
+                durationMs: Date.now() - start,
+                status: e.result.status,
+                message: typeof (e.result as { message?: string }).message === 'string'
+                    ? (e.result as { message: string }).message
+                    : '',
+            });
+        });
+    }
+
     await logger.log('start', { chatId, userInput });
 
     const vaultContext = scrubSecrets(await getVaultContext().catch(() => '')) as string;
 
     const entityIndex = getEntityIndex();
     if (!entityIndex.isBuilt) await entityIndex.build();
+
+    if (tracer) {
+        tracer.setContextSummary(
+            `vault context: ${vaultContext.length} chars | entity types: ${entityTypes.length} | entity index built: ${entityIndex.isBuilt}`,
+        );
+    }
 
     const [categorizeLlm, reasonLlm, chatLlm, reasonMapping] = await Promise.all([
         getModelForCapability('categorize'),
@@ -362,6 +415,15 @@ async function _feralChatHeadlessInner(
         attributes: classification.attributes,
         weights:    requestWeights,
     });
+    tracer?.setClassification({
+        category:   classification.category,
+        confidence: classification.confidence,
+        summary:    classification.summary,
+        timeframes: classification.timeframes,
+        subjects:   classification.subjects,
+        attributes: classification.attributes,
+        weights:    requestWeights,
+    });
 
     const moment = buildMomentContext();
     const globalsMap = momentToGlobals(moment, userName);
@@ -376,6 +438,7 @@ async function _feralChatHeadlessInner(
     if (classification.category === 'chat') {
         // Phatic exchanges need no entity data — go straight to synthesis.
         status('Composing response…');
+        tracer?.setProcess('category', 'phaibel.chat');
         const chatResponse = await synthesizeResponse(
             chatLlm, userInput, 'Responding to a casual message — no data retrieval needed',
             [], [], vaultContext, history, chatId, clientHints, reasonModelName,
@@ -403,10 +466,17 @@ async function _feralChatHeadlessInner(
         status('Searching the web…');
         debug('chat', `Factual dispatch: running phaibel.factual`);
         try {
+            tracer?.setProcess('category', 'phaibel.factual', { key: 'phaibel.factual' });
             const ctx = await runtime.runner.run('phaibel.factual', {
                 user_input: userInput,
                 ...(onQuestion ? { _askQuestion: onQuestion } : {}),
             });
+            if (tracer) {
+                tracer.setProcessNodes([..._nodeRecords]);
+                tracer.setContextValues(scrubSecrets(Object.fromEntries(
+                    Object.entries(ctx.getAll()).filter(([k]) => !k.startsWith('_') && k !== 'user_input'),
+                )) as Record<string, unknown>);
+            }
             const allCtx = ctx.getAll();
             const resultKeys = Object.keys(allCtx).filter(k => !k.startsWith('_') && k !== 'user_input');
             debug('chat', `Factual dispatch: context keys = [${resultKeys.join(', ') || 'empty'}]`);
@@ -447,6 +517,7 @@ async function _feralChatHeadlessInner(
     const prebuiltKey = CATEGORY_PROCESS_KEY[classification.category];
     if (prebuiltKey) {
         status('Gathering information…');
+        tracer?.setProcess('category', prebuiltKey, { key: prebuiltKey });
         try {
             const gathered = await fetchContextByClassification(
                 classification, requestWeights, entityIndex, entityTypes,
@@ -456,6 +527,7 @@ async function _feralChatHeadlessInner(
             };
 
             const scrubbedResult = scrubSecrets(contextResult) as Record<string, unknown>;
+            tracer?.setContextValues(scrubbedResult);
             await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'category' });
 
             status('Composing response…');
@@ -543,6 +615,7 @@ Return ONLY the JSON object, no markdown fences.`,
             if (matchResult.action === 'reuse' && matchResult.process_key) {
                 status('Running matched process…');
                 debug('chat', `Matched process: ${matchResult.process_key}`);
+                tracer?.setProcess('reuse', matchResult.process_key);
 
                 let contextResult: Record<string, unknown>;
                 let success = true;
@@ -553,6 +626,12 @@ Return ONLY the JSON object, no markdown fences.`,
                         ...(onQuestion ? { _askQuestion: onQuestion } : {}),
                     });
                     contextResult = ctx.getAll();
+                    if (tracer) {
+                        tracer.setProcessNodes([..._nodeRecords]);
+                        tracer.setContextValues(scrubSecrets(Object.fromEntries(
+                            Object.entries(contextResult).filter(([k]) => !k.startsWith('_') && k !== 'user_input'),
+                        )) as Record<string, unknown>);
+                    }
                 } catch (error) {
                     debug('chat', `Matched process execution failed: ${error}`);
                     contextResult = { _error: error instanceof Error ? error.message : String(error) };
@@ -843,6 +922,7 @@ Return ONLY the JSON object, no markdown fences.`,
         }
 
         const process = hydrateProcessFromString(processJsonStr);
+        tracer?.setProcess('custom', process.key, processDesign.process);
         runtime.processFactory.invalidate(process.key);
         runtime.engine.clearCache();
         inMemorySource.add(process);
@@ -856,6 +936,12 @@ Return ONLY the JSON object, no markdown fences.`,
                 ...(onQuestion ? { _askQuestion: onQuestion } : {}),
             });
             contextResult = ctx.getAll();
+            if (tracer) {
+                tracer.setProcessNodes([..._nodeRecords]);
+                tracer.setContextValues(scrubSecrets(Object.fromEntries(
+                    Object.entries(contextResult).filter(([k]) => !k.startsWith('_') && k !== 'user_input'),
+                )) as Record<string, unknown>);
+            }
         } catch (error) {
             debug('chat', `Process execution failed: ${error instanceof Error ? error.stack ?? error.message : error}`);
             contextResult = { _error: error instanceof Error ? error.message : String(error) };

@@ -99,7 +99,10 @@ export class SynapticProvider implements LLMProvider {
                 res = await _authFetch(path, fetchOptions);
             }
             if (!res.ok) {
-                if (res.status === 429) throw new Error('rate_limited');
+                if (res.status === 429) {
+                    const body = await res.json().catch(() => ({} as Record<string, unknown>)) as Record<string, unknown>;
+                    throw new Error(body.error === 'provider_rate_limited' ? 'provider_rate_limited' : 'rate_limited');
+                }
                 const detail = await res.text().catch(() => res.statusText);
                 throw new Error(`Synaptic error (${res.status}): ${detail}`);
             }
@@ -120,7 +123,10 @@ export class SynapticProvider implements LLMProvider {
         }
 
         if (!res.ok) {
-            if (res.status === 429) throw new Error('rate_limited');
+            if (res.status === 429) {
+                const body = await res.json().catch(() => ({} as Record<string, unknown>)) as Record<string, unknown>;
+                throw new Error(body.error === 'provider_rate_limited' ? 'provider_rate_limited' : 'rate_limited');
+            }
             const detail = await res.text().catch(() => res.statusText);
             throw new Error(`Synaptic error (${res.status}): ${detail}`);
         }
