@@ -1,245 +1,46 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Feral Autonomous Chat — Two-Phase Pipeline
+// Feral Autonomous Chat — Pipeline Host
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Phase 1 (Process Reuse): Present ALL known processes to the LLM and let it
-//   pick one if it clearly fits, or choose "custom" to build from scratch.
+// feralChatHeadless is a thin host:
+//   1. Bootstrap the Feral runtime + load entity types + vault context.
+//   2. Build per-request context (entity index, LLM models, tracing, callbacks).
+//   3. Run the active named pipeline process (default: pipeline.standard).
+//   4. Return the synthesised response from __pipeline_response.
 //
-// Phase 2 (Custom Pipeline): Only runs when Phase 1 chose "custom" (or no
-//   processes exist). A multi-step LLM pipeline that:
-//     1. Selects catalog nodes relevant to the user's request
-//     2. Generates a Feral process JSON using those nodes
-//     3. Runs the process, checks completion, iterates if needed
-//     4. Synthesizes a natural response
+// All orchestration logic lives in pipeline NodeCodes under
+// src/feral/node-code/pipeline/.  To add a new pipeline variant, register a
+// new process in PipelineProcessSource and change the pipeline key here.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { bootstrapFeral, type BootstrapOptions } from '../feral/bootstrap.js';
-import { hydrateProcessFromString } from '../feral/process/process-json-hydrator.js';
-import type { ProcessSource } from '../feral/process/process-factory.js';
-import type { Process } from '../feral/process/process.js';
-import { getModelForCapability, createSystemPrompt } from '../llm/router.js';
+import { CATEGORY_PROCESSES } from '../feral/processes/category-processes.js';
 import { getCapabilityModel } from '../config.js';
 import { debug } from '../utils/debug.js';
-import { ChatLogger, generateChatId, appendJudgement } from '../utils/chat-logger.js';
-import { parseJsonResponse, extractResponseField } from '../utils/json-parser.js';
+import { ChatLogger, generateChatId } from '../utils/chat-logger.js';
 import { writeExecutionLog } from '../utils/execution-logger.js';
 import { loadEntityTypes } from '../entities/entity-type-config.js';
 import { getUserName } from '../state/manager.js';
 import { getVaultContext } from '../context/reader.js';
 import { getEntityIndex } from '../entities/entity-index.js';
-import { analyzeQueryRelevance, filterCatalogNodes } from '../context/query-relevance.js';
-import type { RelevantType } from '../context/query-relevance.js';
-import { buildMomentContext, momentToGlobals } from '../context/moment.js';
-import { generateNodeId, ensureEntityDir, writeEntity, nodeFilename, listEntities } from '../entities/entity.js';
-import { getEntityType } from '../entities/entity-type-config.js';
-import { classifyRequest, toIntentResult, BLOCKED_RESPONSE } from '../context/request-classifier.js';
-import { CATEGORY_PROCESSES, CATEGORY_PROCESS_KEY } from '../feral/processes/category-processes.js';
-import { buildContextManifest } from '../context/context-manifest.js';
-import { fetchContextByClassification, serializeGatheredContext } from '../context/context-loop.js';
-import { inferWeights } from '../context/request-weights.js';
-import { resolveTokens, TOKEN_INSTRUCTIONS } from '../utils/token-resolver.js';
-import { UI_COMPONENT_INSTRUCTIONS } from '../utils/ui-components.js';
-import type { LLMProvider } from '../llm/types.js';
 import { runWithTokenTracker, type ChatTokenTotals } from '../llm/token-usage.js';
-import { getContextWindowTokens } from '../config.js';
 import { DebugTraceCollector, type ProcessNodeRecord } from '../utils/debug-trace.js';
 import type { ProcessNodeBeforeEvent, ProcessNodeAfterEvent } from '../feral/events/events.js';
+import {
+    InMemoryProcessSource,
+    scrubSecrets,
+    type ChatHistoryEntry,
+    type ClientHints,
+} from './chat-helpers.js';
+import { STANDARD_PIPELINE_KEY } from '../feral/pipelines/standard-pipeline.js';
+
+// Re-export public types so callers (web-server, a2a-server) keep working.
+export type { ChatHistoryEntry, ClientHints };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// RESULTS COMPACTION
-// Trims entity arrays in process results before injecting into LLM prompts.
-// Prevents context window overflow on listing queries (e.g. "what events do you know about?").
-// Budget: allow up to 40% of the model's context window for results (chars ≈ tokens * 4).
-// ─────────────────────────────────────────────────────────────────────────────
-
-const TODAY_MS = () => Date.now();
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
-
-function compactResultsForPrompt(results: Record<string, unknown>[], modelName: string): string {
-    const windowTokens = getContextWindowTokens(modelName);
-    const budgetChars = windowTokens * 4 * 0.40; // 40% of context in chars
-
-    const full = JSON.stringify(results, null, 2);
-    if (full.length <= budgetChars) return full;
-
-    // Over budget — compact entity arrays: replace with count + highlights
-    const now = TODAY_MS();
-    const compacted = results.map(r => {
-        const out: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(r)) {
-            if (Array.isArray(v) && v.length > 0 && v[0] !== null && typeof v[0] === 'object') {
-                const arr = v as Record<string, unknown>[];
-                // Sort by first ISO date field found, keep next-7-days first then rest
-                const withDate = arr.map(item => {
-                    const dateStr = Object.values(item).find(
-                        x => typeof x === 'string' && /^\d{4}-\d{2}-\d{2}/.test(x as string)
-                    ) as string | undefined;
-                    return { item, ts: dateStr ? new Date(dateStr).getTime() : Infinity };
-                });
-                withDate.sort((a, b) => a.ts - b.ts);
-                const highlights = withDate
-                    .filter(x => x.ts === Infinity || x.ts >= now - 86_400_000) // today onward + undated
-                    .slice(0, 20)
-                    .map(x => {
-                        // Strip content/body fields to keep highlights lean
-                        const { content: _c, body: _b, ...rest } = x.item as Record<string, unknown>;
-                        return rest;
-                    });
-                out[k] = { total: arr.length, highlights };
-            } else {
-                out[k] = v;
-            }
-        }
-        return out;
-    });
-
-    const compactStr = JSON.stringify(compacted, null, 2);
-    // If still somehow over budget, hard-truncate with a note
-    if (compactStr.length > budgetChars) {
-        return compactStr.slice(0, budgetChars) + '\n… [truncated to fit context window]';
-    }
-    return compactStr;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// IN-MEMORY PROCESS SOURCE
-// ─────────────────────────────────────────────────────────────────────────────
-
-class InMemoryProcessSource implements ProcessSource {
-    private processes: Process[] = [];
-
-    add(process: Process): void {
-        this.processes.push(process);
-    }
-
-    getProcesses(): Process[] {
-        return this.processes;
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// EXAMPLE PROCESSES (for the LLM prompt)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const EXAMPLE_PROCESSES = [
-    {
-        description: 'Create multiple entities: a goal and a todont from user input',
-        json: {
-            schema_version: 1,
-            key: 'multi.create',
-            description: 'Create a goal and a todont based on user input',
-            context: {},
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create_goal' } },
-                { key: 'create_goal', catalog_node_key: 'create_goal', configuration: { entity_title: 'Run 10 miles', entity_body: 'Train progressively to run 10 miles by mid-March' }, edges: { ok: 'create_todont', already_exists: 'create_todont', error: 'create_todont' } },
-                { key: 'create_todont', catalog_node_key: 'create_todont', configuration: { entity_title: 'No pizza or beer', entity_body: 'Avoid pizza and beer while training for the 10-mile run' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
-        description: 'Complete a task: find it by title and mark it as done',
-        json: {
-            schema_version: 1,
-            key: 'task.complete',
-            description: 'Mark a task as done',
-            context: {},
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'complete' } },
-                { key: 'complete', catalog_node_key: 'complete_task', configuration: { entity_title: 'Buy groceries' }, edges: { ok: 'done', not_found: 'done', error: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
-        description: 'Create a new content type then create an entity of that type',
-        json: {
-            schema_version: 1,
-            key: 'type.create_and_populate',
-            description: 'Create a recipe content type and add a recipe',
-            context: {},
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create_type' } },
-                { key: 'create_type', catalog_node_key: 'create_content_type', configuration: { type_name: 'recipe', description: 'A cooking recipe with ingredients, instructions, prep time, and servings' }, edges: { ok: 'create_entity', already_exists: 'create_entity', error: 'done' } },
-                { key: 'create_entity', catalog_node_key: 'create_entity', configuration: { entity_type: 'recipe', entity_title: 'Chocolate Chip Cookies', entity_body: 'Ingredients: flour, butter, sugar, eggs, chocolate chips.\nBake at 375F for 10 min.' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
-        description: 'Create an event with fields set via initial context',
-        json: {
-            schema_version: 1,
-            key: 'event.create',
-            description: 'Create a dentist appointment event with date, time, and location',
-            context: { startDate: '2026-04-10T09:00:00-06:00', endDate: '2026-04-10T10:00:00-06:00', location: 'Downtown Dental, 123 Main St' },
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create' } },
-                { key: 'create', catalog_node_key: 'create_event', configuration: { entity_title: 'Dentist Appointment', entity_body: 'Regular dental checkup', extra_fields: 'startDate,endDate,location' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
-        description: 'Migrate existing entities to a new content type: create the type, loop over old entities, recreate each under the new type, then delete the originals',
-        json: {
-            schema_version: 1,
-            key: 'type.migrate',
-            description: 'Create a soccer_game content type and convert existing soccer events to it',
-            context: {},
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create_type' } },
-                { key: 'create_type', catalog_node_key: 'create_content_type', configuration: { type_name: 'soccer_game', description: 'A soccer game with date, venue, opponent, and score' }, edges: { ok: 'list_old', already_exists: 'list_old', error: 'done' } },
-                { key: 'list_old', catalog_node_key: 'search_events', configuration: { query: 'soccer game', context_path: 'events_to_migrate' }, edges: { ok: 'iter', error: 'done' } },
-                { key: 'iter', catalog_node_key: 'array_iterator', configuration: { source_context_path: 'events_to_migrate', item_context_path: '_item', spread_fields: true }, edges: { ok: 'create_new', done: 'done' } },
-                { key: 'create_new', catalog_node_key: 'create_entity', configuration: { entity_type: 'soccer_game', entity_title_context_key: 'title', entity_body_context_key: 'body' }, edges: { ok: 'delete_old', already_exists: 'delete_old', error: 'iter' } },
-                { key: 'delete_old', catalog_node_key: 'delete_event', configuration: { title_context_key: 'title' }, edges: { ok: 'iter', not_found: 'iter', error: 'iter' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-    {
-        description: 'Create a task with fields (status, priority, dueDate) set via process context',
-        json: {
-            schema_version: 1,
-            key: 'task.create',
-            description: 'Create a task to buy groceries due today',
-            context: { status: 'open', priority: 'medium', dueDate: '2026-04-09' },
-            nodes: [
-                { key: 'start', catalog_node_key: 'start', configuration: {}, edges: { ok: 'create' } },
-                { key: 'create', catalog_node_key: 'create_task', configuration: { entity_title: 'Buy groceries', entity_body: 'Pick up groceries from the store.', extra_fields: 'status,priority,dueDate' }, edges: { ok: 'done', already_exists: 'done', error: 'done' } },
-                { key: 'done', catalog_node_key: 'stop', configuration: {}, edges: {} },
-            ],
-        },
-    },
-];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CONVERSATION HISTORY
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface ChatHistoryEntry {
-    role: 'user' | 'assistant';
-    content: string;
-}
-
-const MAX_HISTORY_PAIRS = 3;
-
-/**
- * Format recent history into a block the LLM can reference.
- */
-function formatHistoryBlock(history: ChatHistoryEntry[]): string {
-    if (history.length === 0) return '';
-    const lines = history.map(h =>
-        h.role === 'user' ? `User: ${h.content}` : `Assistant: ${h.content}`,
-    );
-    return `\nRECENT CONVERSATION (last ${Math.ceil(history.length / 2)} exchange(s) — use this for context when the user refers to previous requests):\n${lines.join('\n')}\n`;
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// CORE: feralChatHeadless — headless pipeline, returns the response string
+// PUBLIC API
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface ChatResult {
@@ -247,13 +48,12 @@ export interface ChatResult {
     tokens: ChatTokenTotals;
 }
 
-export interface ClientHints {
-    platform?: string;
-    screenWidth?: number;
-    screenHeight?: number;
-    creditsRemaining?: number;
-    creditsLimit?: number;
-    sessionResetAt?: string;
+/** Key of the active pipeline process.  Override to A/B-test alternatives. */
+export let activePipelineKey = STANDARD_PIPELINE_KEY;
+
+export function setActivePipeline(key: string): void {
+    activePipelineKey = key;
+    debug('chat', `Active pipeline set to: ${key}`);
 }
 
 export async function feralChatHeadless(
@@ -272,19 +72,19 @@ export async function feralChatHeadless(
     const logger = new ChatLogger(chatId);
     const tracer = onDebugTrace ? new DebugTraceCollector(chatId, userInput) : undefined;
 
-    // Record chat in analytics (fire-and-forget)
     import('../analytics/analytics-service.js')
         .then(({ getAnalyticsService }) => getAnalyticsService().recordChat())
         .catch(() => {});
 
-    // Fire the chat ID callback immediately so callers can display/send it
     onChatId?.(chatId);
-
     status('Thinking…');
 
     try {
         const { result: response, tokens } = await runWithTokenTracker(() =>
-            _feralChatHeadlessInner(userInput, status, onProcess, onQuestion, logger, chatId, history ?? [], platform, clientHints, tracer)
+            _feralChatHeadlessInner(
+                userInput, status, onProcess, onQuestion,
+                logger, chatId, history ?? [], platform, clientHints, tracer,
+            )
         );
         const totalCostUsd = tokens.calls.reduce((s, c) => s + c.costUsd, 0);
         await logger.log('summary', {
@@ -296,8 +96,6 @@ export async function feralChatHeadless(
         });
 
         if (tracer && onDebugTrace) {
-            // Populate per-call LLM data from the token tracker (available on Node.js;
-            // empty on mobile where AsyncLocalStorage is shimmed synchronously).
             for (const call of tokens.calls) {
                 const msgs = call.prompt?.messages ?? [];
                 tracer.addLlmCall({
@@ -312,19 +110,21 @@ export async function feralChatHeadless(
             }
             tracer.setOutcome(response, { input: tokens.inputTokens, output: tokens.outputTokens });
             const markdown = tracer.formatMarkdown();
-            // Fire-and-forget — debug upload must never block or throw to the caller.
             Promise.resolve(onDebugTrace(chatId, markdown)).catch(() => {});
         }
 
         return { response, tokens };
-    }
-    catch (error) {
+    } catch (error) {
         await logger.log('error', { message: error instanceof Error ? error.message : String(error) });
         throw error;
     } finally {
         logger.close();
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INNER IMPLEMENTATION
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function _feralChatHeadlessInner(
     userInput: string,
@@ -338,19 +138,18 @@ async function _feralChatHeadlessInner(
     clientHints?: ClientHints,
     tracer?: DebugTraceCollector,
 ): Promise<string> {
-    // ── Bootstrap Feral + load entity types + vault context ────────
+
+    // ── Bootstrap ──────────────────────────────────────────────────────────────
     const inMemorySource = new InMemoryProcessSource();
-    // Register pre-built category processes so the factory can find them
-    for (const p of CATEGORY_PROCESSES) {
-        inMemorySource.add(p);
-    }
+    for (const p of CATEGORY_PROCESSES) inMemorySource.add(p);
+
     const [runtime, entityTypes, userName] = await Promise.all([
         bootstrapFeral({ processSources: [inMemorySource], platform }),
         loadEntityTypes().catch(() => []),
         getUserName().catch(() => 'friend'),
     ]);
 
-    // Subscribe to process node events so the tracer can record execution timing.
+    // ── Event tracing ──────────────────────────────────────────────────────────
     const _nodeStartTimes = new Map<string, number>();
     const _nodeRecords: ProcessNodeRecord[] = [];
     if (tracer) {
@@ -372,6 +171,7 @@ async function _feralChatHeadlessInner(
 
     await logger.log('start', { chatId, userInput });
 
+    // ── Pre-request setup ──────────────────────────────────────────────────────
     const vaultContext = scrubSecrets(await getVaultContext().catch(() => '')) as string;
 
     const entityIndex = getEntityIndex();
@@ -383,954 +183,90 @@ async function _feralChatHeadlessInner(
         );
     }
 
-    const [categorizeLlm, reasonLlm, chatLlm, reasonMapping] = await Promise.all([
-        getModelForCapability('categorize'),
-        getModelForCapability('reason'),
-        getModelForCapability('chat'),
-        getCapabilityModel('reason'),
-    ]);
+    const reasonMapping = await getCapabilityModel('reason');
     const reasonModelName = reasonMapping?.model ?? 'gpt-4o';
 
-    // ── GUARDRAIL + CLASSIFICATION ────────────────────────────────────
-    // This is the first gate: safety check + intent categorization in one call.
-    // If blocked, return immediately — do not process further.
-    status('Reviewing request…');
-    const classification = await classifyRequest(
-        categorizeLlm,
-        userInput,
-        history,
-    );
-    if (classification.blocked) {
-        await logger.log('blocked', {});
-        return BLOCKED_RESPONSE;
-    }
-    const requestWeights = inferWeights(classification);
-    await logger.log('classify', {
-        category:   classification.category,
-        confidence: classification.confidence,
-        summary:    classification.summary,
-        timeframes: classification.timeframes,
-        subjects:   classification.subjects,
-        attributes: classification.attributes,
-        weights:    requestWeights,
-    });
-    tracer?.setClassification({
-        category:   classification.category,
-        confidence: classification.confidence,
-        summary:    classification.summary,
-        timeframes: classification.timeframes,
-        subjects:   classification.subjects,
-        attributes: classification.attributes,
-        weights:    requestWeights,
+    // ── Run the active pipeline process ────────────────────────────────────────
+    const pipelineKey = activePipelineKey;
+    debug('chat', `Running pipeline: ${pipelineKey}`);
+
+    const ctx = await runtime.runner.run(pipelineKey, {
+        user_input:          userInput,
+        __history:           history,
+        __vault_context:     vaultContext,
+        __entity_types:      entityTypes,
+        __entity_index:      entityIndex,
+        __logger:            logger,
+        __tracer:            tracer,
+        __chat_id:           chatId,
+        __on_status:         status,
+        __on_process:        onProcess,
+        __on_question:       onQuestion,
+        __client_hints:      clientHints,
+        __bootstrap_runtime: runtime,
+        __reason_model_name: reasonModelName,
+        __user_name:         userName,
     });
 
-    const moment = buildMomentContext();
-    const globalsMap = momentToGlobals(moment, userName);
-    void globalsMap; // used by removed context tree; kept for future use
-
-    // ── CATEGORY FAST DISPATCH ────────────────────────────────────────
-    // For well-understood categories we bypass Phase 0 (the LLM process
-    // matcher) and either short-circuit entirely (chat) or run a pre-built
-    // deterministic process (query/analytical/introspection).  This saves
-    // 2–4 LLM calls on the critical path.
-
-    if (classification.category === 'chat') {
-        // Phatic exchanges need no entity data — go straight to synthesis.
-        status('Composing response…');
-        tracer?.setProcess('category', 'phaibel.chat');
-        const chatResponse = await synthesizeResponse(
-            chatLlm, userInput, 'Responding to a casual message — no data retrieval needed',
-            [], [], vaultContext, history, chatId, clientHints, reasonModelName,
+    // ── Collect results for logging + tracing ──────────────────────────────────
+    if (tracer) {
+        tracer.setProcessNodes([..._nodeRecords]);
+        const allResults = ctx.get('__all_results') as Record<string, unknown>[] | null;
+        const contextSnapshot = Object.fromEntries(
+            Object.entries(ctx.getAll())
+                .filter(([k]) => !k.startsWith('__') && !k.startsWith('_') && k !== 'user_input'),
         );
-        await logger.log('response', { response: chatResponse });
-        writeExecutionLog({
-            timestamp: new Date().toISOString(),
-            chat_id: chatId,
-            user_input: userInput,
-            process_source: 'category',
-            process_key: 'phaibel.chat',
-            process_json: {},
-            context_result: {},
-            success: true,
-            outcome_summary: chatResponse.slice(0, 500),
-            iterations: 0,
-        }).catch(err => debug('chat', `Execution log write failed: ${err}`));
-        return chatResponse;
-    }
-
-    // ── FACTUAL FAST DISPATCH ─────────────────────────────────────────
-    // Factual queries need the web_search node to actually run — they can't
-    // be served by fetchContextByClassification (entity/CxMS only).
-    if (classification.category === 'factual') {
-        status('Searching the web…');
-        debug('chat', `Factual dispatch: running phaibel.factual`);
-        try {
-            tracer?.setProcess('category', 'phaibel.factual', { key: 'phaibel.factual' });
-            const ctx = await runtime.runner.run('phaibel.factual', {
-                user_input: userInput,
-                ...(onQuestion ? { _askQuestion: onQuestion } : {}),
-            });
-            if (tracer) {
-                tracer.setProcessNodes([..._nodeRecords]);
-                tracer.setContextValues(scrubSecrets(Object.fromEntries(
-                    Object.entries(ctx.getAll()).filter(([k]) => !k.startsWith('_') && k !== 'user_input'),
-                )) as Record<string, unknown>);
+        tracer.setContextValues(scrubSecrets(contextSnapshot) as Record<string, unknown>);
+        if (allResults?.length) {
+            const classification = ctx.get('__classification') as { category?: string; summary?: string; confidence?: number } | null;
+            const weights = ctx.get('__request_weights') as Record<string, unknown> | null;
+            if (classification) {
+                tracer.setClassification({
+                    category:   classification.category ?? '',
+                    confidence: classification.confidence ?? 0,
+                    summary:    classification.summary ?? '',
+                    timeframes: [],
+                    subjects:   [],
+                    attributes: [],
+                    weights:    weights ?? {},
+                });
             }
-            const allCtx = ctx.getAll();
-            const resultKeys = Object.keys(allCtx).filter(k => !k.startsWith('_') && k !== 'user_input');
-            debug('chat', `Factual dispatch: context keys = [${resultKeys.join(', ') || 'empty'}]`);
-            const filteredResult = Object.entries(allCtx)
-                .filter(([k]) => !k.startsWith('_') && k !== 'user_input')
-                .reduce((acc, [k, v]) => {
-                    acc[k] = typeof v === 'string' && v.length > 2000 ? v.slice(0, 2000) + '…' : v;
-                    return acc;
-                }, {} as Record<string, unknown>);
-            const scrubbedResult = scrubSecrets(filteredResult) as Record<string, unknown>;
-            await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'category' });
-
-            status('Composing response…');
-            const reasoning = `Category: factual — ${classification.summary} — web search result in context`;
-            const factualResponse = await synthesizeResponse(
-                chatLlm, userInput, reasoning,
-                [scrubbedResult], [], vaultContext, history, chatId, clientHints, reasonModelName,
-            );
-            await logger.log('response', { response: factualResponse });
-            writeExecutionLog({
-                timestamp: new Date().toISOString(),
-                chat_id: chatId,
-                user_input: userInput,
-                process_source: 'category',
-                process_key: 'phaibel.factual',
-                process_json: { key: 'phaibel.factual' },
-                context_result: scrubbedResult,
-                success: true,
-                outcome_summary: factualResponse.slice(0, 500),
-                iterations: 1,
-            }).catch(err => debug('chat', `Execution log write failed: ${err}`));
-            return factualResponse;
-        } catch (error) {
-            debug('chat', `Factual dispatch exception: ${error} — falling through to full pipeline`);
+            const processKey = ctx.getString('__process_key') ?? pipelineKey;
+            const processSource = ctx.getString('__process_source') ?? 'pipeline';
+            tracer.setProcess(processSource, processKey);
         }
     }
 
-    const prebuiltKey = CATEGORY_PROCESS_KEY[classification.category];
-    if (prebuiltKey) {
-        status('Gathering information…');
-        tracer?.setProcess('category', prebuiltKey, { key: prebuiltKey });
-        try {
-            const gathered = await fetchContextByClassification(
-                classification, requestWeights, entityIndex, entityTypes,
-            );
-            const contextResult: Record<string, unknown> = {
-                gathered_context: serializeGatheredContext(gathered),
-            };
+    const response = (ctx.getString('__pipeline_response') ?? '').trim();
+    await logger.log('response', { response });
+
+    // ── Execution log ──────────────────────────────────────────────────────────
+    const allResults = (ctx.get('__all_results') as Record<string, unknown>[] | null) ?? [];
+    const allReasonings = (ctx.get('__all_reasonings') as string[] | null) ?? [];
+    const processSource = ctx.getString('__process_source') ?? 'pipeline';
+    const processKey = ctx.getString('__process_key') ?? pipelineKey;
 
-            const scrubbedResult = scrubSecrets(contextResult) as Record<string, unknown>;
-            tracer?.setContextValues(scrubbedResult);
-            await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'category' });
-
-            status('Composing response…');
-            const reasoning = `Category: ${classification.category} — ${classification.summary}`;
-            const categoryResponse = await synthesizeResponse(
-                chatLlm, userInput, reasoning,
-                [scrubbedResult], [], vaultContext, history, chatId, clientHints, reasonModelName,
-            );
-            await logger.log('response', { response: categoryResponse });
-            writeExecutionLog({
-                timestamp: new Date().toISOString(),
-                chat_id: chatId,
-                user_input: userInput,
-                process_source: 'category',
-                process_key: prebuiltKey,
-                process_json: { key: prebuiltKey },
-                context_result: scrubbedResult,
-                success: true,
-                outcome_summary: categoryResponse.slice(0, 500),
-                iterations: 1,
-            }).catch(err => debug('chat', `Execution log write failed: ${err}`));
-            return categoryResponse;
-        } catch (error) {
-            debug('chat', `Category dispatch failed for ${prebuiltKey}: ${error} — falling through to full pipeline`);
-            // Fall through to Phase 0 and the existing multi-LLM pipeline
-        }
-    }
-
-    const relevance = await analyzeQueryRelevance(userInput, entityTypes, entityIndex);
-    const historyBlock = formatHistoryBlock(history);
-    const examplesStr = EXAMPLE_PROCESSES.map((ex, i) =>
-        `Example ${i + 1}: ${ex.description}\n${JSON.stringify(ex.json, null, 2)}`
-    ).join('\n\n');
-
-    // ── PHASE 0: Process reuse check ─────────────────────────────────
-    // Exclude chat.generated (LLM-built, not reusable) and phaibel.* category
-    // processes (already dispatched above when relevant).
-    const EXCLUDED_KEYS = new Set(['chat.generated', ...Object.values(CATEGORY_PROCESS_KEY)]);
-    const allProcesses = runtime.processFactory.getAllProcesses()
-        .filter(p => !EXCLUDED_KEYS.has(p.key));
-
-    if (allProcesses.length > 0) {
-        status('Checking process library…');
-
-        const processSummary = allProcesses
-            .map(p => `- ${p.key}: ${p.description}`)
-            .join('\n');
-
-        const phase0Response = await categorizeLlm.chat(
-            [{
-                role: 'user' as const,
-                content: `The user said: "${userInput}"
-${historyBlock}
-AVAILABLE PROCESSES:
-${processSummary}
-
-You can either:
-1. REUSE an existing process if it clearly fits the request
-2. Choose CUSTOM to build a new process from scratch
-
-Return JSON:
-If reuse: { "action": "reuse", "process_key": "the.key", "context_overrides": {}, "reasoning": "why" }
-If custom: { "action": "custom", "reasoning": "why no existing process fits" }
-
-Return ONLY the JSON object, no markdown fences.`,
-            }],
-            {
-                systemPrompt: 'You are the process matcher for Phaibel. Determine if an existing reusable process can handle the user\'s request. Be conservative — only reuse if the process clearly fits. Better to build custom than force-fit.',
-                temperature: 0.2,
-            },
-        );
-
-        debug('chat', `Phase 0 response: ${phase0Response}`);
-
-        try {
-            const matchResult = parseJsonResponse(phase0Response) as {
-                action: string;
-                process_key?: string;
-                context_overrides?: Record<string, unknown>;
-                reasoning: string;
-            };
-
-            await logger.log('process_match', { ...matchResult });
-
-            if (matchResult.action === 'reuse' && matchResult.process_key) {
-                status('Running matched process…');
-                debug('chat', `Matched process: ${matchResult.process_key}`);
-                tracer?.setProcess('reuse', matchResult.process_key);
-
-                let contextResult: Record<string, unknown>;
-                let success = true;
-                try {
-                    const ctx = await runtime.runner.run(matchResult.process_key, {
-                        user_input: userInput,
-                        ...(matchResult.context_overrides || {}),
-                        ...(onQuestion ? { _askQuestion: onQuestion } : {}),
-                    });
-                    contextResult = ctx.getAll();
-                    if (tracer) {
-                        tracer.setProcessNodes([..._nodeRecords]);
-                        tracer.setContextValues(scrubSecrets(Object.fromEntries(
-                            Object.entries(contextResult).filter(([k]) => !k.startsWith('_') && k !== 'user_input'),
-                        )) as Record<string, unknown>);
-                    }
-                } catch (error) {
-                    debug('chat', `Matched process execution failed: ${error}`);
-                    contextResult = { _error: error instanceof Error ? error.message : String(error) };
-                    success = false;
-                }
-
-                const filteredResult = Object.entries(contextResult)
-                    .filter(([k]) => !k.startsWith('_') && k !== 'user_input')
-                    .reduce((acc, [k, v]) => {
-                        acc[k] = typeof v === 'string' && v.length > 2000 ? v.slice(0, 2000) + '…' : v;
-                        return acc;
-                    }, {} as Record<string, unknown>);
-
-                const scrubbedResult = scrubSecrets(filteredResult) as Record<string, unknown>;
-                await logger.log('process_result', { iteration: 1, results: scrubbedResult, source: 'reuse' });
-
-                const matchedProcess = allProcesses.find(p => p.key === matchResult.process_key);
-                const finalResponse = await synthesizeResponse(
-                    chatLlm, userInput, matchResult.reasoning,
-                    [scrubbedResult], [], vaultContext, history, chatId, clientHints, reasonModelName,
-                );
-                await logger.log('response', { response: finalResponse });
-
-                writeExecutionLog({
-                    timestamp: new Date().toISOString(),
-                    chat_id: chatId,
-                    user_input: userInput,
-                    process_source: 'reuse',
-                    process_key: matchResult.process_key,
-                    process_json: matchedProcess ? { key: matchedProcess.key, description: matchedProcess.description } : {},
-                    context_result: scrubbedResult,
-                    success,
-                    outcome_summary: finalResponse.slice(0, 500),
-                    iterations: 1,
-                }).catch(err => debug('chat', `Execution log write failed: ${err}`));
-
-                return finalResponse;
-            }
-        } catch {
-            debug('chat', 'Phase 0 parse failed, falling through to custom pipeline');
-        }
-    }
-
-    // ── PHASE 1: Intent bridge ───────────────────────────────────────
-    // Convert the already-computed classification to the IntentResult shape
-    // used by context-loop and downstream consumers. No extra LLM call needed.
-    const intent = toIntentResult(classification);
-    await logger.log('intent', {
-        summary:     intent.summary,
-        actionType:  intent.actionType,
-        entityTypes: intent.entityTypes,
-        timeframe:   intent.timeframe,
-        isSimple:    intent.isSimple,
-        confidence:  intent.confidence,
-    });
-
-    // ── PHASE 2: Context manifest ────────────────────────────────────
-    const manifest = buildContextManifest(entityIndex, entityTypes, moment, intent.entityTypes);
-    await logger.log('context_manifest', {
-        totalEntities: manifest.totalEntities,
-        types: manifest.entityTypes.map(t => ({ type: t.type, count: t.count })),
-    });
-
-    // ── PHASE 3: Context fetch (classification-driven, no LLM) ──────
-    status('Gathering context…');
-    const gathered = await fetchContextByClassification(
-        classification, requestWeights, entityIndex, entityTypes,
-    );
-    await logger.log('context_fetch', {
-        rounds: gathered.rounds,
-        entityCount: gathered.nodes.length,
-        summary: gathered.summary,
-        fetchedTypes: [...new Set(gathered.nodes.map(n => n.type))],
-    });
-
-    debug('chat', `Context gathered: ${gathered.nodes.length} entities in ${gathered.rounds} round(s)`);
-
-    // ── PHASE 4: Node selection ──────────────────────────────────────
-    status('Selecting capabilities…');
-
-    const intentRelevantTypes: RelevantType[] = intent.entityTypes.length > 0
-        ? intent.entityTypes.map(t => ({ type: t, reason: 'mentioned' as const, matchCount: 0, matchSamples: [] }))
-        : relevance.relevantTypes;
-
-    const allNodes = runtime.catalog.getAllCatalogNodes();
-    const filteredNodes = filterCatalogNodes(
-        allNodes.filter(n => !n.key.startsWith('speak_')),
-        intentRelevantTypes,
-        entityTypes,
-    );
-
-    const nodesByGroup = new Map<string, typeof filteredNodes>();
-    for (const n of filteredNodes) {
-        const group = n.group;
-        if (!nodesByGroup.has(group)) nodesByGroup.set(group, []);
-        nodesByGroup.get(group)!.push(n);
-    }
-    const catalogSummary = Array.from(nodesByGroup.entries())
-        .map(([group, nodes]) =>
-            `[${group}]\n${nodes.map(n => `  ${n.key}: ${n.description || n.name}`).join('\n')}`)
-        .join('\n');
-
-    debug('chat', `Catalog: ${allNodes.length} total → ${filteredNodes.length} after intent filter`);
-
-    const phase4Response = await categorizeLlm.chat(
-        [{
-            role: 'user' as const,
-            content: `The user said: "${userInput}"
-${historyBlock}
-${serializeGatheredContext(gathered)}
-
-Each entity type has create_*, list_*, find_*, update_*, delete_*, complete_*, set_{type}_{field} catalog nodes.
-CRITICAL: Match entity types precisely — event≠task. Use create_event for appointments/meetings (including 1:1s and recurring meetings), create_task for todos.
-When a person's relationship is stated, also select "set_person_type" to record it (manager/report/coworker→colleague; spouse/child/parent/sibling→family; friend→friend; vendor/client→professional) — this powers user-centric relevance.
-The vault owner ("me") is itself a person node, referenceable by title "me". When a person is related TO the user (e.g. "my wife", "my son"), also use "link_entities" to link that person → "me" with the specific relationship label (spouse, son, daughter, parent, etc.) — this builds the user-centric relationship graph.
-CONTENT-TYPE SPECIFICITY: when the user mentions a recurring KIND of thing in their life that an existing type doesn't capture well (a concert, a recital, a client, a 1:1, a property), prefer creating a specific-but-reusable type for it over dumping it into generic note/event — specific types carry sharper relevance. Reuse an existing type if one already fits; use the generic type only for true one-offs. Don't invent hyper-specific one-shot types ("taylor_swift_concert").
-For new content types, select BOTH "create_content_type" AND "create_entity" — the type alone saves nothing; "create_entity" stores the actual item in it. Use "link_entities" to connect related entities.
-For field values on creation, also select "set_context_value" to stage fields in context.
-
-AVAILABLE CATALOG NODES:
-${catalogSummary}
-
-RULES:
-- Always include "start" and "stop". Select only nodes needed for the request.
-- Prefer entity nodes (create_*, complete_*, find_*) over llm_chat for data operations.
-- For unknown content types, select "create_content_type" AND "create_entity" together (type without entity = lost data). For multiple entities, select multiple create_* nodes.
-- Proactively link related entities. Prefer action over questions — use sensible defaults.
-- When the user mentions a flight number, URL, product, or needs live/external data, include "perplexity_sonar" to look it up, then update the created/found entity with the results.
-
-Return a JSON object with this exact structure:
-{
-    "reasoning": "Why these nodes were selected",
-    "nodes": ["start", "stop", "node_key_1", "node_key_2"]
-}
-
-Return ONLY the JSON object, no markdown fences.`,
-        }],
-        {
-            systemPrompt: 'Select the minimal set of catalog nodes to fulfill the user\'s request. Always include "start" and "stop". Prefer entity actions over advice. Link related content proactively.',
-            temperature: 0.3,
-        },
-    );
-
-    debug('chat', `Phase 4 (node selection) response: ${phase4Response}`);
-
-    let nodeSelection: { reasoning: string; nodes: string[] };
-    try {
-        nodeSelection = parseJsonResponse(phase4Response) as { reasoning: string; nodes: string[] };
-    } catch (err) {
-        debug('chat', `Phase 4 raw response: ${phase4Response}`);
-        throw new Error(`Failed to parse node selection from LLM: ${err instanceof Error ? err.message : err}`);
-    }
-
-    await logger.log('node_selection', { reasoning: nodeSelection.reasoning, nodes: nodeSelection.nodes });
-
-    if (!nodeSelection.nodes.includes('start')) nodeSelection.nodes.unshift('start');
-    if (!nodeSelection.nodes.includes('stop')) nodeSelection.nodes.push('stop');
-
-    const selectedNodes = nodeSelection.nodes
-        .map(key => {
-            try { return runtime.catalog.getCatalogNode(key); } catch { return null; }
-        })
-        .filter(Boolean);
-
-    const selectedNodeDetails = selectedNodes
-        .map(n => {
-            const config = Object.keys(n!.configuration).length > 0
-                ? `  config: ${JSON.stringify(n!.configuration)}`
-                : '';
-            return `- ${n!.key} (${n!.group}): ${n!.description || n!.name}${config}`;
-        })
-        .join('\n');
-
-    const nodeCodeDetails: string[] = [];
-    for (const n of selectedNodes) {
-        if (!n) continue;
-        try {
-            const nodeCode = runtime.nodeCodeFactory.getNodeCode(n.nodeCodeKey);
-            const Ctor = nodeCode.constructor as { configDescriptions?: Array<{ key: string; name: string; description: string; type: string; default?: unknown; isOptional?: boolean; isSecret?: boolean }> };
-            const Ctor2 = nodeCode.constructor as { resultDescriptions?: Array<{ status: string; description: string }> };
-            const configs = (Ctor.configDescriptions ?? []).filter(c => !c.isSecret);
-            const results = Ctor2.resultDescriptions ?? [];
-            if (configs.length > 0 || results.length > 0) {
-                const configStr = configs.map(c =>
-                    `    - ${c.key} (${c.type}${c.isOptional ? ', optional' : ''}${c.default != null ? `, default: ${JSON.stringify(c.default)}` : ''}): ${c.description}`
-                ).join('\n');
-                const resultStr = results.map(r => `    → "${r.status}": ${r.description}`).join('\n');
-                nodeCodeDetails.push(`${n.key} (nodeCode: ${n.nodeCodeKey}):\n  Configuration:\n${configStr}\n  Results (edge keys):\n${resultStr}`);
-            }
-        } catch {
-            // skip missing node codes
-        }
-    }
-
-    // ── PHASES 5–7: Design → Execute → Check (loop) ──────────────────
-    const MAX_ITERATIONS = 3;
-    const allResults: Record<string, unknown>[] = [];
-    const allReasonings: string[] = [];
-    const allProcessKeys: string[] = [];
-    let remainingWork = userInput;
-
-    const gatheredContextStr = serializeGatheredContext(gathered);
-
-    for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-        // ── PHASE 5: Process design (reason model) ───────────────────
-        status(`Designing process${iteration > 0 ? ` (step ${iteration + 1})` : ''}…`);
-
-        const previousResultsStr = allResults.length > 0
-            ? `\n\nRESULTS FROM PREVIOUS STEPS:\n${compactResultsForPrompt(allResults, reasonModelName)}`
-            : '';
-
-        const phase5Response = await reasonLlm.chat(
-            [{
-                role: 'user' as const,
-                content: `Build a Feral process to handle: "${remainingWork}"
-${historyBlock}${previousResultsStr}
-${gatheredContextStr}
-
-SELECTED CATALOG NODES (you must only use nodes from this list):
-${selectedNodeDetails}
-
-NODE CONFIGURATION DETAILS:
-${nodeCodeDetails.join('\n\n')}
-
-PROCESS FORMAT RULES:
-1. schema_version=1, key="chat.generated". First node: key="start", catalog_node_key="start". Last node: key="done", catalog_node_key="stop", edges={}.
-2. "edges" maps result statuses to next node key. Most nodes produce "ok" and "error". Use {context_key} for interpolation.
-3. Context starts with user_input="${userInput}". Keep processes simple — fewer nodes is better.
-4. For entity creation, ALWAYS set entity_title and entity_body with concrete values.
-5. create_* nodes ONLY accept: entity_type, entity_title, entity_body, extra_fields. To set fields (startDate, priority, etc.): put values in process "context" object, list field names in extra_fields. For multi-entity with different field values, use set_context_value nodes between creates.
-6. DATE FORMAT: date→YYYY-MM-DD, datetime→ISO 8601 with timezone (e.g. "2026-03-25T14:00:00-06:00"). Events ALWAYS need startDate in context+extra_fields. Include duration in ISO 8601 format (e.g. "PT1H" not "1h", "PT30M" not "30m") or endDate if known. Default startDate to 09:00 if no time given.
-7. CRITICAL: Match entity types precisely. event≠task. Use create_event for appointments/meetings, create_task for todos. Never substitute types.
-8. When referencing existing entities, use EXACT titles from GATHERED CONTEXT. Use valid enum values only.
-9. Prefer ACTION over QUESTIONS. Use sensible defaults (today's date, "medium" priority). Max one prompt node per process.
-10. If create_content_type is in your node list, you MUST use it. Create type FIRST, then create_entity. Don't use "note" as a generic bucket.
-11. Multiple create_entity nodes of same type work correctly — don't worry about context key collisions.
-12. For search_* nodes, set "query" in config.
-
-EXAMPLE PROCESSES:
-${examplesStr}
-
-Return a JSON object with this exact structure:
-{
-    "reasoning": "One short sentence",
-    "process": { ... the process JSON ... }
-}
-
-IMPORTANT: Keep "reasoning" to ONE sentence. The process JSON is what matters.
-
-Return ONLY the JSON object, no markdown fences.`,
-            }],
-            {
-                systemPrompt: 'Generate a valid Feral process JSON using provided catalog nodes. catalog_node_key values must match exactly. Prefer action over advice.',
-                temperature: 0.3,
-                maxTokens: 16384,
-            },
-        );
-
-        debug('chat', `Phase 5 response (iteration ${iteration + 1}): ${phase5Response}`);
-
-        let processDesign: { reasoning: string; process: Record<string, unknown> };
-        try {
-            processDesign = parseJsonResponse(phase5Response) as { reasoning: string; process: Record<string, unknown> };
-        } catch (err) {
-            debug('chat', `Phase 5 raw response: ${phase5Response}`);
-            throw new Error(`Failed to parse process design from LLM: ${err instanceof Error ? err.message : err}`);
-        }
-
-        allReasonings.push(processDesign.reasoning);
-        await logger.log('process_design', { iteration: iteration + 1, reasoning: processDesign.reasoning, process: processDesign.process });
-        onProcess?.(processDesign.process);
-
-        const processFingerprint = JSON.stringify(processDesign.process);
-        if (allProcessKeys.includes(processFingerprint)) {
-            debug('chat', `Duplicate process detected at iteration ${iteration + 1}, breaking loop`);
-            break;
-        }
-        allProcessKeys.push(processFingerprint);
-
-        // ── PHASE 6: Execute ─────────────────────────────────────────
-        status(`Running process${iteration > 0 ? ` (step ${iteration + 1})` : ''}…`);
-
-        let processJsonStr: string;
-        try {
-            processJsonStr = JSON.stringify(processDesign.process);
-        } catch {
-            throw new Error('Generated process is not valid JSON');
-        }
-
-        const process = hydrateProcessFromString(processJsonStr);
-        tracer?.setProcess('custom', process.key, processDesign.process);
-        runtime.processFactory.invalidate(process.key);
-        runtime.engine.clearCache();
-        inMemorySource.add(process);
-
-        let contextResult: Record<string, unknown>;
-        try {
-            const processContext = (processDesign.process.context ?? {}) as Record<string, unknown>;
-            const ctx = await runtime.runner.run(process.key, {
-                ...processContext,
-                user_input: userInput,
-                ...(onQuestion ? { _askQuestion: onQuestion } : {}),
-            });
-            contextResult = ctx.getAll();
-            if (tracer) {
-                tracer.setProcessNodes([..._nodeRecords]);
-                tracer.setContextValues(scrubSecrets(Object.fromEntries(
-                    Object.entries(contextResult).filter(([k]) => !k.startsWith('_') && k !== 'user_input'),
-                )) as Record<string, unknown>);
-            }
-        } catch (error) {
-            debug('chat', `Process execution failed: ${error instanceof Error ? error.stack ?? error.message : error}`);
-            contextResult = { _error: error instanceof Error ? error.message : String(error) };
-        }
-
-        const iterationResult = Object.entries(contextResult)
-            .filter(([k]) => k === '_error' || (!k.startsWith('_') && k !== 'user_input'))
-            .reduce((acc, [k, v]) => {
-                acc[k] = typeof v === 'string' && v.length > 2000 ? v.slice(0, 2000) + '…' : v;
-                return acc;
-            }, {} as Record<string, unknown>);
-
-        allResults.push(scrubSecrets(iterationResult) as Record<string, unknown>);
-        await logger.log('process_result', { iteration: iteration + 1, results: iterationResult });
-
-        // ── PHASE 7: Completion check (categorize model) ─────────────
-        if (iteration < MAX_ITERATIONS - 1) {
-            status('Checking if task is complete…');
-
-            const completionResponse = await categorizeLlm.chat(
-                [{
-                    role: 'user' as const,
-                    content: `The user originally said: "${userInput}"
-
-We have completed ${iteration + 1} step(s) so far.
-
-Step reasoning: ${allReasonings.join(' → ')}
-
-Results from all steps:
-${compactResultsForPrompt(allResults, reasonModelName)}
-
-Is the user's request fulfilled? Consider:
-- Did we create the entity/entities the user explicitly asked for?
-- If the user asked for multiple DISTINCT actions (e.g., "create a task AND a note"), were all done?
-
-IMPORTANT rules for deciding:
-- Check the "created_entities" array in the results — it accumulates ALL entities created across all nodes in the process, even when individual context keys get overwritten.
-- Check the "created_entity_types" array — it shows all new types that were registered.
-- If an entity was successfully created, the request is COMPLETE — do NOT retry because of minor details like metadata formatting.
-- Do NOT request "more work" for implementation details (e.g., how a blackout window is stored, or whether a field was set in exactly the right way).
-- Do NOT request "more work" to link entities — linking is nice-to-have, not required.
-- Only say "more_work" if a user-requested entity or action is clearly MISSING from the results.
-- When in doubt, say COMPLETE. Creating duplicates is worse than a slightly imperfect result.
-
-Return a JSON object with EXACTLY this structure:
-If COMPLETE: { "status": "complete" }
-If MORE WORK NEEDED: { "status": "more_work", "remaining": "Description of what still needs to be done" }
-
-Return ONLY the JSON object, no markdown fences.`,
-                }],
-                {
-                    systemPrompt: 'You are a task completion checker for Phaibel, a Personal Digital Agent. Only say "more_work" when the user explicitly asked for multiple distinct things and one is clearly missing from the results. Do NOT nitpick implementation details or request re-creation of entities that already exist. Creating duplicates is a serious problem — err on the side of saying "complete".',
-                    temperature: 0.2,
-                },
-            );
-
-            debug('chat', `Phase 7 completion check (iteration ${iteration + 1}): ${completionResponse}`);
-
-            let completion: { status: string; remaining?: string };
-            try {
-                completion = parseJsonResponse(completionResponse) as { status: string; remaining?: string };
-            } catch {
-                debug('chat', 'Could not parse completion response, assuming complete');
-                break;
-            }
-
-            await logger.log('completion_check', { iteration: iteration + 1, status: completion.status, remaining: completion.remaining || null });
-
-            if (completion.status === 'complete') {
-                debug('chat', 'Task complete, exiting orchestration loop');
-                break;
-            }
-
-            remainingWork = completion.remaining || userInput;
-            debug('chat', `More work needed: ${remainingWork}`);
-        }
-    }
-
-    // ── PHASE 8: Synthesize response ─────────────────────────────────
-    status('Composing response…');
-
-    const nodesUsed = selectedNodes
-        .filter(Boolean)
-        .map(n => `- ${n!.key}: ${n!.description || n!.name}`);
-
-    const finalResponse = await synthesizeResponse(
-        chatLlm, userInput, allReasonings.join(' → ') || gathered.summary,
-        allResults, nodesUsed, vaultContext, history, chatId, clientHints, reasonModelName,
-    );
-    await logger.log('response', { response: finalResponse });
-
-    const lastProcessDesign = allReasonings.length > 0
-        ? { reasoning: allReasonings, iterations: allReasonings.length }
-        : {};
     writeExecutionLog({
-        timestamp: new Date().toISOString(),
-        chat_id: chatId,
-        user_input: userInput,
-        process_source: 'custom',
-        process_key: 'chat.generated',
-        process_json: lastProcessDesign,
-        context_result: allResults.length > 0 ? allResults[allResults.length - 1] : {},
-        success: !allResults.some(r => r._error),
-        outcome_summary: finalResponse.slice(0, 500),
-        iterations: allReasonings.length,
+        timestamp:       new Date().toISOString(),
+        chat_id:         chatId,
+        user_input:      userInput,
+        process_source:  (processSource as 'reuse' | 'custom' | 'skill' | 'category') || 'custom',
+        process_key:     processKey,
+        process_json:    { key: processKey, pipeline: pipelineKey },
+        context_result:  allResults.length > 0 ? allResults[allResults.length - 1] : {},
+        success:         !allResults.some(r => r._error),
+        outcome_summary: response.slice(0, 500),
+        iterations:      allReasonings.length,
     }).catch(err => debug('chat', `Execution log write failed: ${err}`));
 
-    return finalResponse;
+    return response;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SYNTHESIS HELPER
+// CLI FOLLOW-UP
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function synthesizeResponse(
-    llm: LLMProvider,
-    userInput: string,
-    reasoning: string,
-    results: Record<string, unknown>[],
-    nodesUsed: string[],
-    vaultContext: string,
-    history: ChatHistoryEntry[] = [],
-    chatId?: string,
-    clientHints?: ClientHints,
-    modelName = 'gpt-4o',
-): Promise<string> {
-    const sessionLine = (() => {
-        if (!clientHints?.creditsLimit) return '';
-        const used = (clientHints.creditsLimit) - (clientHints.creditsRemaining ?? 0);
-        const resets = clientHints.sessionResetAt
-            ? new Date(clientHints.sessionResetAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-            : null;
-        const hoursLeft = clientHints.sessionResetAt
-            ? Math.max(0, Math.round((new Date(clientHints.sessionResetAt).getTime() - Date.now()) / 3_600_000))
-            : null;
-        return `- Session credits: ${used} used of ${clientHints.creditsLimit} (${clientHints.creditsRemaining ?? 0} remaining)${resets ? `; resets ${resets}${hoursLeft !== null ? ` (${hoursLeft}h from now)` : ''}` : ''}`;
-    })();
-
-    const clientHintBlock = clientHints?.platform === 'mobile'
-        ? `CLIENT CONTEXT:
-- Rendering on a mobile screen${clientHints.screenWidth ? ` (${clientHints.screenWidth}×${clientHints.screenHeight}px)` : ''}
-- Prefer concise responses: short paragraphs, brief bullet lists; avoid wide tables or deeply nested structure
-- Markdown renders correctly (bold, bullets, headers are all fine)
-- Do NOT use fenced code blocks (\`\`\`) — they display as gray boxes and should be avoided entirely
-${sessionLine ? sessionLine + '\n' : ''}
-`
-        : '';
-
-    const synthesisPrompt = `${clientHintBlock}The user said: "${userInput}"
-${formatHistoryBlock(history)}
-WHAT WAS DONE:
-Reasoning: ${reasoning}
-
-${results.length} process step(s) executed.
-
-${nodesUsed.length > 0 ? `Nodes used:\n${nodesUsed.join('\n')}\n` : ''}Results:
-${compactResultsForPrompt(results, modelName)}
-
-${results.some(r => r._error) ? `Note: Some steps encountered errors.` : ''}
-
-RESPONSE GUIDELINES:
-- Summarise what was done concretely (created X, linked Y to Z, completed W)
-- If entities were created or updated, name them so the user can find them
-- If entities were linked, mention the relationship
-- Keep it concise — a few sentences, not paragraphs
-- If there were errors, acknowledge honestly and suggest alternatives
-- If the results suggest follow-up actions, briefly mention them
-${TOKEN_INSTRUCTIONS}
-${UI_COMPONENT_INSTRUCTIONS}
-
-ASSUMED CONTEXT NODES:
-If the user casually mentions people, places, projects, or other notable entities that don't already exist in context, include them in "assumed_nodes" so they can be saved automatically. Only include entities that are clearly worth remembering — not throwaway mentions. Do NOT re-add an entity already created or present in this turn's context. Each assumed node needs: contextType (must match an available type like "person", "note", etc.), title, and any fields you can infer.
-For a "person", always infer a relationship "type" field from how they're described, using one of: family (spouse, child, parent, sibling, relative), friend, colleague (coworker, manager, direct report, teammate), professional (vendor, client, contact at another company), acquaintance. E.g. "my manager Sam" → {"contextType":"person","title":"Sam","type":"colleague"}; "my daughter Emma" → {"contextType":"person","title":"Emma","type":"family"}.
-
-Do NOT include fenced code blocks (\`\`\`) anywhere in the "response" value.
-
-You MUST return valid JSON with this structure:
-{
-    "response": "Your natural response to the user (markdown ok)",
-    "assumed_nodes": []
-}`;
-
-    const rawResponse = await llm.chat(
-        [{ role: 'user' as const, content: synthesisPrompt }],
-        {
-            systemPrompt: createSystemPrompt(vaultContext || ''),
-            temperature: 0.7,
-        },
-    );
-
-    let responseText: string;
-    try {
-        const parsed = parseJsonResponse(rawResponse);
-        responseText = (parsed.response as string) || rawResponse.trim();
-
-        try {
-            const assumedNodes = parsed.assumed_nodes as Array<{ contextType: string; title: string; [key: string]: unknown }> | undefined;
-            if (assumedNodes && assumedNodes.length > 0) {
-                createAssumedNodes(assumedNodes).catch(err => debug('chat', `Assumed node creation failed: ${err}`));
-            }
-        } catch (e) {
-            debug('chat', `Node extraction failed: ${e}`);
-        }
-    } catch {
-        // JSON parse failed — often caused by unescaped quotes inside the response
-        // string value (e.g. LLM writes "Bumpa" without escaping the quotes).
-        // Try to extract just the response field by boundary-searching before
-        // falling all the way back to the raw text.
-        const extracted = extractResponseField(rawResponse);
-        if (extracted) {
-            responseText = extracted;
-            debug('chat', 'Synthesis JSON malformed — extracted response field by boundary search');
-        } else {
-            responseText = rawResponse.trim();
-            debug('chat', 'Synthesis returned plain text — personality scoring skipped');
-        }
-    }
-
-    // Resolve datetime tokens ({{local_time:ISO}} etc.) to local-timezone strings
-    responseText = resolveTokens(responseText);
-
-    // Post-message judge — fire-and-forget alongside personality update
-    if (chatId) {
-        judgeResponse(userInput, responseText, chatId).catch(() => {});
-    }
-
-    return responseText;
-}
-
-/**
- * Create assumed context nodes that the LLM inferred from conversation.
- * These are lightweight nodes with source: "assumed".
- */
-async function createAssumedNodes(
-    nodes: Array<{ contextType: string; title: string; [key: string]: unknown }>,
-): Promise<void> {
-    for (const node of nodes) {
-        if (!node.contextType || !node.title) continue;
-
-        const typeConfig = await getEntityType(node.contextType);
-        if (!typeConfig) {
-            debug('chat', `Assumed node skipped — unknown type: ${node.contextType}`);
-            continue;
-        }
-
-        // Dedup: skip if an entity of this type with a matching title already
-        // exists. The main process (this turn) or a prior turn likely created it
-        // — without this guard every mentioned entity is duplicated on each turn.
-        try {
-            const titleLc = node.title.trim().toLowerCase();
-            const existing = await listEntities(node.contextType, { metaOnly: true });
-            if (existing.some(e => String(e.meta.title ?? e.meta.name ?? '').trim().toLowerCase() === titleLc)) {
-                debug('chat', `Assumed node skipped — already exists: ${node.contextType}/${node.title}`);
-                continue;
-            }
-        } catch { /* best-effort dedup */ }
-
-        const id = generateNodeId();
-        const now = new Date().toISOString();
-        const meta: Record<string, unknown> = {
-            id,
-            title: node.title,
-            contextType: node.contextType,
-            created: now,
-            source: 'assumed',
-        };
-
-        // Copy type-specific fields from the assumed node
-        for (const field of typeConfig.fields) {
-            if (node[field.key] !== undefined) {
-                meta[field.key] = node[field.key];
-            } else if (field.default !== undefined) {
-                meta[field.key] = field.default;
-            }
-        }
-
-        try {
-            const dir = await ensureEntityDir(node.contextType);
-            const filename = nodeFilename(node.title, id);
-            const filepath = `${dir}/${filename}`;
-            await writeEntity(filepath, meta, '');
-            debug('chat', `Created assumed node: ${node.contextType}/${node.title} (${id})`);
-        } catch (err) {
-            debug('chat', `Failed to create assumed node "${node.title}": ${err}`);
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// POST-MESSAGE JUDGE — evaluates if the response achieved the user's needs
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Fire-and-forget judge that evaluates response quality.
- * Uses a fast/cheap model (categorize capability) to avoid adding cost.
- */
-async function judgeResponse(
-    userInput: string,
-    responseText: string,
-    chatId: string,
-): Promise<void> {
-    try {
-        const judge = await getModelForCapability('categorize');
-        const raw = await judge.chat(
-            [{
-                role: 'user' as const,
-                content: `You are a response quality judge. Evaluate whether the assistant's response achieved what the user needed.
-
-USER REQUEST:
-${userInput}
-
-ASSISTANT RESPONSE:
-${responseText}
-
-Rate the response. Return JSON only:
-{
-    "achieved": true/false,
-    "confidence": 0.0-1.0,
-    "reasoning": "one sentence why"
-}`,
-            }],
-            { temperature: 0 },
-        );
-
-        const parsed = parseJsonResponse(raw);
-        await appendJudgement(chatId, {
-            achieved: Boolean(parsed.achieved),
-            confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
-            reasoning: String(parsed.reasoning || ''),
-        });
-        debug('judge', `${chatId}: achieved=${parsed.achieved} confidence=${parsed.confidence}`);
-    } catch (err) {
-        debug('judge', `Failed: ${err}`);
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
-
-// Patterns that look like API keys / tokens — redact before sending to LLM
-const SECRET_PATTERNS = [
-    /sk-[a-zA-Z0-9_-]{20,}/g,          // OpenAI keys
-    /sk-ant-[a-zA-Z0-9_-]{20,}/g,      // Anthropic keys
-    /ghp_[a-zA-Z0-9]{36,}/g,           // GitHub PATs
-    /ghu_[a-zA-Z0-9]{36,}/g,           // GitHub user tokens
-    /xox[bsarp]-[a-zA-Z0-9\-]{10,}/g,  // Slack tokens
-];
-
-const SECRET_KEYS = new Set([
-    'apiKey', 'api_key', 'apikey',
-    'secret', 'token', 'password',
-    'authorization', 'credential',
-]);
-
-/**
- * Deep-scrub secret-shaped values from an object before it's sent to an LLM.
- */
-function scrubSecrets(obj: unknown): unknown {
-    if (typeof obj === 'string') {
-        let s = obj;
-        for (const pat of SECRET_PATTERNS) {
-            s = s.replace(pat, '[REDACTED]');
-        }
-        return s;
-    }
-    if (Array.isArray(obj)) {
-        return obj.map(scrubSecrets);
-    }
-    if (obj && typeof obj === 'object') {
-        const out: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(obj)) {
-            if (SECRET_KEYS.has(k.toLowerCase())) {
-                out[k] = '[REDACTED]';
-            } else {
-                out[k] = scrubSecrets(v);
-            }
-        }
-        return out;
-    }
-    return obj;
-}
-
-
-/**
- * Ask a follow-up question using inquirer.
- * Inquirer manages its own stdin/stdout lifecycle, avoiding conflicts
- * with the shell's paused readline interface.
- */
-async function askFollowUp(question: string): Promise<string> {
+export async function askFollowUp(question: string): Promise<string> {
     const { answer } = await inquirer.prompt([{
         type: 'input',
         name: 'answer',
@@ -1338,3 +274,6 @@ async function askFollowUp(question: string): Promise<string> {
     }]);
     return answer as string;
 }
+
+// chalk re-export kept for CLI consumers
+export { chalk };

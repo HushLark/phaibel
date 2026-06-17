@@ -34,6 +34,7 @@ import { ArrayIteratorNodeCode } from './node-code/flow/array-iterator-node-code
 import { ThrowExceptionNodeCode } from './node-code/flow/throw-exception-node-code.js';
 import { SubProcessNodeCode } from './node-code/flow/sub-process-node-code.js';
 import { RunSkillNodeCode } from './node-code/flow/run-skill-node-code.js';
+import { RunInlineProcessNodeCode } from './node-code/flow/run-inline-process-node-code.js';
 import { SetContextValueNodeCode } from './node-code/data/set-context-value-node-code.js';
 import { SetContextTableNodeCode } from './node-code/data/set-context-table-node-code.js';
 import { CalculationNodeCode } from './node-code/data/calculation-node-code.js';
@@ -77,9 +78,13 @@ import { AgentSpeakNodeCode } from './node-code/output/agent-speak-node-code.js'
 import { PromptInputNodeCode } from './node-code/input/prompt-input-node-code.js';
 import { PromptSelectNodeCode } from './node-code/input/prompt-select-node-code.js';
 
+// ── Pipeline NodeCodes (Node.js only — use dynamic import to stay mobile-safe) ──
+// Imported in getNodeOnlyNodeCodes() below.
+
 // ── Cross-platform catalog sources ───────────────────────────────────────
 import { EntityCatalogSource } from './catalog/entity-catalog-source.js';
 import { LifePrimitivesCatalogSource } from './catalog/life-primitives-catalog-source.js';
+import { PipelineCatalogSource } from './pipelines/pipeline-catalog-source.js';
 import { OutputCatalogSource } from './catalog/output-catalog-source.js';
 import { UsageCatalogSource } from './catalog/usage-catalog-source.js';
 import { SkillCatalogSource } from './catalog/skill-catalog-source.js';
@@ -91,6 +96,7 @@ import { AnalyticsNodeCode } from './node-code/system/analytics-node-code.js';
 
 // Process sources
 import { JsonProcessSource } from './process/json-process-source.js';
+import { PipelineProcessSource } from './pipelines/pipeline-process-source.js';
 
 // Entity type schema
 import { loadEntityTypes } from '../entities/entity-type-config.js';
@@ -116,6 +122,7 @@ function getCrossPlatformNodeCodes(): NodeCode[] {
         new ThrowExceptionNodeCode(),
         new SubProcessNodeCode(),
         new RunSkillNodeCode(),
+        new RunInlineProcessNodeCode(),
         // Data
         new SetContextValueNodeCode(),
         new SetContextTableNodeCode(),
@@ -195,6 +202,13 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         { CxfDiscoverNodeCode },
         { CxfPullNodeCode },
         { CxfPushNodeCode },
+        { PipelineClassifyNodeCode },
+        { PipelineFactualSearchNodeCode },
+        { PipelineCategoryContextNodeCode },
+        { PipelineGatherContextNodeCode },
+        { PipelineSelectNodesNodeCode },
+        { PipelineActionLoopNodeCode },
+        { PipelineSynthesizeNodeCode },
     ] = await Promise.all([
         import('./node-code/data/read-file-node-code.js'),
         import('./node-code/genai/write-file-node-code.js'),
@@ -217,6 +231,13 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         import('./node-code/context/cxf-discover-node-code.js'),
         import('./node-code/context/cxf-pull-node-code.js'),
         import('./node-code/context/cxf-push-node-code.js'),
+        import('./node-code/pipeline/pipeline-classify-node-code.js'),
+        import('./node-code/pipeline/pipeline-factual-search-node-code.js'),
+        import('./node-code/pipeline/pipeline-category-context-node-code.js'),
+        import('./node-code/pipeline/pipeline-gather-context-node-code.js'),
+        import('./node-code/pipeline/pipeline-select-nodes-node-code.js'),
+        import('./node-code/pipeline/pipeline-action-loop-node-code.js'),
+        import('./node-code/pipeline/pipeline-synthesize-node-code.js'),
     ]);
 
     return [
@@ -241,6 +262,14 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         new CxfDiscoverNodeCode(),
         new CxfPullNodeCode(),
         new CxfPushNodeCode(),
+        // Pipeline orchestration NodeCodes (Node.js only)
+        new PipelineClassifyNodeCode(),
+        new PipelineFactualSearchNodeCode(),
+        new PipelineCategoryContextNodeCode(),
+        new PipelineGatherContextNodeCode(),
+        new PipelineSelectNodesNodeCode(),
+        new PipelineActionLoopNodeCode(),
+        new PipelineSynthesizeNodeCode(),
     ];
 }
 
@@ -351,6 +380,7 @@ export async function bootstrapFeral(
         new JsonCatalogSource(catalogConfig),
         new EntityCatalogSource(entityTypes),
         new LifePrimitivesCatalogSource(),
+        new PipelineCatalogSource(),
         new OutputCatalogSource(),
         new UsageCatalogSource(trackedModels),
         skillCatalogSource,
@@ -384,7 +414,8 @@ export async function bootstrapFeral(
     // 5. Wire engine
     const eventDispatcher = new EventDispatcher();
     const engine = new ProcessEngine(eventDispatcher, catalog, nodeCodeFactory);
-    const allSources: ProcessSource[] = [jsonProcessSource, vaultProcessSource, ...processSources];
+    const pipelineProcessSrc = new PipelineProcessSource();
+    const allSources: ProcessSource[] = [jsonProcessSource, vaultProcessSource, pipelineProcessSrc, ...processSources];
     if (feralProcessSource) allSources.push(feralProcessSource);
     const processFactory = new ProcessFactory(allSources);
     const runner = new Runner(processFactory, engine);
