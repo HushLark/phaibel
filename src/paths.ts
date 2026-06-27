@@ -28,6 +28,11 @@ export function SECRETS_PATH(): string {
     return join(SYSTEM_DIR(), 'secrets.json');
 }
 
+/** CF/x3 federated source registry (incl. API keys) — lives in ~/.phaibel/, not the vault. */
+export function CFX3_SOURCES_PATH(): string {
+    return join(SYSTEM_DIR(), 'cfx3-sources.json');
+}
+
 // Daemon transient files
 export function PID_FILE(): string {
     return join(SYSTEM_DIR(), 'phaibel.pid');
