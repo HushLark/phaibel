@@ -97,6 +97,6 @@ export function redactSource(s: Cfx3Source) {
         hasKey: !!s.apiKey, lastSyncAt: s.lastSyncAt ?? null,
         manifestRefreshedAt: s.manifestRefreshedAt ?? null,
         contextTypes: s.manifest?.context_types.map(t => t.name) ?? [],
-        tools: s.manifest?.tools.map(t => t.id) ?? [],
+        capabilities: s.manifest?.capabilities ?? null,
     };
 }

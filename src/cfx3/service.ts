@@ -4,10 +4,10 @@
 // CxMS ingest together, and owns the sync cursor.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { fetchManifest, syncSource, actOnSource } from './cfx3-client.js';
+import { fetchManifest, syncSource, writeToSource } from './cfx3-client.js';
 import { ensureTypesFromManifest, ingestRecords, type IngestResult } from './ingest.js';
 import { getSource, patchSource, type Cfx3Source } from './source-registry.js';
-import type { Cfx3Manifest, Cfx3ActResult } from './protocol.js';
+import type { Cfx3Manifest, Cfx3WriteRequest, Cfx3WriteResult } from './protocol.js';
 import { debug } from '../utils/debug.js';
 
 const MANIFEST_TTL_MS = 24 * 60 * 60 * 1000; // refresh cached manifest at most daily
@@ -48,11 +48,11 @@ export async function syncSourceById(id: string, opts?: { full?: boolean }): Pro
     return { source: id, syncedAt: res.syncedAt, full: !since, ...counts };
 }
 
-/** Invoke a tool on a source (CF/x3 action / tool call). */
-export async function actOnSourceById(id: string, tool: string, args: Record<string, unknown>): Promise<Cfx3ActResult> {
+/** Write context to a source (create/update/delete a node or type). */
+export async function writeToSourceById(id: string, req: Cfx3WriteRequest): Promise<Cfx3WriteResult> {
     const source = await getSource(id);
     if (!source) throw new Error(`CF/x3 source not found: ${id}`);
-    return actOnSource(source, tool, args);
+    return writeToSource(source, req);
 }
 
 /** Refresh manifests + incremental-sync all enabled sources (used by cron). */

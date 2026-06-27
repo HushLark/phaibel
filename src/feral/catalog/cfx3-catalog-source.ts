@@ -23,15 +23,19 @@ export class Cfx3CatalogSource implements CatalogSource {
                 description: `Pull the latest context from ${s.name} into the local store.`,
                 configuration: { source_id: s.id },
             }));
-            for (const tool of s.manifest?.tools ?? []) {
-                nodes.push(createCatalogNode({
-                    key: `cfx3_${s.id}_${tool.id.replace(/[^a-z0-9]+/gi, '_')}`,
-                    nodeCodeKey: 'cfx3_act',
-                    name: `${s.name}: ${tool.id}`,
-                    group: `cfx3:${s.id}`,
-                    description: tool.description ?? `Invoke ${tool.id} on ${s.name}.`,
-                    configuration: { source_id: s.id, tool: tool.id },
-                }));
+            // CRUD writeback per writable context type (when the source allows it).
+            if (s.manifest?.capabilities?.writeNodes) {
+                for (const t of s.manifest.context_types) {
+                    if (t.readonly) continue;
+                    nodes.push(createCatalogNode({
+                        key: `cfx3_${s.id}_write_${t.name}`,
+                        nodeCodeKey: 'cfx3_write',
+                        name: `${s.name}: Create/update ${t.name}`,
+                        group: `cfx3:${s.id}`,
+                        description: t.description ?? `Create or update a ${t.name} in ${s.name}.`,
+                        configuration: { source_id: s.id, op: 'node.create' },
+                    }));
+                }
             }
         }
         return nodes;

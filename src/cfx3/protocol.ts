@@ -1,13 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// CF/x3 — Federated Context + Action protocol (a profile of A2A)
+// CF/x3 — Context Federation protocol (a profile of A2A)
+//
+// CF/x3 deals ONLY with context: it federates context types and context nodes,
+// and supports CRUD on them. Domain actions/tools (e.g. "win a deal") are NOT
+// part of CF/x3 — those are exposed separately (e.g. an MCP server).
 //
 // Transport is A2A unchanged: discovery via an agent card, invocation via a
 // JSON-RPC `tasks/send` whose message carries a `data` part `{ skill, ... }`;
 // results return as task `artifacts` carrying a `data` part. Auth is a Bearer
-// API key on the POST. CF/x3 adds three well-known skills + a JSON record format:
-//   cfx3.manifest → context types + tools the source exposes (client caches it)
-//   cfx3.sync     → context transfer; full (since=null) or incremental (since=ISO)
-//   cfx3.act      → invoke a manifest-declared tool (action)
+// API key on the POST. CF/x3 has three well-known skills + a JSON record format:
+//   cfx3.manifest → context types the source exposes + write capabilities
+//   cfx3.sync     → READ: bulk transfer; full (since=null) or incremental (since=ISO)
+//   cfx3.write    → CREATE / UPDATE / DELETE of context nodes (and context types)
 //
 // This module is the shared contract for the Phaibel CF/x3 CLIENT. A CF/x3 SERVER
 // (e.g. synaptic-stack, a separate repo) re-declares the matching wire types.
@@ -21,7 +25,7 @@ export const CFX3_VERSION = 1;
 export const CFX3_SKILLS = {
     manifest: 'cfx3.manifest',
     sync: 'cfx3.sync',
-    act: 'cfx3.act',
+    write: 'cfx3.write',
 } as const;
 export type Cfx3Skill = (typeof CFX3_SKILLS)[keyof typeof CFX3_SKILLS];
 
@@ -42,12 +46,14 @@ export interface Cfx3TypeDef {
     description?: string;
     baseCategory?: string; // person | place | thing | event | task | goal
     fields?: Cfx3FieldDef[];
+    readonly?: boolean;     // node create/update/delete not allowed for this type
 }
 
-export interface Cfx3ToolDef {
-    id: string;            // e.g. 'crm.note.add'
-    description?: string;
-    args?: Cfx3FieldDef[]; // input schema (simple, flat)
+/** Which write operations the source permits the caller (role-filtered). */
+export interface Cfx3Capabilities {
+    writeNodes: boolean;   // node.create / node.update
+    deleteNodes: boolean;  // node.delete
+    manageTypes: boolean;  // type.create / type.update / type.delete
 }
 
 export interface Cfx3Manifest {
@@ -55,7 +61,7 @@ export interface Cfx3Manifest {
     source: string;        // stable source id, e.g. 'synaptic'
     name: string;          // display name
     context_types: Cfx3TypeDef[];
-    tools: Cfx3ToolDef[];
+    capabilities: Cfx3Capabilities;
     auth: { schemes: 'bearer'[] };
 }
 
@@ -92,16 +98,29 @@ export interface Cfx3SyncResult {
     nextCursor?: string;   // present when more pages remain
 }
 
-// ── Actions (tool calls) ─────────────────────────────────────────────────────
+// ── Context CRUD (cfx3.write) ────────────────────────────────────────────────
+// CF/x3's only mutation surface: create/update/delete context nodes, and (where
+// the source allows) create/update/delete context types. Nothing else.
 
-export interface Cfx3ActRequest {
-    tool: string;          // must be a manifest tool id
-    args: Record<string, unknown>;
+export type Cfx3WriteOp =
+    | 'node.create' | 'node.update' | 'node.delete'
+    | 'type.create' | 'type.update' | 'type.delete';
+
+export interface Cfx3WriteRequest {
+    op: Cfx3WriteOp;
+    // node.create / node.update: the node to write (uid required for update).
+    node?: {
+        type?: string; uid?: string; title?: string;
+        fields?: Record<string, unknown>; body?: string; links?: Cfx3Link[];
+    };
+    uid?: string;          // node.delete
+    type?: Cfx3TypeDef;    // type.create / type.update
+    typeName?: string;     // type.delete
 }
 
-export interface Cfx3ActResult {
+export interface Cfx3WriteResult {
     ok: boolean;
-    result?: unknown;
+    uid?: string;          // uid of the created/updated node
     message?: string;
 }
 
@@ -169,9 +188,9 @@ export function cfx3AgentCard(source: string, name: string, url: string) {
         defaultInputModes: ['data'],
         defaultOutputModes: ['data'],
         skills: [
-            { id: CFX3_SKILLS.manifest, name: 'Manifest', description: 'Context types and tools this source exposes.', tags: ['cfx3', 'manifest'] },
-            { id: CFX3_SKILLS.sync, name: 'Sync', description: 'Federated context transfer (full or incremental via `since`).', tags: ['cfx3', 'context'] },
-            { id: CFX3_SKILLS.act, name: 'Act', description: 'Invoke a tool/action declared in the manifest.', tags: ['cfx3', 'action'] },
+            { id: CFX3_SKILLS.manifest, name: 'Manifest', description: 'Context types this source exposes + write capabilities.', tags: ['cfx3', 'manifest'] },
+            { id: CFX3_SKILLS.sync, name: 'Sync', description: 'Read federated context (full or incremental via `since`).', tags: ['cfx3', 'context'] },
+            { id: CFX3_SKILLS.write, name: 'Write', description: 'Create / update / delete context nodes and types.', tags: ['cfx3', 'context'] },
         ],
     };
 }

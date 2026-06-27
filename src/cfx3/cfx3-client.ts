@@ -5,7 +5,7 @@
 
 import {
     CFX3_SKILLS, buildCfx3Request, extractDataArtifact,
-    type A2ATask, type Cfx3Manifest, type Cfx3SyncResult, type Cfx3ActResult,
+    type A2ATask, type Cfx3Manifest, type Cfx3SyncResult, type Cfx3WriteRequest, type Cfx3WriteResult,
 } from './protocol.js';
 import type { Cfx3Source } from './source-registry.js';
 import { debug } from '../utils/debug.js';
@@ -32,7 +32,7 @@ export async function fetchManifest(source: Cfx3Source): Promise<Cfx3Manifest> {
     const task = await rpc(source, buildCfx3Request(CFX3_SKILLS.manifest));
     const data = extractDataArtifact<Cfx3Manifest>(task);
     if (!data) throw new Error(`CF/x3 ${source.id}: manifest returned no data`);
-    debug('cfx3', `manifest ${source.id}: ${data.context_types.length} types, ${data.tools.length} tools`);
+    debug('cfx3', `manifest ${source.id}: ${data.context_types.length} context types, write=${data.capabilities?.writeNodes ?? false}`);
     return data;
 }
 
@@ -44,9 +44,9 @@ export async function syncSource(source: Cfx3Source, since: string | null, types
     return data;
 }
 
-export async function actOnSource(source: Cfx3Source, tool: string, args: Record<string, unknown>): Promise<Cfx3ActResult> {
-    const task = await rpc(source, buildCfx3Request(CFX3_SKILLS.act, { tool, args }));
-    const data = extractDataArtifact<Cfx3ActResult>(task);
-    if (!data) throw new Error(`CF/x3 ${source.id}: act returned no data`);
+export async function writeToSource(source: Cfx3Source, req: Cfx3WriteRequest): Promise<Cfx3WriteResult> {
+    const task = await rpc(source, buildCfx3Request(CFX3_SKILLS.write, req as unknown as Record<string, unknown>));
+    const data = extractDataArtifact<Cfx3WriteResult>(task);
+    if (!data) throw new Error(`CF/x3 ${source.id}: write returned no data`);
     return data;
 }
