@@ -18,6 +18,7 @@ import { loadState } from '../../state/manager.js';
 import { getEntityIndex } from '../../entities/entity-index.js';
 import { getEmbeddingIndex } from '../../entities/embedding-index.js';
 import { getCronConfigPath, getVaultConfigDir } from '../../paths.js';
+import { pushRefresh } from '../web-server.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONFIG
@@ -43,8 +44,14 @@ const DEFAULT_CONFIG: CronConfig = {
         'entity-dedup':        { enabled: true,  intervalMinutes: 1440 },
         'scheduled-delete':    { enabled: true,  intervalMinutes: 1440 },
         'log-prune':           { enabled: true,  intervalMinutes: 1440 },
+        'date-watch':          { enabled: true,  intervalMinutes: 5 },
+        'cfx3-sync':           { enabled: false, intervalMinutes: 60 },
     },
 };
+
+// Tracks the local calendar date so date-watch can detect a rollover (overnight
+// or after the machine wakes from sleep) and refresh open clients.
+let _lastLocalDate: string | null = null;
 
 export async function loadCronConfig(): Promise<CronConfig> {
     try {
@@ -77,6 +84,28 @@ interface CronJobDef {
 }
 
 const JOB_DEFS: CronJobDef[] = [
+    {
+        name: 'cfx3-sync',
+        async run() {
+            const { syncAllEnabled } = await import('../../cfx3/service.js');
+            const results = await syncAllEnabled();
+            if (results.length === 0) return 'no enabled sources';
+            const changes = results.reduce((n, r) => n + r.created + r.updated + r.deleted, 0);
+            return `${results.length} source(s): ${changes} changes`;
+        },
+    },
+    {
+        name: 'date-watch',
+        async run() {
+            const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
+            if (_lastLocalDate === null) { _lastLocalDate = today; return 'initialized'; }
+            if (today === _lastLocalDate) return 'no change';
+            _lastLocalDate = today;
+            pushRefresh('today');
+            pushRefresh('calendar');
+            return `date rolled to ${today} — clients refreshed`;
+        },
+    },
     {
         name: 'cal-sync',
         async run() {
@@ -174,8 +203,16 @@ export interface CronJobStatus {
     nextRunAt: string | null;
 }
 
+export interface CronLogEntry {
+    time: string;   // ISO timestamp
+    job: string;
+    ok: boolean;
+    message: string;
+}
+
 export interface CronStatus {
     jobs: CronJobStatus[];
+    log: CronLogEntry[];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -191,9 +228,16 @@ interface RunningJob {
     nextRunAt: Date | null;
 }
 
+const CRON_LOG_MAX = 100;
+
 export class CronScheduler {
     private jobs = new Map<string, RunningJob>();
     private config: CronConfig | null = null;
+    private log: CronLogEntry[] = [];
+
+    getLog(): CronLogEntry[] {
+        return this.log;
+    }
 
     async start(): Promise<void> {
         this.config = await loadCronConfig();
@@ -221,10 +265,11 @@ export class CronScheduler {
     getStatus(): CronStatus {
         const config = this.config;
         if (!config) {
-            return { jobs: [] };
+            return { jobs: [], log: this.log };
         }
 
         return {
+            log: this.log,
             jobs: JOB_DEFS.map(def => {
                 const jobConfig = config.jobs[def.name];
                 const running = this.jobs.get(def.name);
@@ -329,15 +374,26 @@ export class CronScheduler {
         }
     }
 
+    // Cron results go to the in-memory log (surfaced in the Debug panel via
+    // GET /api/scheduler), not the chat window — they were too noisy there.
+    // Trivial no-op results are skipped so high-frequency jobs (date-watch every
+    // 5 min) don't flood the buffer; errors are always recorded.
     private pushJobResult(jobName: string, result: string | null, error: string | null): void {
-        // Dynamic import to avoid circular dependency
-        import('../web-server.js').then(({ pushToChat }) => {
-            if (error) {
-                pushToChat(`Scheduler job **${jobName}** failed: ${error}`, 'alert');
-            } else {
-                pushToChat(`Scheduler job **${jobName}** completed: ${result}`, 'info');
-            }
-        }).catch(() => { /* ignore — web server may not be running */ });
+        if (!error && this.isNoOpResult(result)) return;
+        this.log.push({
+            time: new Date().toISOString(),
+            job: jobName,
+            ok: !error,
+            message: error ?? result ?? '',
+        });
+        if (this.log.length > CRON_LOG_MAX) {
+            this.log.splice(0, this.log.length - CRON_LOG_MAX);
+        }
+    }
+
+    private isNoOpResult(result: string | null): boolean {
+        if (!result) return true;
+        return /^(no change|no-op|initialized|nothing|none|0 \b|skipped)/i.test(result.trim());
     }
 }
 

@@ -284,6 +284,7 @@ async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> 
                 meta.startDate !== ev.startDate ||
                 meta.endDate !== ev.endDate ||
                 (meta.location || '') !== (ev.location || '') ||
+                JSON.stringify(meta.attendees || []) !== JSON.stringify(ev.attendees || []) ||
                 (meta.title as string) !== ev.title;
 
             if (changed) {
@@ -291,6 +292,8 @@ async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> 
                 meta.startDate = ev.startDate;
                 meta.endDate = ev.endDate;
                 meta.location = ev.location;
+                if (ev.attendees && ev.attendees.length) meta.attendees = ev.attendees;
+                else delete meta.attendees;
                 if (!meta.calendarId) meta.calendarId = cal.id;
                 const body = ev.description || existing.content;
                 await writeEntity(existing.filepath, meta, body);
@@ -309,6 +312,7 @@ async function syncOneCalendar(cal: CalendarEntry): Promise<SyncCalendarResult> 
                 calendarUid: ev.uid,
                 calendarId: cal.id,
                 status: 'confirmed',
+                ...(ev.attendees && ev.attendees.length ? { attendees: ev.attendees } : {}),
             };
             const filepath = path.join(eventsDir, entityFilename(ev.title, baseMeta.id));
             await writeEntity(filepath, meta, ev.description || '');

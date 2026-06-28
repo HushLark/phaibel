@@ -9,14 +9,14 @@
 import type { Process } from '../process/process.js';
 import type { ProcessSource } from '../process/process-factory.js';
 import { STANDARD_PIPELINE } from './standard-pipeline.js';
+import { CRUEL_SUMMER_PIPELINE } from './cruel-summer-pipeline.js';
+import { HERTZ_PIPELINE } from './hertz-pipeline.js';
 
 export class PipelineProcessSource implements ProcessSource {
     private readonly pipelines: Process[] = [
         STANDARD_PIPELINE,
-        // Future pipelines:
-        // FACTUAL_PIPELINE,
-        // FAST_PIPELINE,
-        // DEEP_RESEARCH_PIPELINE,
+        CRUEL_SUMMER_PIPELINE,
+        HERTZ_PIPELINE,
     ];
 
     getProcesses(): Process[] {

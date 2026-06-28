@@ -10,6 +10,7 @@ import { createRequire } from 'module';
 import { WebSocketServer, WebSocket } from 'ws';
 import { listEntities, writeEntity, parseEntity, getEntityDir } from '../entities/entity.js';
 import { feralChatHeadless, type ChatHistoryEntry, type ChatResult } from '../commands/chat.js';
+import { postDebugTrace } from '../utils/synaptic-debug.js';
 import { getQueueManager } from './queue/manager.js';
 import { getEntityIndex } from '../entities/entity-index.js';
 import { getVaultRoot, getAgentName, findVaultRoot, isInterviewComplete, saveProfile, loadState, saveState } from '../state/manager.js';
@@ -45,6 +46,13 @@ export class WebServer {
     private server: http.Server | null = null;
     private wss: WebSocketServer | null = null;
     private indexHtmlContent: string = '';
+    // Boot progress, surfaced via /api/status so clients can show real setup
+    // feedback. Advances: 'starting' → 'indexing' → 'ready'.
+    private bootPhase: 'starting' | 'indexing' | 'ready' = 'starting';
+
+    setBootPhase(phase: 'starting' | 'indexing' | 'ready'): void {
+        this.bootPhase = phase;
+    }
     private htmlContent: string = '';
     private mobileHtmlContent: string = '';
     private productveHtmlContent: string = '';
@@ -156,6 +164,15 @@ export class WebServer {
     ): Promise<void> {
         const url = new URL(req.url || '/', `http://${req.headers.host}`);
 
+        // Liveness/boot probe — deliberately touches NO vault state, so it can
+        // never hang even if a vault-dependent build stalls. Clients (Phaibel
+        // Desktop onboarding) use this to detect the daemon is up + its phase.
+        if (req.method === 'GET' && url.pathname === '/api/ping') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, bootPhase: this.bootPhase, ready: this.bootPhase === 'ready' }));
+            return;
+        }
+
         if (req.method === 'GET' && url.pathname === '/') {
             res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
             res.end(this.indexHtmlContent);
@@ -256,12 +273,19 @@ export class WebServer {
         }
 
         // ── Legacy REST API (deprecated — use /cx/* and /pi/*) ───────
+        // CF/x3 federated sources (not deprecated — new surface).
+        if (url.pathname.startsWith('/api/cfx3')) {
+            const handled = await handleApiRoute(req, res, url);
+            if (handled) return;
+        }
+
         if (url.pathname.startsWith('/api/types') ||
             url.pathname.startsWith('/api/entities') ||
             url.pathname.startsWith('/api/search') ||
             url.pathname.startsWith('/api/processes') ||
             url.pathname.startsWith('/api/chat-logs') ||
             url.pathname.startsWith('/api/settings') ||
+            url.pathname === '/api/account' ||
             url.pathname === '/api/calendar') {
             res.setHeader('Deprecation', 'true');
             res.setHeader('Link', '</cx/>; rel="successor-version"');
@@ -432,7 +456,8 @@ export class WebServer {
 
         if (req.method === 'GET' && url.pathname === '/api/events') {
             const days = parseInt(url.searchParams.get('days') || '3', 10);
-            const events = await this.getEvents(days);
+            const from = url.searchParams.get('from') || undefined;
+            const events = await this.getEvents(days, from);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify(events));
             return;
@@ -588,6 +613,22 @@ export class WebServer {
             return;
         }
 
+        // POST /api/onboard — desktop first-run interview (name, role, manager).
+        // Saves the profile (creates the "me" person node), records the role, and
+        // creates + links the manager as a person the user reports to.
+        if (req.method === 'POST' && url.pathname === '/api/onboard') {
+            try {
+                const body = JSON.parse(await this.readBody(req));
+                const result = await this.handleOnboard(body);
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(result));
+            } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+            }
+            return;
+        }
+
         // GET /api/settings/log-retention
         if (req.method === 'GET' && url.pathname === '/api/settings/log-retention') {
             try {
@@ -649,7 +690,8 @@ export class WebServer {
         const chatHistory: ChatHistoryEntry[] = [];
 
         ws.on('message', async (data) => {
-            let msg: { type: string; message?: string; answer?: string; chatId?: string; reaction?: string; details?: string; audio?: string };
+            let msg: { type: string; message?: string; answer?: string; chatId?: string; reaction?: string; details?: string; audio?: string; debug?: boolean };
+            // type may be 'chat' | 'chat.answer' | 'chat.audio' | 'chat.reset'
             try {
                 msg = JSON.parse(data.toString());
             } catch {
@@ -662,6 +704,14 @@ export class WebServer {
                     pendingAnswer.resolve(msg.answer);
                     pendingAnswer = null;
                 }
+                return;
+            }
+
+            // Clear the conversation context for this connection (the "start over"
+            // button) — drops the rolling history so the next message starts fresh.
+            if (msg.type === 'chat.reset') {
+                chatHistory.length = 0;
+                if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'chat.cleared' }));
                 return;
             }
 
@@ -704,7 +754,7 @@ export class WebServer {
                         }
                     });
                 };
-                await this.handleChat(ws, msg.message, onQuestion, chatHistory);
+                await this.handleChat(ws, msg.message, onQuestion, chatHistory, msg.debug === true);
             }
         });
 
@@ -718,6 +768,7 @@ export class WebServer {
         message: string,
         onQuestion?: (question: string, options?: string[]) => Promise<string>,
         chatHistory?: ChatHistoryEntry[],
+        debugTrace = false,
     ): Promise<void> {
         let currentChatId: string | undefined;
         try {
@@ -741,6 +792,11 @@ export class WebServer {
                     }
                 },
                 chatHistory,
+                'node',
+                undefined,
+                // When the client's "Send debug traces" switch is on, upload the
+                // pipeline trace to synaptic (same as the phaibel-app switch).
+                debugTrace ? (chatId: string, markdown: string) => { void postDebugTrace(chatId, markdown); } : undefined,
             );
 
             // Track conversation history (last 3 exchanges)
@@ -795,13 +851,14 @@ export class WebServer {
         }
     }
 
-    private async getEvents(days: number): Promise<{ dates: Record<string, unknown[]> }> {
-        const now = new Date();
+    private async getEvents(days: number, from?: string): Promise<{ dates: Record<string, unknown[]> }> {
+        let start = from ? new Date(from) : new Date();
+        if (isNaN(start.getTime())) start = new Date();
         const dates: Record<string, unknown[]> = {};
 
-        // Initialize date buckets
+        // Initialize date buckets starting at `from` (default: today)
         for (let i = 0; i < days; i++) {
-            const d = new Date(now);
+            const d = new Date(start);
             d.setDate(d.getDate() + i);
             dates[d.toISOString().split('T')[0]] = [];
         }
@@ -816,10 +873,12 @@ export class WebServer {
                 const eventDate = ((e.meta.startDate as string) || '').split('T')[0];
                 if (eventDate >= startDate && eventDate <= endDate && dates[eventDate]) {
                     dates[eventDate].push({
+                        id: e.meta.id,
                         title: e.meta.title,
                         startDate: e.meta.startDate,
                         endDate: e.meta.endDate,
                         location: e.meta.location || null,
+                        calendarId: e.meta.calendarId || null,
                     });
                 }
             }
@@ -877,6 +936,8 @@ export class WebServer {
         return {
             version: pkg.version,
             uptime: Math.round(process.uptime()),
+            bootPhase: this.bootPhase,
+            ready: this.bootPhase === 'ready',
             queueSize,
             graph: { nodes: graphNodes, edges: graphEdges },
             vaultRoot,
@@ -1111,6 +1172,76 @@ This vault is the agent's memory. Content is stored as Markdown files with YAML 
         return { ok: true, vaultRoot: vaultPath, agentName: body.agentName };
     }
 
+    // Desktop (business) first-run interview. name → profile.userName (+ "me"
+    // person node); role → stored on the "me" node; company → a company node the
+    // user works-at. Distinct from the mobile app's personal onboarding.
+    private async handleOnboard(body: { name?: string; agentName?: string; role?: string; company?: string }):
+        Promise<{ ok: true; userName: string }> {
+        const name = (body.name ?? '').trim();
+        if (!name) throw new Error('name is required');
+        const agentName = (body.agentName ?? '').trim();
+        const role = (body.role ?? '').trim();
+        const company = (body.company ?? '').trim();
+
+        // 1) Save the profile — this also creates/syncs the reserved "me" node.
+        const state = await loadState();
+        await saveProfile({
+            userName: name,
+            agentName: agentName || state.agentName,
+            // Phaibel Desktop is a business product — default the agent to the
+            // Executive Assistant personality unless one was already chosen.
+            personality: state.personality || 'executive',
+            honorific: state.honorific,
+            gender: state.gender,
+        });
+        refreshSystemPromptCache().catch(() => {});
+
+        // 2) Enrich the graph: role on "me", and a manager the user reports to.
+        try {
+            const {
+                listEntities, findEntityByTitle, generateNodeId,
+                ensureEntityDir, writeEntity, nodeFilename, ME_NODE_ID,
+            } = await import('../entities/entity.js');
+            const path = await import('path');
+            const now = new Date().toISOString();
+
+            const people = await listEntities('person').catch(() => []);
+            const me = people.find(p => p.meta.id === ME_NODE_ID || p.meta.isMe === true);
+
+            let companyId: string | undefined;
+            if (company) {
+                const existing = await findEntityByTitle('company', company);
+                if (existing) {
+                    companyId = String(existing.meta.id);
+                } else {
+                    companyId = generateNodeId();
+                    const dir = await ensureEntityDir('company');
+                    await writeEntity(
+                        path.join(dir, nodeFilename(company, companyId)),
+                        { id: companyId, title: company, contextType: 'company', created: now, source: 'onboarding' },
+                        '',
+                    );
+                }
+            }
+
+            if (me) {
+                if (role) me.meta.role = role;
+                if (companyId) {
+                    const links = Array.isArray(me.meta.links) ? me.meta.links as { target: string; label: string }[] : [];
+                    if (!links.some(l => l.target === `company:${companyId}`)) {
+                        links.push({ target: `company:${companyId}`, label: 'works-at' });
+                    }
+                    me.meta.links = links;
+                }
+                if (role || companyId) await writeEntity(me.filepath, me.meta, me.content);
+            }
+        } catch (err) {
+            debug('onboard', `graph enrichment failed: ${err}`);
+        }
+
+        return { ok: true, userName: name };
+    }
+
     private readBody(req: http.IncomingMessage): Promise<string> {
         return new Promise((resolve, reject) => {
             let body = '';
@@ -1141,4 +1272,18 @@ export function getWebServer(): WebServer | null {
  */
 export function pushToChat(message: string, category?: string, data?: unknown): void {
     _instance?.broadcastChat(message, category, data);
+}
+
+/** Tell connected clients to refresh a panel (e.g. on date rollover). */
+export function pushRefresh(panel: 'today' | 'calendar'): void {
+    _instance?.broadcast(panel);
+}
+
+/**
+ * Push a Phaibel block message (rich UI) into the chat of all connected clients.
+ * Blocks travel in the proactive message's `data.blocks`; the desktop renders
+ * them via the block system. Safe to call with no web server running.
+ */
+export function pushBlocks(blocks: unknown[], message = ''): void {
+    _instance?.broadcastChat(message, 'blocks', { blocks });
 }

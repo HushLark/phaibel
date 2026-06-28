@@ -48,6 +48,8 @@ import { bootstrapFeral, type FeralRuntime } from '../feral/bootstrap.js';
 import { debug } from '../utils/debug.js';
 import { upcomingAnnualDates } from '../context/annual-date-resolver.js';
 import { loadSecrets, saveSecrets, getConfiguredProviders } from '../config.js';
+import { loadSources, upsertSource, removeSource, getSource, redactSource } from '../cfx3/source-registry.js';
+import { syncSourceById, writeToSourceById, refreshManifest } from '../cfx3/service.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -204,6 +206,9 @@ export async function handleApiRoute(
             fields: t.fields,
             completionField: t.completionField,
             completionValue: t.completionValue,
+            views: t.views,
+            baseCategory: t.baseCategory,
+            parent: t.parent,
         })));
         return true;
     }
@@ -597,19 +602,95 @@ export async function handleApiRoute(
     }
 
     if (method === 'POST' && pathname === '/api/settings/provider') {
-        const body = await parseJsonBody(req) as { mode: string; endpoint?: string; token?: string };
+        const body = await parseJsonBody(req) as { mode: string; endpoint?: string; token?: string; refreshToken?: string };
         const secrets = await loadSecrets();
         if (body.mode === 'synaptic') {
             if (!body.token) { error(res, 400, 'token is required'); return true; }
             secrets.providers['synaptic'] = {
                 apiKey: body.token,
                 endpoint: body.endpoint ?? 'https://synaptic.hushlark.ai',
+                ...(body.refreshToken ? { refreshToken: body.refreshToken } : {}),
             };
         } else {
             delete secrets.providers['synaptic'];
         }
         await saveSecrets(secrets);
         json(res, 200, { ok: true });
+        return true;
+    }
+
+    // ── HushLark account + credit usage (for the desktop Settings page) ───
+    // Proxies synaptic /v1/me + /v1/billing/subscription + /v1/usage using the
+    // stored synaptic token, refreshing it on 401. Kept here so the desktop can
+    // reach it through the existing daemon-api proxy without handling tokens.
+    if (method === 'GET' && pathname === '/api/account') {
+        const secrets = await loadSecrets();
+        const syn = secrets.providers['synaptic'] as { apiKey?: string; endpoint?: string; refreshToken?: string } | undefined;
+        if (!syn?.apiKey) { json(res, 200, { configured: false }); return true; }
+        const base = (syn.endpoint ?? 'https://synaptic.hushlark.ai').replace(/\/$/, '');
+
+        let token = syn.apiKey;
+        const synGet = async (p: string): Promise<Record<string, unknown> | null> => {
+            const call = () => fetch(`${base}${p}`, { headers: { Authorization: `Bearer ${token}` } });
+            let r = await call();
+            if (r.status === 401 && syn.refreshToken) {
+                const rr = await fetch(`${base}/v1/auth/refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refresh_token: syn.refreshToken }),
+                });
+                if (rr.ok) {
+                    const t = await rr.json() as { access_token: string; refresh_token: string };
+                    token = t.access_token;
+                    secrets.providers['synaptic'] = { ...syn, apiKey: t.access_token, refreshToken: t.refresh_token, endpoint: base };
+                    await saveSecrets(secrets);
+                    r = await call();
+                }
+            }
+            if (!r.ok) return null;
+            return r.json().catch(() => null) as Promise<Record<string, unknown> | null>;
+        };
+
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
+        const [me, billing, usage] = await Promise.all([
+            synGet('/v1/me'),
+            synGet('/v1/billing/subscription'),
+            synGet(`/v1/usage?from=${encodeURIComponent(thirtyDaysAgo)}`),
+        ]);
+
+        const sub = (billing?.subscription ?? null) as Record<string, unknown> | null;
+        const usageRows = (Array.isArray(usage?.usage) ? usage.usage : []) as Record<string, unknown>[];
+        const num = (v: unknown) => Number(v) || 0;
+        const byCapability = usageRows
+            .map(r => ({ capability: String(r.capability ?? ''), credits: num(r.credits), requests: num(r.requests) }))
+            .sort((a, b) => b.credits - a.credits);
+        const session = (usage?.session ?? null) as Record<string, unknown> | null;
+
+        const groups = Array.isArray(me?.groups) ? me.groups as Record<string, unknown>[] : [];
+        const accountName = groups.length ? String(groups[0].group_name ?? '') : undefined;
+
+        json(res, 200, {
+            configured: true,
+            member: me ? {
+                email: me.email, displayName: me.display_name, suid: me.suid, account: accountName,
+            } : null,
+            subscription: sub ? {
+                planName: sub.plan_name, status: sub.status,
+                currentPeriodEnd: sub.current_period_end, creditsPerSession: sub.credits_per_session,
+            } : null,
+            usage: {
+                window: usage?.window ?? null,
+                totalCredits: byCapability.reduce((s, r) => s + r.credits, 0),
+                totalRequests: byCapability.reduce((s, r) => s + r.requests, 0),
+                byCapability,
+                session: session ? {
+                    creditsUsed: num(session.credits_used),
+                    creditsLimit: num(session.credits_limit),
+                    windowStart: session.window_start,
+                    windowEnd: session.window_end,
+                } : null,
+            },
+        });
         return true;
     }
 
@@ -665,6 +746,52 @@ export async function handleApiRoute(
             .filter(Boolean);
         json(res, 200, entries);
         return true;
+    }
+
+    // ── CF/x3 federated sources ──────────────────────────────────────
+    if (pathname === '/api/cfx3/sources' && method === 'GET') {
+        const sources = await loadSources();
+        json(res, 200, sources.map(redactSource));
+        return true;
+    }
+    if (pathname === '/api/cfx3/sources' && method === 'POST') {
+        const body = await parseJsonBody(req) as { id?: string; name?: string; url?: string; apiKey?: string; enabled?: boolean };
+        if (!body.name || !body.url) { error(res, 400, 'name and url are required'); return true; }
+        const source = await upsertSource({ id: body.id, name: body.name, url: body.url, apiKey: body.apiKey, enabled: body.enabled });
+        // Best-effort manifest fetch so the UI shows context types/tools immediately.
+        try { await refreshManifest(source); } catch (e) { debug('cfx3', `manifest on add failed: ${e}`); }
+        const fresh = await getSource(source.id);
+        json(res, 200, redactSource(fresh ?? source));
+        return true;
+    }
+    const cfxMatch = pathname.match(/^\/api\/cfx3\/sources\/([^/]+)(\/sync|\/write|\/manifest)?$/);
+    if (cfxMatch) {
+        const id = decodeURIComponent(cfxMatch[1]);
+        const sub = cfxMatch[2];
+        if (!sub && method === 'DELETE') {
+            json(res, 200, { ok: await removeSource(id) });
+            return true;
+        }
+        if (sub === '/sync' && method === 'POST') {
+            const body = await parseJsonBody(req).catch(() => ({})) as { full?: boolean };
+            try { json(res, 200, await syncSourceById(id, { full: body.full })); }
+            catch (e) { error(res, 400, e instanceof Error ? e.message : String(e)); }
+            return true;
+        }
+        if (sub === '/manifest' && method === 'GET') {
+            const source = await getSource(id);
+            if (!source) { error(res, 404, 'source not found'); return true; }
+            try { json(res, 200, await refreshManifest(source)); }
+            catch (e) { error(res, 400, e instanceof Error ? e.message : String(e)); }
+            return true;
+        }
+        if (sub === '/write' && method === 'POST') {
+            const body = await parseJsonBody(req) as { op?: string };
+            if (!body.op) { error(res, 400, 'op required (node.create|node.update|node.delete|type.*)'); return true; }
+            try { json(res, 200, await writeToSourceById(id, body as Parameters<typeof writeToSourceById>[1])); }
+            catch (e) { error(res, 400, e instanceof Error ? e.message : String(e)); }
+            return true;
+        }
     }
 
     // No route matched

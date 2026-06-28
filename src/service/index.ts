@@ -209,6 +209,49 @@ async function handleRequest(request: ServiceRequest): Promise<ServiceResponse> 
     }
 }
 
+// Create a Foundation (root .cxms.md + base directories) at PHAIBEL_VAULT if one
+// doesn't exist yet — so a freshly-created per-account vault is usable on first
+// boot without requiring `phaibel init` or the web setup wizard.
+async function ensureFoundation(): Promise<void> {
+    const vault = process.env.PHAIBEL_VAULT;
+    if (!vault) return;
+    const { promises: fs } = await import('fs');
+    const path = (await import('path')).default;
+    const marker = path.join(vault, '.cxms.md');
+    try {
+        await fs.access(marker);
+        return; // already a foundation
+    } catch { /* needs init */ }
+    try {
+        await fs.mkdir(vault, { recursive: true });
+        const today = new Date().toISOString().split('T')[0];
+        const name = path.basename(vault);
+        await fs.writeFile(marker, `---
+title: "${name}"
+created: ${today}
+---
+
+# ${name}
+
+## Memory
+
+This Foundation is the agent's memory. Content is stored as Markdown files with
+YAML frontmatter, organised by context type (tasks, events, notes, goals, people,
+places, etc.) and linked into a knowledge graph.
+
+## User Preferences
+
+- Timezone: Local machine time
+- Date format: YYYY-MM-DD
+`);
+        const { initEntityTypes } = await import('../entities/entity-type-config.js');
+        await initEntityTypes(); // creates context-types/ + each built-in type dir
+        console.log(`[boot] Initialized new foundation at ${vault}`);
+    } catch (err) {
+        console.warn(`[boot] Foundation init failed: ${err instanceof Error ? err.message : err}`);
+    }
+}
+
 async function main(): Promise<void> {
     console.log('Phaibel service starting...');
 
@@ -238,6 +281,32 @@ async function main(): Promise<void> {
     await server.start(SOCKET_PATH());
     await processor.start();
 
+    // Start the web server FIRST — before the (potentially slow) entity-index and
+    // embedding build below. Clients (Phaibel Desktop) wait on this port to open
+    // their window; gating it behind a fresh-vault embedding-model init made the
+    // app fail with "daemon did not start in time". Port is overridable via
+    // PHAIBEL_PORT so the CLI and Phaibel Desktop daemons don't collide on 3737.
+    const webPort = Number(process.env.PHAIBEL_PORT) || 3737;
+    try {
+        await webServer.start(webPort);
+        console.log(`Web client at http://localhost:${webPort}`);
+        console.log(`  Mobile:    http://localhost:${webPort}/mobile`);
+        console.log(`  Productve: http://localhost:${webPort}/productve`);
+        console.log(`  Assistant: http://localhost:${webPort}/assistant`);
+    } catch (err) {
+        console.error('Failed to start web server:', err);
+    }
+    webServer.setBootPhase('indexing');
+
+    // Yield a tick so the just-bound web server can serve /api/status before the
+    // index build below runs. Lets the desktop onboarding show real progress.
+    await new Promise((r) => setImmediate(r));
+
+    // Ensure the configured vault is a valid Foundation. Phaibel Desktop points
+    // PHAIBEL_VAULT at a fresh per-account dir (~/.phaibel/vaults/<slug>) that
+    // has no .cxms.md yet; without this, every vault op fails ("No foundation").
+    await ensureFoundation();
+
     // Vault-dependent startup — skip gracefully if no vault exists yet.
     // The web server can still serve the HTML client for onboarding.
     try {
@@ -248,50 +317,54 @@ async function main(): Promise<void> {
             debug('service', `Cron scheduler skipped: ${err}`);
         }
 
-        // Build entity index
+        // Build entity index (async file I/O — yields, doesn't block the loop).
+        // Guarded by a timeout so a stuck build can't pin the daemon in 'indexing'
+        // forever; the boot markers below pinpoint where a stall happens.
         try {
+            console.log('[boot] Building entity index…');
             const index = getEntityIndex();
-            await index.build();
+            await Promise.race([
+                index.build(),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('entity index build timed out after 25s')), 25_000)),
+            ]);
             const stats = index.getStats();
             console.log(`Entity index: ${stats.nodeCount} nodes, ${stats.edgeCount} edges`);
-
-            // Load and sync embedding index
-            try {
-                const embeddingIndex = getEmbeddingIndex();
-                await embeddingIndex.load();
-                const result = await embeddingIndex.sync(index);
-                console.log(`Embedding index: ${result.added} added, ${result.updated} updated, ${result.removed} removed`);
-            } catch (err) {
-                debug('embeddings', `Embedding index sync skipped: ${err}`);
-            }
-
-            // Load behavioral index
-            try {
-                const { getBehavioralIndex } = await import('../cxms/behavioral-index.js');
-                await getBehavioralIndex().load();
-                debug('service', 'Behavioral index loaded');
-            } catch (err) {
-                debug('service', `Behavioral index load skipped: ${err}`);
-            }
         } catch (err) {
-            debug('service', `Entity index skipped: ${err}`);
+            console.warn(`[boot] Entity index skipped: ${err instanceof Error ? err.message : err}`);
         }
     } catch (err) {
         console.log('No vault found — skipping vault-dependent startup. Use the web client to set up.');
     }
 
-    // Start web server (always — needed for onboarding)
-    try {
-        await webServer.start(3737);
-        console.log('Web client at http://localhost:3737');
-        console.log('  Mobile:    http://localhost:3737/mobile');
-        console.log('  Productve: http://localhost:3737/productve');
-        console.log('  Assistant: http://localhost:3737/assistant');
-    } catch (err) {
-        console.error('Failed to start web server:', err);
-    }
-
+    // The daemon is functionally ready once the entity index is built (chat,
+    // browse, onboarding all work). Mark ready BEFORE the embedding/behavioral
+    // load, which uses onnxruntime and can block the single-threaded event loop —
+    // gating readiness on it made onboarding stall on a fresh vault.
+    webServer.setBootPhase('ready');
     console.log(`Phaibel service running on ${SOCKET_PATH()}`);
+
+    // Defer the heavy embedding + behavioral sync so it runs AFTER the daemon is
+    // serving requests. Fire-and-forget: even if onnxruntime is slow/hangs on
+    // first run, the app is already usable. The cron 'embedding-sync' job keeps
+    // it current thereafter.
+    setImmediate(async () => {
+        try {
+            const index = getEntityIndex();
+            const embeddingIndex = getEmbeddingIndex();
+            await embeddingIndex.load();
+            const result = await embeddingIndex.sync(index);
+            console.log(`Embedding index: ${result.added} added, ${result.updated} updated, ${result.removed} removed`);
+        } catch (err) {
+            debug('embeddings', `Embedding index sync skipped: ${err}`);
+        }
+        try {
+            const { getBehavioralIndex } = await import('../cxms/behavioral-index.js');
+            await getBehavioralIndex().load();
+            debug('service', 'Behavioral index loaded');
+        } catch (err) {
+            debug('service', `Behavioral index load skipped: ${err}`);
+        }
+    });
 }
 
 if (isService) {

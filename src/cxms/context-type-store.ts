@@ -26,6 +26,13 @@ interface ContextTypeMapping {
     }>;
 }
 
+// Naive English pluralizer — enough for default context-type plurals.
+function pluralize(name: string): string {
+    if (/[^aeiou]y$/i.test(name)) return name.slice(0, -1) + 'ies';
+    if (/(s|x|z|ch|sh)$/i.test(name)) return name + 'es';
+    return name + 's';
+}
+
 // ── Read ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -66,6 +73,10 @@ export async function loadContextTypesFromStore(): Promise<EntityTypeConfig[] | 
                 config.directory = `context-types/${entry}`;
                 if (!config.name) config.name = entry;
                 if (!config.fields) config.fields = [];
+                // A malformed file (e.g. missing frontmatter) can leave plural
+                // undefined, which breaks catalog building for ALL chat. Default
+                // it so one bad type can't take the whole agent down.
+                if (!config.plural) config.plural = pluralize(config.name);
                 types.push(config);
             } catch {
                 // Skip directories without .phaibel.md

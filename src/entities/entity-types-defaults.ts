@@ -74,6 +74,7 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             { key: 'startDate', type: 'datetime', label: 'Start Time', required: true },
             { key: 'duration',  type: 'duration', label: 'Duration',   required: false },
             { key: 'location',  type: 'string',   label: 'Location',   required: false },
+            { key: 'notes',     type: 'string',   label: 'Notes',      required: false },
             { key: 'status',    type: 'enum',     label: 'Status',
               values: ['confirmed', 'tentative', 'cancelled'],           required: false },
         ],
@@ -128,8 +129,50 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
         ],
     },
     {
+        name: 'place',
+        baseCategory: 'place',
+        plural: 'places',
+        directory: 'places',
+        description: 'Geographical locations — venues, addresses, regions',
+        fields: [
+            { key: 'address',     type: 'string', label: 'Address',     required: false },
+            { key: 'coordinates', type: 'string', label: 'Coordinates', required: false },
+            { key: 'category',    type: 'string', label: 'Category',    required: false },
+            { key: 'notes',       type: 'string', label: 'Notes',       required: false },
+        ],
+        // Inherits the 'place' base-category relevance profile (spatial-led).
+    },
+    {
+        name: 'residence',
+        baseCategory: 'place',
+        parent: 'place',
+        plural: 'residences',
+        directory: 'residences',
+        description: 'Homes — where you and people you know live ("My Home", family homes, rentals)',
+        fields: [
+            { key: 'address',     type: 'string',    label: 'Address',     required: false },
+            { key: 'coordinates', type: 'string',    label: 'Coordinates', required: false },
+            { key: 'resident',    type: 'reference', label: 'Resident',    targetType: 'person', required: false },
+        ],
+    },
+    {
+        name: 'spot',
+        baseCategory: 'place',
+        parent: 'place',
+        plural: 'spots',
+        directory: 'spots',
+        description: 'Personally meaningful places you frequent — the gym, your coffee shop, a trailhead',
+        fields: [
+            { key: 'address',     type: 'string', label: 'Address',     required: false },
+            { key: 'coordinates', type: 'string', label: 'Coordinates', required: false },
+            { key: 'category',    type: 'string', label: 'Category',    required: false },
+            { key: 'notes',       type: 'string', label: 'Notes',       required: false },
+        ],
+    },
+    {
         name: 'company',
-        baseCategory: 'thing',
+        baseCategory: 'place',
+        parent: 'place',
         plural: 'companies',
         directory: 'companies',
         description: 'Companies and organizations',
@@ -187,4 +230,4 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
 ];
 
 /** Names of built-in types that cannot be removed. */
-export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'person', 'company', 'todont', 'goal']);
+export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'person', 'place', 'residence', 'spot', 'company', 'todont', 'goal']);

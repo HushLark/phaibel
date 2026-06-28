@@ -18,6 +18,8 @@ import {
     generateNodeId,
     ensureEntityDir,
     nodeFilename,
+    findEntityByTitle,
+    type EntityTypeName,
 } from '../entities/entity.js';
 import { computeNodeDimensions } from './dimension-calculator.js';
 import {
@@ -58,6 +60,8 @@ import {
     getWindowBounds,
     todayStr,
 } from '../entities/temporal-filter.js';
+import { getModelForCapability } from '../llm/router.js';
+import { getEntityIndex } from '../entities/entity-index.js';
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
@@ -81,6 +85,11 @@ export async function handleCxRoute(
         // POST /cx/search
         if (pathname === '/cx/search' && method === 'POST') {
             return await handleSearch(req, res);
+        }
+
+        // POST /cx/summarize — summarize a meeting transcript (Rembr) and file it
+        if (pathname === '/cx/summarize' && method === 'POST') {
+            return await handleSummarize(req, res);
         }
 
         // GET /cx/date
@@ -555,6 +564,350 @@ async function handleGetNode(res: http.ServerResponse, typeName: string, nodeId:
         ancestorContext,
     });
     return true;
+}
+
+// POST /cx/summarize — used by Rembr (desktop meeting recorder). Summarizes a
+// transcript via the configured `summarize` capability (synaptic / HushLark
+// credits when logged in, BYOK otherwise) and best-effort files it as a
+// knowledge node so the meeting enters Phaibel's context.
+async function handleSummarize(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean> {
+    const raw = await readBody(req);
+    let body: Record<string, unknown>;
+    try {
+        body = JSON.parse(raw || '{}');
+    } catch {
+        badRequest(res, 'Invalid JSON body');
+        return true;
+    }
+
+    const transcript = typeof body.transcript === 'string' ? body.transcript.trim() : '';
+    if (!transcript) {
+        badRequest(res, 'Missing required field: transcript');
+        return true;
+    }
+
+    let provider;
+    try {
+        provider = await getModelForCapability('summarize');
+    } catch (err) {
+        serverError(res, (err as Error).message);
+        return true;
+    }
+
+    const system = 'You summarize meeting transcripts. Respond ONLY with a single minified JSON object — no markdown, no commentary.';
+    const user =
+        'Summarize the following meeting transcript. Return JSON with exactly these keys:\n' +
+        '"title": a short descriptive title (<= 8 words),\n' +
+        '"summary": a 2-4 sentence plain-text summary,\n' +
+        '"actionItems": array of short action-item strings (may be empty),\n' +
+        '"decisions": array of short decision strings (may be empty),\n' +
+        '"participants": array of participant names mentioned (may be empty).\n\n' +
+        `TRANSCRIPT:\n${transcript}`;
+
+    let responseText = '';
+    try {
+        responseText = await provider.chat(
+            [{ role: 'system', content: system }, { role: 'user', content: user }],
+            { temperature: 0.2 },
+        );
+    } catch (err) {
+        // Summarization failed — still save the transcript below.
+        debug('cx/summarize', `LLM summarize failed: ${(err as Error).message}`);
+        responseText = '';
+    }
+
+    const parsed = parseSummaryJson(responseText);
+    const result = {
+        title: parsed.title || (body.title as string) || 'Meeting',
+        summary: parsed.summary || responseText.trim(),
+        actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems : [],
+        decisions: Array.isArray(parsed.decisions) ? parsed.decisions : [],
+        participants: Array.isArray(parsed.participants) ? parsed.participants : [],
+        nodeId: undefined as string | undefined,
+        linkedPeople: [] as string[],
+        createdPeople: [] as string[],
+        linkedEvent: undefined as
+            | { id: string; title: string; location?: string; startDate?: string; endDate?: string; attendees: string[] }
+            | undefined,
+    };
+
+    // Direct graph neighbors of the meeting (attendees + scheduled event),
+    // captured for the post-summary graph walk that surfaces related context.
+    const directNeighbors: { key: string; name: string; relation: string }[] = [];
+
+    // Persist the meeting as a CxMS context node, linked to people (creating any
+    // it doesn't know yet). The transcript is stored in the node body.
+    try {
+        await ensureMeetingType();
+        const now = new Date().toISOString();
+        const links: { target: string; label: string }[] = [];
+
+        // Match a scheduled calendar event first — its invite details (title,
+        // attendees, location) enrich the call record.
+        const scheduled = await findScheduledEvent(typeof body.startedAt === 'string' ? body.startedAt : undefined);
+        if (scheduled) {
+            result.linkedEvent = scheduled;
+            // The invite name is authoritative for the call title.
+            if (scheduled.title) result.title = scheduled.title;
+            // Fold invite attendees into participants (so they get linked as people).
+            for (const a of scheduled.attendees) {
+                if (!result.participants.some(p => String(p).toLowerCase() === a.toLowerCase())) {
+                    result.participants.push(a);
+                }
+            }
+        }
+
+        // Resolve/create a person entity per participant, collect frontmatter links.
+        const seen = new Set<string>();
+        for (const raw of result.participants) {
+            const nm = String(raw ?? '').trim();
+            const key = nm.toLowerCase();
+            if (!nm || SELF_NAMES.has(key) || seen.has(key)) continue;
+            seen.add(key);
+
+            let personId: string;
+            const existing = await findEntityByTitle('person' as EntityTypeName, nm);
+            if (existing) {
+                personId = String(existing.meta.id);
+                result.linkedPeople.push(nm);
+            } else {
+                personId = generateNodeId();
+                const pdir = await ensureEntityDir('person' as EntityTypeName);
+                await writeEntity(
+                    path.join(pdir, nodeFilename(nm, personId)),
+                    { id: personId, title: nm, contextType: 'person', created: now, source: 'rembr' },
+                    '',
+                );
+                result.createdPeople.push(nm);
+            }
+            links.push({ target: `person:${personId}`, label: 'attended' });
+            directNeighbors.push({ key: `person:${personId}`, name: nm, relation: 'attended' });
+        }
+
+        if (scheduled) {
+            links.push({ target: `event:${scheduled.id}`, label: 'scheduled-as' });
+            directNeighbors.push({ key: `event:${scheduled.id}`, name: scheduled.title, relation: 'scheduled as' });
+        }
+
+        const id = generateNodeId();
+        const meta: Record<string, unknown> = {
+            id, title: result.title, contextType: 'meeting', created: now,
+            ...(typeof body.startedAt === 'string' ? { date: body.startedAt } : {}),
+            ...(typeof body.durationSeconds === 'number' ? { durationSeconds: body.durationSeconds } : {}),
+            ...(result.participants.length ? { participants: result.participants } : {}),
+            ...(result.actionItems.length ? { actionItems: result.actionItems } : {}),
+            ...(result.decisions.length ? { decisions: result.decisions } : {}),
+            ...(scheduled ? { event: { id: scheduled.id, title: scheduled.title, location: scheduled.location, startDate: scheduled.startDate, endDate: scheduled.endDate } } : {}),
+            ...(links.length ? { links } : {}),
+            source: 'rembr',
+        };
+
+        const sections: string[] = [];
+        if (result.summary) sections.push(result.summary);
+        if (result.actionItems.length) sections.push('## Action Items\n' + result.actionItems.map(a => `- ${a}`).join('\n'));
+        if (result.decisions.length) sections.push('## Decisions\n' + result.decisions.map(d => `- ${d}`).join('\n'));
+        sections.push('## Transcript\n' + transcript);
+
+        const dir = await ensureEntityDir('meeting' as EntityTypeName);
+        await writeEntity(path.join(dir, nodeFilename(result.title, id)), meta, sections.join('\n\n'));
+        result.nodeId = id;
+    } catch (err) {
+        debug('cx/summarize', `filing failed: ${(err as Error).message}`);
+    }
+
+    // Once the meeting node exists, post it into the chat: a short note from the
+    // assistant, then a graph walk from this node surfacing related people,
+    // places, and things. Best-effort — never blocks the HTTP response.
+    try {
+        await postMeetingGraphToChat(result, directNeighbors);
+    } catch (err) {
+        debug('cx/summarize', `chat post failed: ${(err as Error).message}`);
+    }
+
+    jsonResponse(res, 200, result);
+    return true;
+}
+
+// ── Post-summary graph walk → chat ─────────────────────────────────────────────
+// After a call is recorded and summarized, announce it in the chat and run a
+// one/two-hop walk of the knowledge graph from the new meeting node to surface
+// the related context (attendees and what they connect to: places, things, …).
+
+const PRIM_ORDER = ['person', 'place', 'thing', 'event', 'task', 'goal'];
+const PRIM_LABEL: Record<string, string> = {
+    person: 'People', place: 'Places', thing: 'Things', event: 'Events', task: 'Tasks', goal: 'Goals',
+};
+
+// Map every context type to its base category (person/place/thing/…) so
+// discovered nodes can be grouped under the six life primitives.
+async function baseCategoryByType(): Promise<Map<string, string>> {
+    const m = new Map<string, string>();
+    try {
+        for (const t of await loadEntityTypes()) {
+            m.set(t.name, (t.baseCategory as string) || 'thing');
+        }
+    } catch { /* defaults below */ }
+    return m;
+}
+
+async function postMeetingGraphToChat(
+    result: { nodeId?: string; title: string; summary: string; actionItems: string[]; decisions: string[] },
+    directNeighbors: { key: string; name: string; relation: string }[],
+): Promise<void> {
+    if (!result.nodeId) return;
+
+    let push: typeof import('../service/web-server.js');
+    try {
+        push = await import('../service/web-server.js');
+    } catch {
+        return; // web server not running (e.g. CLI) — nothing to post to
+    }
+
+    // 1) Conversational note from the assistant.
+    const note: string[] = [`🎙️ I recorded and summarized **${result.title}**.`];
+    if (result.summary) note.push('', result.summary);
+    const counts: string[] = [];
+    if (result.actionItems.length) counts.push(`${result.actionItems.length} action item${result.actionItems.length === 1 ? '' : 's'}`);
+    if (result.decisions.length) counts.push(`${result.decisions.length} decision${result.decisions.length === 1 ? '' : 's'}`);
+    if (counts.length) note.push('', `Captured ${counts.join(' and ')}.`);
+    push.pushToChat(note.join('\n'), 'info');
+
+    // 2) Walk the graph from the meeting node → related people, places, things.
+    const meetingKey = `meeting:${result.nodeId}`;
+    const catMap = await baseCategoryByType();
+    const index = getEntityIndex();
+    const meKey = index.getMeNode() ? `person:${index.getMeNode()!.id}` : '';
+
+    const found = new Map<string, { name: string; category: string; relation: string }>();
+    const add = (key: string, name: string, typeName: string, relation: string): void => {
+        if (!key || key === meetingKey || key === meKey || found.has(key)) return;
+        found.set(key, { name, category: catMap.get(typeName) || 'thing', relation });
+    };
+
+    // First hop: attendees + the scheduled event (from the links we just wrote).
+    for (const d of directNeighbors) {
+        add(d.key, d.name, d.key.split(':')[0], d.relation);
+    }
+
+    // Second hop: what each attendee / the event connects to (places, things,
+    // goals, other people). New nodes have no edges yet, so this is a no-op for
+    // freshly-created people — only established context surfaces.
+    for (const d of directNeighbors) {
+        let neighbors: ReturnType<typeof index.getNeighbors> = [];
+        try { neighbors = index.getNeighbors(d.key); } catch { continue; }
+        for (const n of neighbors) {
+            add(`${n.node.type}:${n.node.id}`, n.node.name, n.node.type, `via ${d.name}`);
+        }
+    }
+
+    // Group by base category and render as blocks.
+    const byCat = new Map<string, { name: string; relation: string }[]>();
+    for (const v of found.values()) {
+        const arr = byCat.get(v.category) ?? [];
+        arr.push({ name: v.name, relation: v.relation });
+        byCat.set(v.category, arr);
+    }
+
+    const blocks: unknown[] = [{ type: 'heading', text: 'Related context', level: 3 }];
+    let any = false;
+    for (const cat of PRIM_ORDER) {
+        const arr = byCat.get(cat);
+        if (!arr?.length) continue;
+        any = true;
+        blocks.push({ type: 'markdown', text: `**${PRIM_LABEL[cat] ?? cat}**` });
+        blocks.push({ type: 'list', items: arr.map(x => x.relation ? `${x.name} — ${x.relation}` : x.name) });
+    }
+    if (!any) {
+        blocks.push({ type: 'markdown', text: '_No connected people, places, or things yet. As you record and link more, the graph fills in._' });
+    }
+    push.pushBlocks(blocks, '');
+}
+
+// Vault-owner aliases — never created as separate people or linked.
+const SELF_NAMES = new Set(['you', 'me', 'myself', 'i', 'self']);
+
+interface ScheduledEvent {
+    id: string;
+    title: string;
+    location?: string;
+    startDate?: string;
+    endDate?: string;
+    attendees: string[];
+}
+
+// Find a calendar event scheduled around the call's start. The call time must
+// fall within the event ±3 minutes (so an event that started up to 3 minutes
+// before the call still counts). Returns the closest match with its details.
+async function findScheduledEvent(startedAtISO?: string): Promise<ScheduledEvent | null> {
+    if (!startedAtISO) return null;
+    const callStart = new Date(startedAtISO).getTime();
+    if (isNaN(callStart)) return null;
+    const GRACE = 3 * 60 * 1000;
+
+    let best: { ev: ScheduledEvent; delta: number } | null = null;
+    try {
+        const events = await listEntities('event' as EntityTypeName);
+        for (const e of events) {
+            const start = new Date(String(e.meta.startDate ?? '')).getTime();
+            if (isNaN(start)) continue;
+            const endRaw = new Date(String(e.meta.endDate ?? e.meta.startDate ?? '')).getTime();
+            const end = isNaN(endRaw) ? start : endRaw;
+            if (callStart >= start - GRACE && callStart <= end + GRACE) {
+                const delta = Math.abs(start - callStart);
+                if (!best || delta < best.delta) {
+                    best = {
+                        delta,
+                        ev: {
+                            id: String(e.meta.id),
+                            title: String(e.meta.title ?? 'Event'),
+                            location: typeof e.meta.location === 'string' ? e.meta.location : undefined,
+                            startDate: typeof e.meta.startDate === 'string' ? e.meta.startDate : undefined,
+                            endDate: typeof e.meta.endDate === 'string' ? e.meta.endDate : undefined,
+                            attendees: Array.isArray(e.meta.attendees) ? (e.meta.attendees as unknown[]).map(String) : [],
+                        },
+                    };
+                }
+            }
+        }
+    } catch { /* no events */ }
+    return best ? best.ev : null;
+}
+
+// Ensure the 'meeting' context type exists so recorded calls become real CxMS nodes.
+async function ensureMeetingType(): Promise<void> {
+    if (await getEntityType('meeting')) return;
+    try {
+        await addEntityType({
+            name: 'meeting',
+            plural: 'meetings',
+            directory: 'context-types/meeting',
+            description: 'A recorded meeting or call with transcript, summary, action items, and participants',
+            fields: [
+                { key: 'date', type: 'datetime', label: 'Date' },
+                { key: 'durationSeconds', type: 'number', label: 'Duration (seconds)' },
+                { key: 'summary', type: 'string', label: 'Summary' },
+            ],
+        } as Parameters<typeof addEntityType>[0]);
+    } catch {
+        // Already created (e.g. concurrent request) — fine.
+    }
+}
+
+function parseSummaryJson(text: string): {
+    title?: string; summary?: string; actionItems?: string[]; decisions?: string[]; participants?: string[];
+} {
+    if (!text) return {};
+    let t = text.trim();
+    const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fence) t = fence[1].trim();
+    const start = t.indexOf('{');
+    const end = t.lastIndexOf('}');
+    if (start >= 0 && end > start) t = t.slice(start, end + 1);
+    try {
+        return JSON.parse(t);
+    } catch {
+        return {};
+    }
 }
 
 async function handleCreateNode(req: http.IncomingMessage, res: http.ServerResponse, typeName: string): Promise<boolean> {

@@ -220,6 +220,12 @@ export interface EntityTypeConfig {
     timeWindowDaysPast?: number;
     /** @deprecated Use temporal.windowDaysAfter instead */
     timeWindowDaysFuture?: number;
+    /**
+     * Optional Phaibel-block view templates rendered by the clients (deterministic
+     * interpolation). CxMS stores them as opaque data — it does not render. Each
+     * is a block array with {{placeholders}}; absent → clients use smart defaults.
+     */
+    views?: { summary?: unknown[]; detail?: unknown[] };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

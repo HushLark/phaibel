@@ -1,10 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Pipeline NodeCode — Select Nodes (Phase 4)
+// Pipeline NodeCode — Select Nodes (iterative catalog search)
 // ─────────────────────────────────────────────────────────────────────────────
 //
-// Presents the catalog to the LLM and asks it to pick the minimal set of nodes
-// needed to fulfil the user's request.  The output is stored in context as
-// pre-formatted strings that the action_loop NodeCode injects into LLM prompts.
+// Presents the catalog to the LLM via a compact overview and iterative search
+// rather than dumping every node upfront.  The LLM sees ~200 tokens of group
+// summaries and pulls what it needs round by round.
+//
+// Unlike cs_node_loop (max 5 rounds), this uses max 3 rounds since the standard
+// pipeline prioritises speed.  Intent-filtered nodes are pre-surfaced so the
+// LLM can often complete in a single round without any searches.
 //
 // Reads: user_input, __history, __gathered_context_str, __gathered_context,
 //        __classification, __intent, __entity_types, __entity_index,
@@ -22,6 +26,7 @@ import { AbstractNodeCode } from '../abstract-node-code.js';
 import { analyzeQueryRelevance, filterCatalogNodes } from '../../../context/query-relevance.js';
 import type { RelevantType } from '../../../context/query-relevance.js';
 import { serializeGatheredContext } from '../../../context/context-loop.js';
+import { searchCatalog, buildCatalogOverview, formatCatalogNodes } from '../../catalog/catalog-search.js';
 import { getModelForCapability } from '../../../llm/router.js';
 import { parseJsonResponse } from '../../../utils/json-parser.js';
 import { debug } from '../../../utils/debug.js';
@@ -32,19 +37,22 @@ import type { EntityIndex } from '../../../entities/entity-index.js';
 import type { EntityTypeConfig } from '../../../entities/entity-type-config.js';
 import type { FeralRuntime } from '../../bootstrap.js';
 import type { GatheredContext } from '../../../context/context-loop.js';
+import type { CatalogNode } from '../../catalog/catalog-node.js';
+
+const MAX_ROUNDS = 3;
 
 export class PipelineSelectNodesNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [];
     static readonly resultDescriptions: ResultDescription[] = [
-        { status: ResultStatus.OK,    description: 'Nodes selected; details stored in context.' },
-        { status: ResultStatus.ERROR, description: 'Node selection LLM call failed.' },
+        { status: ResultStatus.OK,    description: 'Nodes selected via catalog search; details stored in context.' },
+        { status: ResultStatus.ERROR, description: 'Runtime unavailable or LLM call failed.' },
     ];
 
     constructor() {
         super(
             'pipeline_select_nodes',
             'Pipeline: Select Nodes',
-            'Asks the categorize LLM to pick the minimal catalog nodes for the request (Phase 4).',
+            'Iteratively searches the catalog and selects the minimal nodes for the request. Intent-filtered pool pre-surfaced for speed.',
             'pipeline',
         );
     }
@@ -66,10 +74,10 @@ export class PipelineSelectNodesNodeCode extends AbstractNodeCode {
 
         onStatus?.('Selecting capabilities…');
 
-        // Build intent-relevant type list
+        // ── Build intent-relevant type list (for pre-seeding the surfaced pool) ──
         const intent = context.get('__intent') as { entityTypes?: string[] } | null;
         let intentRelevantTypes: RelevantType[] = [];
-        if (intent?.entityTypes && intent.entityTypes.length > 0) {
+        if (intent?.entityTypes?.length) {
             intentRelevantTypes = intent.entityTypes.map(t => ({
                 type: t, reason: 'mentioned' as const, matchCount: 0, matchSamples: [],
             }));
@@ -77,109 +85,146 @@ export class PipelineSelectNodesNodeCode extends AbstractNodeCode {
             try {
                 const relevance = await analyzeQueryRelevance(userInput, entityTypes, entityIndex);
                 intentRelevantTypes = relevance.relevantTypes;
-            } catch {
-                intentRelevantTypes = [];
-            }
+            } catch { /* proceed with empty */ }
         }
         context.set('__relevance_types', intentRelevantTypes);
 
-        // Build catalog summary
         const allNodes = runtime.catalog.getAllCatalogNodes();
-        const filteredNodes = filterCatalogNodes(
-            allNodes.filter(n => !n.key.startsWith('speak_') && !n.key.startsWith('pipeline_')),
+
+        // ── Pre-seed the surfaced pool with intent-filtered nodes ─────────────
+        // This lets the LLM select immediately in round 0 without searching.
+        const intentFiltered = filterCatalogNodes(
+            allNodes.filter(n => !n.key.startsWith('speak_') && !n.key.startsWith('pipeline_') && !n.key.startsWith('cs_')),
             intentRelevantTypes,
             entityTypes,
         );
 
-        const nodesByGroup = new Map<string, typeof filteredNodes>();
-        for (const n of filteredNodes) {
-            if (!nodesByGroup.has(n.group)) nodesByGroup.set(n.group, []);
-            nodesByGroup.get(n.group)!.push(n);
+        const surfacedNodes = new Map<string, CatalogNode>();
+        for (const node of intentFiltered) surfacedNodes.set(node.key, node);
+        // Always surface start + stop
+        for (const key of ['start', 'stop']) {
+            try { surfacedNodes.set(key, runtime.catalog.getCatalogNode(key)); } catch { /* skip */ }
         }
-        const catalogSummary = Array.from(nodesByGroup.entries())
-            .map(([group, nodes]) =>
-                `[${group}]\n${nodes.map(n => `  ${n.key}: ${n.description || n.name}`).join('\n')}`)
-            .join('\n');
 
-        debug('pipeline', `Catalog: ${allNodes.length} total → ${filteredNodes.length} after intent filter`);
-
+        const selectedKeys = new Set<string>(['start', 'stop']);
+        const overview = buildCatalogOverview(allNodes);
         const historyBlock = formatHistoryBlock(history);
         const gatheredBlock = gatheredContext ? serializeGatheredContext(gatheredContext) : gatheredStr;
 
-        let phase4Response: string;
-        try {
-            const categorizeLlm = await getModelForCapability('categorize');
-            phase4Response = await categorizeLlm.chat(
-                [{
-                    role: 'user' as const,
-                    content: `The user said: "${userInput}"
+        const categorizeLlm = await getModelForCapability('categorize');
+        let selectionReasoning = '';
+
+        for (let round = 0; round < MAX_ROUNDS; round++) {
+            const available = Array.from(surfacedNodes.values()).filter(n => !selectedKeys.has(n.key));
+            const selected = Array.from(selectedKeys).map(k => surfacedNodes.get(k)).filter((n): n is CatalogNode => n != null);
+
+            onStatus?.(`Selecting capabilities${round > 0 ? ` (round ${round + 1})` : ''}…`);
+
+            let verdictObj: {
+                verdict: 'ready' | 'searching';
+                search_queries?: string[];
+                select?: string[];
+                deselect?: string[];
+                reasoning?: string;
+            };
+
+            try {
+                const raw = await categorizeLlm.chat(
+                    [{
+                        role: 'user' as const,
+                        content: `Select catalog nodes for this request.
+
+The user said: "${userInput}"
 ${historyBlock}
 ${gatheredBlock}
 
-Each entity type has create_*, list_*, find_*, update_*, delete_*, complete_*, set_{type}_{field} catalog nodes.
-CRITICAL: Match entity types precisely — event≠task. Use create_event for appointments/meetings (including 1:1s and recurring meetings), create_task for todos.
-When a person's relationship is stated, also select "set_person_type" to record it (manager/report/coworker→colleague; spouse/child/parent/sibling→family; friend→friend; vendor/client→professional) — this powers user-centric relevance.
-The vault owner ("me") is itself a person node, referenceable by title "me". When a person is related TO the user (e.g. "my wife", "my son"), also use "link_entities" to link that person → "me" with the specific relationship label (spouse, son, daughter, parent, etc.) — this builds the user-centric relationship graph.
-CONTENT-TYPE SPECIFICITY: when the user mentions a recurring KIND of thing in their life that an existing type doesn't capture well (a concert, a recital, a client, a 1:1, a property), prefer creating a specific-but-reusable type for it over dumping it into generic note/event — specific types carry sharper relevance. Reuse an existing type if one already fits; use the generic type only for true one-offs. Don't invent hyper-specific one-shot types ("taylor_swift_concert").
-For new content types, select BOTH "create_content_type" AND "create_entity" — the type alone saves nothing; "create_entity" stores the actual item in it. Use "link_entities" to connect related entities.
-For field values on creation, also select "set_context_value" to stage fields in context.
+${overview}
 
-AVAILABLE CATALOG NODES:
-${catalogSummary}
+AVAILABLE (pre-selected by intent filter — ready to pick):
+${formatCatalogNodes(available)}
 
-RULES:
-- Always include "start" and "stop". Select only nodes needed for the request.
-- Prefer entity nodes (create_*, complete_*, find_*) over llm_chat for data operations.
-- For unknown content types, select "create_content_type" AND "create_entity" together (type without entity = lost data). For multiple entities, select multiple create_* nodes.
-- Proactively link related entities. Prefer action over questions — use sensible defaults.
-- When the user mentions a flight number, URL, product, or needs live/external data, include "perplexity_sonar" to look it up, then update the created/found entity with the results.
+SELECTED:
+${formatCatalogNodes(selected)}
 
-Return a JSON object with this exact structure:
+Rules:
+- "start" and "stop" are always included.
+- Match entity types precisely — event≠task. create_event for appointments, create_task for todos.
+- When creating a task or event that mentions a person by name, also select find_person AND create_person — the process should create the person if not found and link them to the new entity.
+- When creating a person, also select "set_person_type" and "link_entities" if relationship context is known.
+- When updating a person attribute (last name, email, etc.) and the person may not exist yet, select find_person AND create_person together — route find_person's not_found edge to create_person so the contact gets created with the known details.
+- For unknown content types, select "create_content_type" AND "create_entity" together.
+- Select "set_context_value" to stage field values before entity creation.
+- If live/external data is needed, select "perplexity_sonar".
+- Search for nodes not visible in AVAILABLE above. Set "ready" when done.
+
+Return JSON:
 {
-    "reasoning": "Why these nodes were selected",
-    "nodes": ["start", "stop", "node_key_1", "node_key_2"]
-}
+  "verdict": "ready" | "searching",
+  "search_queries": ["keyword or group name if more nodes needed"],
+  "select": ["node_key"],
+  "deselect": ["node_key"],
+  "reasoning": "Why these nodes"
+}`,
+                    }],
+                    {
+                        systemPrompt: 'Select the minimal catalog nodes for the request. Always include "start" and "stop". Prefer entity action nodes over advice.',
+                        temperature: 0.3,
+                    },
+                );
 
-Return ONLY the JSON object, no markdown fences.`,
-                }],
-                {
-                    systemPrompt: 'Select the minimal set of catalog nodes to fulfill the user\'s request. Always include "start" and "stop". Prefer entity actions over advice. Link related content proactively.',
-                    temperature: 0.3,
-                },
-            );
-        } catch (err) {
-            const msg = err instanceof Error ? err.message : String(err);
-            return this.result(ResultStatus.ERROR, `Node selection LLM call failed: ${msg}`);
+                verdictObj = parseJsonResponse(raw) as typeof verdictObj;
+            } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                if (round === 0) return this.result(ResultStatus.ERROR, `Node selection failed: ${msg}`);
+                break;
+            }
+
+            selectionReasoning = verdictObj.reasoning ?? selectionReasoning;
+
+            // Apply searches
+            for (const query of (verdictObj.search_queries ?? [])) {
+                const { nodes: found } = searchCatalog(allNodes, query);
+                for (const node of found) {
+                    if (!surfacedNodes.has(node.key)) surfacedNodes.set(node.key, node);
+                }
+                debug('pipeline', `select-nodes search "${query}" → ${found.length} nodes`);
+            }
+
+            // Apply selections (with direct lookup fallback)
+            for (const key of (verdictObj.select ?? [])) {
+                if (!surfacedNodes.has(key)) {
+                    try { surfacedNodes.set(key, runtime.catalog.getCatalogNode(key)); } catch { continue; }
+                }
+                selectedKeys.add(key);
+            }
+
+            // Apply deselections
+            for (const key of (verdictObj.deselect ?? [])) {
+                if (key !== 'start' && key !== 'stop') selectedKeys.delete(key);
+            }
+
+            if (verdictObj.verdict === 'ready') {
+                debug('pipeline', `select-nodes done at round ${round + 1}: ${Array.from(selectedKeys).join(', ')}`);
+                break;
+            }
         }
 
-        let nodeSelection: { reasoning: string; nodes: string[] };
-        try {
-            nodeSelection = parseJsonResponse(phase4Response) as { reasoning: string; nodes: string[] };
-        } catch (err) {
-            return this.result(ResultStatus.ERROR, `Failed to parse node selection: ${err instanceof Error ? err.message : err}`);
-        }
-
-        if (!nodeSelection.nodes.includes('start')) nodeSelection.nodes.unshift('start');
-        if (!nodeSelection.nodes.includes('stop')) nodeSelection.nodes.push('stop');
-
-        const selectedNodes = nodeSelection.nodes
-            .map(key => {
-                try { return runtime.catalog.getCatalogNode(key); } catch { return null; }
-            })
-            .filter(Boolean);
+        // ── Build output strings for action_loop ───────────────────────────────
+        const selectedNodes = Array.from(selectedKeys)
+            .map(k => surfacedNodes.get(k))
+            .filter((n): n is CatalogNode => n != null);
 
         const selectedNodeDetails = selectedNodes
             .map(n => {
-                const config = Object.keys(n!.configuration).length > 0
-                    ? `  config: ${JSON.stringify(n!.configuration)}`
+                const cfg = Object.keys(n.configuration).length > 0
+                    ? `  config: ${JSON.stringify(n.configuration)}`
                     : '';
-                return `- ${n!.key} (${n!.group}): ${n!.description || n!.name}${config}`;
+                return `- ${n.key} (${n.group}): ${n.description || n.name}${cfg}`;
             })
             .join('\n');
 
         const nodeCodeDetailsList: string[] = [];
         for (const n of selectedNodes) {
-            if (!n) continue;
             try {
                 const nodeCode = runtime.nodeCodeFactory.getNodeCode(n.nodeCodeKey);
                 const Ctor = nodeCode.constructor as {
@@ -201,9 +246,9 @@ Return ONLY the JSON object, no markdown fences.`,
         context.set('__selected_nodes', selectedNodes);
         context.set('__selected_node_details', selectedNodeDetails);
         context.set('__node_code_details', nodeCodeDetailsList.join('\n\n'));
-        context.set('__selection_reasoning', nodeSelection.reasoning);
+        context.set('__selection_reasoning', selectionReasoning);
 
-        debug('pipeline', `Selected ${selectedNodes.length} nodes: ${nodeSelection.nodes.join(', ')}`);
+        debug('pipeline', `select-nodes final: ${selectedNodes.length} nodes — ${Array.from(selectedKeys).join(', ')}`);
         return this.result(ResultStatus.OK, `${selectedNodes.length} nodes selected.`);
     }
 }

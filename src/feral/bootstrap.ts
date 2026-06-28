@@ -75,6 +75,7 @@ import { CreateRecurringTaskNodeCode } from './node-code/context/create-recurrin
 import { SearchEntitiesNodeCode } from './node-code/context/search-entities-node-code.js';
 import { LinkEntitiesNodeCode } from './node-code/context/link-entities-node-code.js';
 import { AgentSpeakNodeCode } from './node-code/output/agent-speak-node-code.js';
+import { HtmlToMarkdownNodeCode } from './node-code/data/html-to-markdown-node-code.js';
 import { PromptInputNodeCode } from './node-code/input/prompt-input-node-code.js';
 import { PromptSelectNodeCode } from './node-code/input/prompt-select-node-code.js';
 
@@ -169,6 +170,8 @@ function getCrossPlatformNodeCodes(): NodeCode[] {
         new AnalyticsNodeCode(),
         // Output
         new AgentSpeakNodeCode(),
+        // Data / transform
+        new HtmlToMarkdownNodeCode(),
         // Input
         new PromptInputNodeCode(),
         new PromptSelectNodeCode(),
@@ -187,6 +190,7 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         { SlackBlockBuilderNodeCode },
         { SlackPostWebhookNodeCode },
         { SlackProcessSlashCommandNodeCode },
+        { EmitBlocksNodeCode },
         { CliCommandNodeCode },
         { IntrospectNodeCode },
         { PampSendNodeCode },
@@ -202,6 +206,8 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         { CxfDiscoverNodeCode },
         { CxfPullNodeCode },
         { CxfPushNodeCode },
+        { Cfx3WriteNodeCode },
+        { Cfx3SyncNodeCode },
         { PipelineClassifyNodeCode },
         { PipelineFactualSearchNodeCode },
         { PipelineCategoryContextNodeCode },
@@ -209,6 +215,18 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         { PipelineSelectNodesNodeCode },
         { PipelineActionLoopNodeCode },
         { PipelineSynthesizeNodeCode },
+        // Cruel Summer pipeline NodeCodes
+        { CSCategorizeNodeCode },
+        { CSContextLoopNodeCode },
+        { CSDefineSuccessNodeCode },
+        { CSNodeLoopNodeCode },
+        { CSBuildProcessNodeCode },
+        { CSEvaluateSuccessNodeCode },
+        // Hertz pipeline NodeCodes
+        { HZCategorizeNodeCode },
+        { HZPlanNodeCode },
+        { HZExecuteNodeCode },
+        { HZEvaluateNodeCode },
     ] = await Promise.all([
         import('./node-code/data/read-file-node-code.js'),
         import('./node-code/genai/write-file-node-code.js'),
@@ -216,6 +234,7 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         import('./node-code/slack/slack-block-builder-node-code.js'),
         import('./node-code/slack/slack-post-webhook-node-code.js'),
         import('./node-code/slack/slack-process-slash-command-node-code.js'),
+        import('./node-code/output/emit-blocks-node-code.js'),
         import('./node-code/system/cli-command-node-code.js'),
         import('./node-code/system/introspect-node-code.js'),
         import('./node-code/pamp/pamp-send-node-code.js'),
@@ -231,6 +250,8 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         import('./node-code/context/cxf-discover-node-code.js'),
         import('./node-code/context/cxf-pull-node-code.js'),
         import('./node-code/context/cxf-push-node-code.js'),
+        import('./node-code/cfx3/cfx3-write-node-code.js'),
+        import('./node-code/cfx3/cfx3-sync-node-code.js'),
         import('./node-code/pipeline/pipeline-classify-node-code.js'),
         import('./node-code/pipeline/pipeline-factual-search-node-code.js'),
         import('./node-code/pipeline/pipeline-category-context-node-code.js'),
@@ -238,6 +259,16 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         import('./node-code/pipeline/pipeline-select-nodes-node-code.js'),
         import('./node-code/pipeline/pipeline-action-loop-node-code.js'),
         import('./node-code/pipeline/pipeline-synthesize-node-code.js'),
+        import('./node-code/pipeline/cs-categorize-node-code.js'),
+        import('./node-code/pipeline/cs-context-loop-node-code.js'),
+        import('./node-code/pipeline/cs-define-success-node-code.js'),
+        import('./node-code/pipeline/cs-node-loop-node-code.js'),
+        import('./node-code/pipeline/cs-build-process-node-code.js'),
+        import('./node-code/pipeline/cs-evaluate-success-node-code.js'),
+        import('./node-code/pipeline/hz-categorize-node-code.js'),
+        import('./node-code/pipeline/hz-plan-node-code.js'),
+        import('./node-code/pipeline/hz-execute-node-code.js'),
+        import('./node-code/pipeline/hz-evaluate-node-code.js'),
     ]);
 
     return [
@@ -247,6 +278,7 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         new SlackBlockBuilderNodeCode(),
         new SlackPostWebhookNodeCode(),
         new SlackProcessSlashCommandNodeCode(),
+        new EmitBlocksNodeCode(),
         new CliCommandNodeCode(),
         new IntrospectNodeCode(),
         new PampSendNodeCode(),
@@ -262,6 +294,8 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         new CxfDiscoverNodeCode(),
         new CxfPullNodeCode(),
         new CxfPushNodeCode(),
+        new Cfx3WriteNodeCode(),
+        new Cfx3SyncNodeCode(),
         // Pipeline orchestration NodeCodes (Node.js only)
         new PipelineClassifyNodeCode(),
         new PipelineFactualSearchNodeCode(),
@@ -270,6 +304,18 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         new PipelineSelectNodesNodeCode(),
         new PipelineActionLoopNodeCode(),
         new PipelineSynthesizeNodeCode(),
+        // Cruel Summer pipeline NodeCodes (Node.js only)
+        new CSCategorizeNodeCode(),
+        new CSContextLoopNodeCode(),
+        new CSDefineSuccessNodeCode(),
+        new CSNodeLoopNodeCode(),
+        new CSBuildProcessNodeCode(),
+        new CSEvaluateSuccessNodeCode(),
+        // Hertz pipeline NodeCodes (Node.js only)
+        new HZCategorizeNodeCode(),
+        new HZPlanNodeCode(),
+        new HZExecuteNodeCode(),
+        new HZEvaluateNodeCode(),
     ];
 }
 
@@ -287,6 +333,8 @@ async function getNodeOnlyCatalogSources(a2aAgents: unknown[]) {
         { A2ACatalogSource },
         { FcpCatalogSource },
         { CxfCatalogSource },
+        { Cfx3CatalogSource },
+        { getEnabledSources },
     ] = await Promise.all([
         import('./catalog/slack-catalog-source.js'),
         import('./catalog/agent-catalog-source.js'),
@@ -297,7 +345,11 @@ async function getNodeOnlyCatalogSources(a2aAgents: unknown[]) {
         import('./catalog/a2a-catalog-source.js'),
         import('./catalog/fcp-catalog-source.js'),
         import('./catalog/cxf-catalog-source.js'),
+        import('./catalog/cfx3-catalog-source.js'),
+        import('../cfx3/source-registry.js'),
     ]);
+
+    const cfx3Sources = await getEnabledSources().catch(() => []);
 
     return [
         new SlackCatalogSource(),
@@ -309,6 +361,7 @@ async function getNodeOnlyCatalogSources(a2aAgents: unknown[]) {
         new A2ACatalogSource(a2aAgents as any),
         new FcpCatalogSource(),
         new CxfCatalogSource(),
+        new Cfx3CatalogSource(cfx3Sources),
     ];
 }
 

@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import ical, { type VEvent } from 'node-ical';
+import { htmlToMarkdown } from './html-to-markdown.js';
 
 /** Convert a Date to an ISO 8601 string in the local timezone (e.g. 2026-05-06T12:30:00-06:00). */
 function toLocalIso(d: Date): string {
@@ -39,6 +40,22 @@ export interface CalendarEvent {
     endDate: string;       // ISO datetime
     location?: string;
     description?: string;  // becomes entity body
+    attendees?: string[];  // display names / emails from ATTENDEE lines (if present)
+}
+
+// ATTENDEE/ORGANIZER can be a string, an object { val, params:{ CN } }, or an
+// array of either. Prefer the CN (display name), else the email.
+function parseAttendees(raw: unknown): string[] {
+    if (!raw) return [];
+    const arr = Array.isArray(raw) ? raw : [raw];
+    const names = arr.map((a): string => {
+        if (typeof a === 'string') return a.replace(/^mailto:/i, '').trim();
+        const obj = a as { val?: string; params?: { CN?: string } };
+        const cn = obj?.params?.CN;
+        if (cn) return String(cn).trim();
+        return obj?.val ? String(obj.val).replace(/^mailto:/i, '').trim() : '';
+    }).filter(Boolean);
+    return Array.from(new Set(names));
 }
 
 /**
@@ -102,7 +119,11 @@ export function parseIcsFeed(
 
             // Normalize location to a single line — multi-line locations break the body field parser
             if (event.location) calEvent.location = str(event.location).replace(/\r?\n/g, ', ').replace(/,\s*,/g, ',').trim();
-            if (event.description) calEvent.description = str(event.description).trim();
+            // Calendar descriptions are often HTML (Google/Outlook) — normalize to
+            // Markdown so the block renderer displays them correctly.
+            if (event.description) calEvent.description = htmlToMarkdown(str(event.description)).trim();
+            const attendees = parseAttendees((event as { attendee?: unknown }).attendee);
+            if (attendees.length) calEvent.attendees = attendees;
 
             events.push(calEvent);
         }
