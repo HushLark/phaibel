@@ -141,6 +141,20 @@ const INTROSPECT_NODES: IntrospectEntry[] = [
         target: 'recent_chats',
         contextPath: 'recent_chats',
     },
+    {
+        key: 'get_calendars',
+        name: 'Get Connected Calendars',
+        description: 'Lists connected calendar feeds (name, host, sync window) — answers "what calendars am I connected to?".',
+        target: 'calendars',
+        contextPath: 'calendars',
+    },
+    {
+        key: 'get_cfx3_connections',
+        name: 'Get CF/x3 Connections',
+        description: 'Lists connected CF/x3 federated-context sources (name, URL, context types, last sync) — answers "what sources / connections do I have?".',
+        target: 'cfx3_connections',
+        contextPath: 'cfx3_connections',
+    },
 ];
 
 export class IntrospectCatalogSource {

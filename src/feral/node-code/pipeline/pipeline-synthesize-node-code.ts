@@ -20,6 +20,8 @@ import { getModelForCapability } from '../../../llm/router.js';
 import { debug } from '../../../utils/debug.js';
 import { synthesizeResponse } from '../../../commands/chat-helpers.js';
 import type { ChatHistoryEntry, ClientHints } from '../../../commands/chat-helpers.js';
+import { getSourceNames } from '../../../cfx3/source-registry.js';
+import type { GatheredContext } from '../../../context/context-loop.js';
 
 export class PipelineSynthesizeNodeCode extends AbstractNodeCode {
     static readonly configDescriptions: ConfigurationDescription[] = [];
@@ -47,6 +49,7 @@ export class PipelineSynthesizeNodeCode extends AbstractNodeCode {
         const clientHints = context.get('__client_hints') as ClientHints | null ?? undefined;
         const reasonModelName = context.getString('__reason_model_name') ?? 'gpt-4o';
         const onStatus = context.get('__on_status') as ((s: string) => void) | null;
+        const sourceScope = context.get('__source_scope') as { id: string; name: string } | null;
 
         onStatus?.('Composing response…');
 
@@ -57,6 +60,22 @@ export class PipelineSynthesizeNodeCode extends AbstractNodeCode {
         if (presetResponse) {
             return this.result(ResultStatus.OK, 'Response was pre-set by classify node.');
         }
+
+        // Build a federated-provenance block so the answer can cite its source
+        // ("<connection> has …") for any node that came from a CF/x3 connection.
+        let federatedContext = '';
+        try {
+            const gathered = context.get('__gathered_context') as GatheredContext | null;
+            const federated = (gathered?.nodes ?? []).filter(n => typeof n.meta.source === 'string' && n.meta.source);
+            if (federated.length > 0) {
+                const names = await getSourceNames();
+                const lines = federated.slice(0, 30).map(n => {
+                    const src = String(n.meta.source);
+                    return `- "${n.name}" (${n.type}) — from ${names.get(src) ?? src}`;
+                });
+                federatedContext = lines.join('\n');
+            }
+        } catch { /* attribution is best-effort */ }
 
         try {
             const chatLlm = await getModelForCapability('chat');
@@ -71,6 +90,8 @@ export class PipelineSynthesizeNodeCode extends AbstractNodeCode {
                 chatId,
                 clientHints,
                 reasonModelName,
+                sourceScope?.name,
+                federatedContext || undefined,
             );
             context.set('__pipeline_response', response);
             debug('pipeline', `Synthesis complete (${response.length} chars)`);

@@ -35,6 +35,7 @@ import {
     type ClientHints,
 } from './chat-helpers.js';
 import { STANDARD_PIPELINE_KEY } from '../feral/pipelines/standard-pipeline.js';
+import { resolveScopeFromInput } from '../cfx3/source-registry.js';
 
 // Re-export public types so callers (web-server, a2a-server) keep working.
 export type { ChatHistoryEntry, ClientHints };
@@ -115,7 +116,10 @@ export async function feralChatHeadless(
 
         return { response, tokens };
     } catch (error) {
-        await logger.log('error', { message: error instanceof Error ? error.message : String(error) });
+        await logger.log('error', {
+            message: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+        });
         throw error;
     } finally {
         logger.close();
@@ -186,12 +190,19 @@ async function _feralChatHeadlessInner(
     const reasonMapping = await getCapabilityModel('reason');
     const reasonModelName = reasonMapping?.model ?? 'gpt-4o';
 
+    // ── CF/x3 connection scope ───────────────────────────────────────────────────
+    // If the user named a connected CF/x3 source ("in Acme, what's the latest"),
+    // scope context retrieval to it and attribute the answer to it.
+    const sourceScope = await resolveScopeFromInput(userInput).catch(() => undefined);
+    if (sourceScope) debug('chat', `Scoped to CF/x3 connection: ${sourceScope.name} (${sourceScope.id})`);
+
     // ── Run the active pipeline process ────────────────────────────────────────
     const pipelineKey = activePipelineKey;
     debug('chat', `Running pipeline: ${pipelineKey}`);
 
     const ctx = await runtime.runner.run(pipelineKey, {
         user_input:          userInput,
+        __source_scope:      sourceScope ?? null,
         __history:           history,
         __vault_context:     vaultContext,
         __entity_types:      entityTypes,

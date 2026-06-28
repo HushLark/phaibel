@@ -475,14 +475,17 @@ export class EntityIndex {
         dimensions: import('../entities/entity-type-config.js').RelevanceDimensionDef[],
         requestWeights?: import('../cxms/relevance-scorer.js').RequestWeightMultipliers,
         currentLocation?: import('../cxms/relevance-scorer.js').Coordinates,
+        sourceScope?: string,
     ): Promise<IndexSearchResult[]> {
         const { scoreNodes } = await import('../cxms/relevance-scorer.js');
         const { getEmbeddingIndex } = await import('./embedding-index.js');
         const { getBehavioralIndex } = await import('../cxms/behavioral-index.js');
 
-        const candidates = entityType
+        let candidates = entityType
             ? this.getNodes(entityType)
             : this.getNodes();
+        // Scope to a single CF/x3 connection when requested (meta.source === slug).
+        if (sourceScope) candidates = candidates.filter(n => n.meta.source === sourceScope);
 
         // Vector similarity (only when the semantic dimension is active)
         const vectorSimilarity = new Map<string, number>();

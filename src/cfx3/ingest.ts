@@ -33,24 +33,55 @@ function mapFieldType(t: string): FieldType {
  * so ingested records land in a real, validated type. Idempotent.
  */
 export async function ensureTypesFromManifest(manifest: Cfx3Manifest): Promise<void> {
-    for (const t of manifest.context_types) {
+    // Create parents before children so the `parent` subtype link resolves and the
+    // local type tree mirrors the source's hierarchy (spec §3.2.2).
+    for (const t of orderByParent(manifest.context_types)) {
         if (await getEntityType(t.name)) continue;
-        const config = {
+        // Build configs WITHOUT undefined-valued keys — they're persisted to the
+        // type's .cxms.md via YAML, and js-yaml throws on `undefined` values.
+        const config: EntityTypeConfig = {
             name: t.name,
             plural: t.plural || `${t.name}s`,
             directory: `context-types/${t.name}`,
-            description: t.description,
-            baseCategory: t.baseCategory,
-            fields: (t.fields ?? []).map(f => ({
-                key: f.key, type: mapFieldType(f.type), label: f.label,
-                required: false, values: f.values, targetType: f.targetType,
-            })),
-        } as EntityTypeConfig;
+            fields: (t.fields ?? []).map(f => {
+                const field: Record<string, unknown> = {
+                    key: f.key, type: mapFieldType(f.type), required: false,
+                };
+                if (f.label !== undefined) field.label = f.label;
+                if (f.values !== undefined) field.values = f.values;
+                if (f.targetType !== undefined) field.targetType = f.targetType;
+                return field as unknown as EntityTypeConfig['fields'][number];
+            }),
+        };
+        if (t.description !== undefined) config.description = t.description;
+        if (t.baseCategory !== undefined) config.baseCategory = t.baseCategory;
+        if (t.parent !== undefined) config.parent = t.parent;   // preserve the subtype tree
         try {
             await addEntityType(config);
             debug('cfx3', `ensured context type '${t.name}' from manifest`);
-        } catch { /* already exists / race — fine */ }
+        } catch (e) {
+            debug('cfx3', `ensure type '${t.name}' failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
     }
+}
+
+/**
+ * Topologically order types so a parent precedes its children. Tolerates dangling
+ * parents and cycles (falls back to leaving the node where it is).
+ */
+function orderByParent(types: Cfx3Manifest['context_types']): Cfx3Manifest['context_types'] {
+    const byName = new Map(types.map(t => [t.name, t]));
+    const ordered: Cfx3Manifest['context_types'] = [];
+    const placed = new Set<string>();
+    const visit = (t: Cfx3Manifest['context_types'][number], stack: Set<string>) => {
+        if (placed.has(t.name) || stack.has(t.name)) return;
+        stack.add(t.name);
+        if (t.parent && byName.has(t.parent)) visit(byName.get(t.parent)!, stack);
+        stack.delete(t.name);
+        if (!placed.has(t.name)) { ordered.push(t); placed.add(t.name); }
+    };
+    for (const t of types) visit(t, new Set());
+    return ordered;
 }
 
 export interface IngestResult { created: number; updated: number; deleted: number; skipped: number; }
@@ -94,6 +125,10 @@ export async function ingestRecords(
         const now = new Date().toISOString();
         const meta: Record<string, unknown> = {
             ...(existing?.meta ?? {}),
+            // Remote field values first, so they can NEVER clobber the reserved
+            // core/provenance keys below (e.g. a CRM "source" field vs. the CF/x3
+            // provenance "source"). Provenance must win for scoping & dedup.
+            ...(rec.fields ?? {}),
             id: (existing?.meta.id as string) ?? generateNodeId(),
             title: rec.title,
             contextType: rec.type,
@@ -101,7 +136,6 @@ export async function ingestRecords(
             sourceId: rec.uid,
             created: (existing?.meta.created as string) ?? now,
             updated: rec.updated || now,
-            ...(rec.fields ?? {}),
         };
         if (rec.links?.length) {
             // Remote uid targets are resolved to local nodes once both are ingested.

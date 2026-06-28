@@ -56,6 +56,8 @@ export async function handlePiRoute(
                 return true;
             }
             case '/pi/a2a-agents':    jsonResponse(res, 200, await service.getA2aAgents()); return true;
+            case '/pi/calendars':         jsonResponse(res, 200, await service.getCalendars()); return true;
+            case '/pi/cfx3-connections':  jsonResponse(res, 200, await service.getCfx3Connections()); return true;
             case '/pi/recent-chats': {
                 const limit = parseInt(url.searchParams.get('limit') ?? '20', 10);
                 jsonResponse(res, 200, await service.getRecentChats(limit));

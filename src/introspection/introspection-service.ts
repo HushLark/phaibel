@@ -31,6 +31,8 @@ import type {
     EntityTypeInfo,
     EntityStatsInfo,
     RecentChatSummary,
+    CalendarConnectionInfo,
+    Cfx3ConnectionInfo,
 } from './introspection-types.js';
 
 import type { UserProfile, PhaibelProfile } from '../profiles/profile-types.js';
@@ -234,6 +236,43 @@ export class IntrospectionService {
                 description: p.description,
             })),
         };
+    }
+
+    // ── Connected Calendars ──────────────────────────────────────────────
+
+    async getCalendars(): Promise<CalendarConnectionInfo[]> {
+        try {
+            const { loadCalConfig } = await import('../commands/cal.js');
+            const { calendars } = await loadCalConfig();
+            return calendars.map(c => {
+                let host: string | null = null;
+                try { host = new URL(c.url).host; } catch { /* malformed url */ }
+                return {
+                    id: c.id, name: c.name, host,
+                    windowDaysPast: c.windowDaysPast, windowDaysFuture: c.windowDaysFuture,
+                };
+            });
+        } catch {
+            return [];
+        }
+    }
+
+    // ── Connected CF/x3 Sources ──────────────────────────────────────────
+
+    async getCfx3Connections(): Promise<Cfx3ConnectionInfo[]> {
+        try {
+            const { loadSources, redactSource } = await import('../cfx3/source-registry.js');
+            const sources = await loadSources();
+            return sources.map(s => {
+                const r = redactSource(s);
+                return {
+                    id: r.id, name: r.name, url: r.url, enabled: r.enabled,
+                    hasKey: r.hasKey, lastSyncAt: r.lastSyncAt, contextTypes: r.contextTypes,
+                };
+            });
+        } catch {
+            return [];
+        }
     }
 
     // ── A2A Agents ───────────────────────────────────────────────────────

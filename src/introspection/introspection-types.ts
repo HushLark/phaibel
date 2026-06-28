@@ -78,3 +78,23 @@ export interface RecentChatSummary {
     startedAt: string;
     userMessage: string | null;
 }
+
+// Connected calendar feeds (ICS URL redacted to its host — feeds carry tokens).
+export interface CalendarConnectionInfo {
+    id: string;
+    name: string;
+    host: string | null;
+    windowDaysPast?: number;
+    windowDaysFuture?: number;
+}
+
+// Connected CF/x3 federated-context sources (API key never included).
+export interface Cfx3ConnectionInfo {
+    id: string;
+    name: string;
+    url: string;
+    enabled: boolean;
+    hasKey: boolean;
+    lastSyncAt: string | null;
+    contextTypes: string[];
+}

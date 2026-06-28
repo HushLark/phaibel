@@ -105,6 +105,16 @@ export class PipelineClassifyNodeCode extends AbstractNodeCode {
         const intent = toIntentResult(classification);
         context.set('__intent', intent);
 
+        // A named CF/x3 connection ("in HushLark, …") means this is a local
+        // federated-context query, not a web/factual lookup or phatic chat. Coerce
+        // those categories to 'query' so the context path runs and the scope applies.
+        const sourceScope = context.get('__source_scope') as { id: string; name: string } | null;
+        if (sourceScope && (classification.category === 'factual' || classification.category === 'chat')) {
+            debug('pipeline', `Source scope ${sourceScope.id} present — coercing category ${classification.category} → query`);
+            classification.category = 'query';
+            context.set('__classification', classification);
+        }
+
         debug('pipeline', `Classified: category=${classification.category} confidence=${classification.confidence}`);
 
         // ── 2. Chat fast path ──────────────────────────────────────────────────
@@ -119,7 +129,7 @@ export class PipelineClassifyNodeCode extends AbstractNodeCode {
             const allSavedProcesses = [
                 ...factory.getAllProcesses(),
                 ...categorySources,
-            ].filter(p => !EXCLUDED_PROCESS_KEYS.has(p.key));
+            ].filter(p => !EXCLUDED_PROCESS_KEYS.has(p.key) && !p.key.startsWith('pipeline.'));
 
             if (allSavedProcesses.length > 0) {
                 status('Checking process library…');

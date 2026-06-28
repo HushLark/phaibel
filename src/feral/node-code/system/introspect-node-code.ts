@@ -22,6 +22,7 @@ const VALID_TARGETS = [
     'entity_types', 'entity_stats',
     'queue', 'token_usage',
     'a2a_agents', 'recent_chats',
+    'calendars', 'cfx3_connections',
 ] as const;
 type IntrospectTarget = (typeof VALID_TARGETS)[number];
 
@@ -53,7 +54,7 @@ export class IntrospectNodeCode extends AbstractNodeCode {
         super(
             'introspect',
             'Introspect',
-            'Queries the agent\'s own configuration — user profile, agent profile, personality, providers, capabilities, settings, service status, vault info, entity types/stats, queue, token usage, A2A agents, or recent chats.',
+            'Queries the agent\'s own configuration — user profile, agent profile, personality, providers, capabilities, settings, service status, vault info, entity types/stats, queue, token usage, A2A agents, recent chats, connected calendars, or connected CF/x3 federated-context sources.',
             NodeCodeCategory.DATA,
         );
     }
@@ -93,6 +94,8 @@ export class IntrospectNodeCode extends AbstractNodeCode {
             case 'token_usage':    return service.getTokenUsage();
             case 'a2a_agents':     return service.getA2aAgents();
             case 'recent_chats':   return service.getRecentChats();
+            case 'calendars':         return service.getCalendars();
+            case 'cfx3_connections':  return service.getCfx3Connections();
         }
     }
 }

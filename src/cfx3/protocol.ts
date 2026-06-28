@@ -44,9 +44,17 @@ export interface Cfx3TypeDef {
     name: string;          // context type, e.g. 'company'
     plural?: string;
     description?: string;
-    baseCategory?: string; // person | place | thing | event | task | goal
+    baseCategory?: string; // tier-1 root id (person|place|thing|event|task|goal)
+    parent?: string;       // name of a more-general type this one specializes (subtype-of)
     fields?: Cfx3FieldDef[];
     readonly?: boolean;     // node create/update/delete not allowed for this type
+}
+
+/** A tier-1 root of the context-type tree (the "life primitives"). See spec §3.2.1. */
+export interface Cfx3BaseCategory {
+    id: string;            // referenced by Cfx3TypeDef.baseCategory, e.g. 'person'
+    label: string;
+    description?: string;
 }
 
 /** Which write operations the source permits the caller (role-filtered). */
@@ -60,7 +68,8 @@ export interface Cfx3Manifest {
     cfx3_version: number;
     source: string;        // stable source id, e.g. 'synaptic'
     name: string;          // display name
-    context_types: Cfx3TypeDef[];
+    base_categories?: Cfx3BaseCategory[]; // tier-1 roots of the context-type tree
+    context_types: Cfx3TypeDef[];         // each with baseCategory and/or parent (a tree)
     capabilities: Cfx3Capabilities;
     auth: { schemes: 'bearer'[] };
 }

@@ -47,6 +47,7 @@ export class PipelineGatherContextNodeCode extends AbstractNodeCode {
         const requestWeights = context.get('__request_weights') as RequestWeights | null;
         const entityIndex = context.get('__entity_index') as EntityIndex | null;
         const entityTypes = (context.get('__entity_types') as EntityTypeConfig[] | null) ?? [];
+        const sourceScope = context.get('__source_scope') as { id: string; name: string } | null;
 
         if (!classification || !requestWeights || !entityIndex) {
             // Store empty context so downstream NodeCodes still function
@@ -55,7 +56,7 @@ export class PipelineGatherContextNodeCode extends AbstractNodeCode {
             return this.result(ResultStatus.OK, 'Skipped: missing classification or entity index.');
         }
 
-        onStatus?.('Gathering context…');
+        onStatus?.(sourceScope ? `Searching ${sourceScope.name}…` : 'Gathering context…');
 
         try {
             const moment = buildMomentContext();
@@ -64,7 +65,7 @@ export class PipelineGatherContextNodeCode extends AbstractNodeCode {
             void manifest; // for tracing if needed later
 
             const gathered = await fetchContextByClassification(
-                classification, requestWeights, entityIndex, entityTypes,
+                classification, requestWeights, entityIndex, entityTypes, 20, sourceScope?.id,
             );
             const gatheredStr = serializeGatheredContext(gathered);
 

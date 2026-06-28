@@ -28,6 +28,36 @@ export function slugForName(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'source';
 }
 
+/** A resolved CF/x3 connection reference — its stable id + the user-facing name. */
+export interface Cfx3Scope { id: string; name: string; }
+
+function containsPhrase(haystackLower: string, needleLower: string): boolean {
+    const escaped = needleLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(haystackLower);
+}
+
+/**
+ * Make a CF/x3 connection a first-class, *named* concept: if the user's text
+ * mentions a connection by name ("in Acme CRM, what's the latest"), resolve it to
+ * that connection so context search can be scoped to it and answers attributed to
+ * it. Returns the most specific (longest-named) match, or undefined.
+ */
+export async function resolveScopeFromInput(text: string): Promise<Cfx3Scope | undefined> {
+    if (!text) return undefined;
+    const sources = await loadSources();
+    const lower = text.toLowerCase();
+    const match = sources
+        .filter(s => s.enabled && s.name && s.name.trim().length >= 2)
+        .filter(s => containsPhrase(lower, s.name.toLowerCase()))
+        .sort((a, b) => b.name.length - a.name.length)[0];
+    return match ? { id: match.id, name: match.name } : undefined;
+}
+
+/** Map of source id → display name, for attributing federated context to its origin. */
+export async function getSourceNames(): Promise<Map<string, string>> {
+    return new Map((await loadSources()).map(s => [s.id, s.name]));
+}
+
 export async function loadSources(): Promise<Cfx3Source[]> {
     try {
         const raw = await getPlatform().storage.readFile(CFX3_SOURCES_PATH());

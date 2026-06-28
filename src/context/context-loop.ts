@@ -176,9 +176,14 @@ export async function fulfillRequests(
     entityIndex: EntityIndex,
     anchorKeys: Set<string> = new Set(),
     requestWeights?: RequestWeights,
+    sourceScope?: string,
 ): Promise<ScoredNode[]> {
     const entityTypes = await loadEntityTypes();
     const typeConfigMap = new Map(entityTypes.map(t => [t.name, t]));
+
+    // CF/x3 connection scope: when set, only consider nodes federated from that
+    // source (meta.source === sourceScope), so "in <connection>, …" stays on-topic.
+    const inScope = (n: IndexNode): boolean => !sourceScope || n.meta.source === sourceScope;
 
     // Specificity multiplier per type (1 + β·depth-below-base), cached.
     const specCache = new Map<string, number>();
@@ -202,7 +207,7 @@ export async function fulfillRequests(
             for (const id of req.ids) {
                 if (!typeKey) continue;
                 const node = entityIndex.getNode(`${typeKey}:${id}`);
-                if (node) add(node, TIER_ID);
+                if (node && inScope(node)) add(node, TIER_ID);
             }
             continue;
         }
@@ -216,6 +221,7 @@ export async function fulfillRequests(
         if (dateMatch) {
             const targetDate = dateMatch[1];
             const found = entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName | undefined)
+                .filter(inScope)
                 .filter(n => Object.values(n.meta).some(v =>
                     typeof v === 'string' && v.startsWith(targetDate)
                 ))
@@ -238,6 +244,7 @@ export async function fulfillRequests(
                     dims,
                     requestWeights,
                     undefined,
+                    sourceScope,
                 );
                 for (const r of scored.slice(0, limit)) add(r.node, relevanceTier(r.score));
                 continue;
@@ -247,16 +254,17 @@ export async function fulfillRequests(
         }
 
         if (query) {
-            const found = entityIndex.search(query, typeKey as import('../entities/entity.js').EntityTypeName | undefined).slice(0, limit);
+            const found = entityIndex.search(query, typeKey as import('../entities/entity.js').EntityTypeName | undefined)
+                .filter(r => inScope(r.node)).slice(0, limit);
             if (found.length > 0) {
                 for (const r of found) add(r.node, TIER_KEYWORD);
             } else if (typeKey) {
                 // Keyword search returned nothing for a typed request — fall back to
                 // all entities of this type (query was likely just the type name).
-                for (const n of entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName).slice(0, limit)) add(n, TIER_FALLBACK);
+                for (const n of entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName).filter(inScope).slice(0, limit)) add(n, TIER_FALLBACK);
             }
         } else {
-            for (const n of entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName | undefined).slice(0, limit)) add(n, TIER_FALLBACK);
+            for (const n of entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName | undefined).filter(inScope).slice(0, limit)) add(n, TIER_FALLBACK);
         }
     }
     return results;
@@ -285,6 +293,7 @@ export async function fetchContextByClassification(
     entityIndex: EntityIndex,
     entityTypes: EntityTypeConfig[],
     maxNodes = 20,
+    sourceScope?: string,
 ): Promise<GatheredContext> {
     const requests = buildFetchRequests(classification);
     // Map to FetchRequest (type is optional, which fulfillRequests now supports)
@@ -293,8 +302,11 @@ export async function fetchContextByClassification(
         query: r.query,
         limit: r.limit,
     }));
+    // When scoped to a CF/x3 connection, add a broad untyped pull so the source's
+    // nodes still surface for generic asks ("what's the latest in <connection>").
+    if (sourceScope) fetchReqs.push({ query: '', limit: maxNodes });
 
-    const scored = await fulfillRequests(fetchReqs, entityIndex, new Set(), requestWeights);
+    const scored = await fulfillRequests(fetchReqs, entityIndex, new Set(), requestWeights, sourceScope);
 
     // Merge across requests: dedup keeping the highest score per node, then rank
     // by score (specificity-boosted) and cap. This is what makes a specific-typed
@@ -364,7 +376,8 @@ export function serializeGatheredContext(gathered: GatheredContext): string {
                 return `${k}:${JSON.stringify(display)}`;
             })
             .join(', ');
-        return `[${n.type}:${n.id}] "${n.name}" — ${metaStr}`;
+        const via = typeof n.meta.source === 'string' && n.meta.source ? ` (via ${n.meta.source})` : '';
+        return `[${n.type}:${n.id}] "${n.name}"${via} — ${metaStr}`;
     });
 
     return `GATHERED CONTEXT (${gathered.nodes.length} entities, ${gathered.rounds} round(s)):

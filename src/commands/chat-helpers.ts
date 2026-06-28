@@ -266,6 +266,8 @@ export async function synthesizeResponse(
     chatId?: string,
     clientHints?: ClientHints,
     modelName = 'gpt-4o',
+    sourceScopeName?: string,
+    federatedContext?: string,
 ): Promise<string> {
     const sessionLine = (() => {
         if (!clientHints?.creditsLimit) return '';
@@ -289,7 +291,21 @@ ${sessionLine ? sessionLine + '\n' : ''}
 `
         : '';
 
-    const synthesisPrompt = `${clientHintBlock}The user said: "${userInput}"
+    const scopeBlock = sourceScopeName
+        ? `CONNECTION SCOPE:
+This question is scoped to the connected source "${sourceScopeName}". The context below was pulled from it. Attribute facts to it by name — e.g. "In ${sourceScopeName}, …" or "${sourceScopeName} has …" — and do not imply the information is from elsewhere.
+
+`
+        : '';
+
+    const federatedBlock = federatedContext
+        ? `FEDERATED CONTEXT (mirrored from connected sources — cite the source by name):
+${federatedContext}
+
+`
+        : '';
+
+    const synthesisPrompt = `${clientHintBlock}${scopeBlock}${federatedBlock}The user said: "${userInput}"
 ${formatHistoryBlock(history)}
 WHAT WAS DONE:
 Reasoning: ${reasoning}
@@ -302,6 +318,7 @@ ${compactResultsForPrompt(results, modelName)}
 ${results.some(r => r._error) ? `Note: Some steps encountered errors.` : ''}
 
 RESPONSE GUIDELINES:
+- When a fact comes from a connected source (see FEDERATED/CONNECTION context), attribute it by name, e.g. "${sourceScopeName || 'Acme'} has …" or "In ${sourceScopeName || 'Acme'}, …". Don't present federated facts as if they originated locally.
 - Summarise what was done concretely (created X, linked Y to Z, completed W)
 - If entities were created or updated, name them so the user can find them
 - If entities were linked, mention the relationship
