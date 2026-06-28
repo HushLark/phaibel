@@ -20,6 +20,9 @@ global/
 # Eval results (generated, not source)
 evals/results/
 
+# Headless test vault — runtime data, not source (run outside the repo)
+tests/headless/vault/
+
 # Secrets — never commit these
 secrets.json
 *.pem
