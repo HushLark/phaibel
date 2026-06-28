@@ -47,7 +47,9 @@
     "eval:loop": "tsx evals/loop.ts",
     "eval:compare": "tsx evals/compare.ts",
     "synthetic:generate": "tsx tests/synthetic/generate.ts",
-    "headless": "node tests/headless/repl.ts"
+    "headless": "node tests/headless/repl.ts",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -73,6 +75,7 @@
     "esbuild": "^0.27.3",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "wrangler": "^4.105.0"
   }
 }
