@@ -1,7 +1,7 @@
 ---
 name: innovate
-description: "Run 10 eval loops, autonomously tweaking prompts, models, or processes to improve Phaibel's scores"
-allowed-tools: Bash(npm run eval:*), Bash(npx tsx evals/*), Bash(git *), Read, Edit, Write, Glob, Grep, Agent
+description: "Run 10 eval loops, autonomously tweaking prompts, models, processes, or CxMS ops to improve Phaibel's scores"
+allowed-tools: Bash(npm run eval:*), Bash(npm test:*), Bash(npx tsx evals/*), Bash(npx vitest:*), Bash(git *), Read, Edit, Write, Glob, Grep, Agent
 ---
 
 # Innovate — Autonomous Eval-Driven Improvement
@@ -40,6 +40,25 @@ omits the distractor (`response_not_contains`). Relevance only engages for types
 that declare `dimensions` (see `entity-types-defaults.ts`) — and only when
 upstream classification routes the fetch to those types, which is itself a
 frequent failure mode worth tuning.
+
+## Core CxMS write coverage (committed, always run)
+
+`evals/scenarios/cxms-mutations.ts` (category `cxms-mutation`, in `CORE_SCENARIOS`)
+is a first-class committed suite covering the **write path**: update a node
+(rename / set field) with the body preserved, add a node, add a context type, and
+**move a node between context types** (person → subtype). These assert the vault
+*actually changed* (not just that the response claims success) and that a rename or
+move never wipes the body — the exact regressions this suite exists to catch.
+`npm run eval` runs them by default; never skip or weaken them.
+
+**Fast deterministic pre-check.** Before an eval loop on CxMS behaviour, run the
+LLM-independent tests first — they isolate op-level bugs from pipeline flakiness:
+
+```bash
+npm test tests/cxms          # moveContextType, hierarchy find, null-body guard
+```
+
+If these fail, the bug is in the ops / node-codes, not prompts or models — fix there.
 
 ## Workflow — Repeat up to 10 times
 
@@ -87,10 +106,13 @@ Each scenario needs:
 - `entity_type_correct` — `{ type, titleMatch, expectedType, description }`
 - `entity_field` — `{ type, entityType, titleMatch, field, expected, description }`
 - `entity_count` — `{ type, entityType, expected, description }`
+- `entity_body` — `{ type, entityType, titleMatch, match, description }` — asserts the node's body contains a substring (use to verify a rename/move preserved the body)
+- `entity_type_correct` — `{ type, titleMatch, expectedType, wrongTypes?, description }` — asserts a node resolves to `expectedType` and is absent from `wrongTypes` (the move/reclassify assertion)
+- `context_type_created` — `{ type, typeName, description }` — asserts a new context type was registered
 - `response_contains` — `{ type, match, description }`
 - `response_not_contains` — `{ type, match, description }` — asserts a distractor was NOT surfaced (relevance ranking)
 
-**Available entity types:** task, event, note, goal, person, todont, recurrence
+**Available entity types:** task, event, note, goal, person, place, company, todont, recurrence, residence, spot, immediate_family (subtype of person). Subtypes carry a `parent`/`baseCategory` — use them for move/reclassify scenarios.
 
 **To seed existing entities** (for update tests), add `vaultSeed`:
 ```typescript
@@ -184,6 +206,30 @@ Make small, targeted edits. Examples:
 - Change the scope classifier to include a broader or narrower set of subdirectories
 - Tune the relevance threshold so fewer (or more) catalog nodes reach the LLM
 - Adjust context tree serialization to front-load the most relevant branch
+
+> **`cxms` = the read/assembly path only.** Failures in the `cxms-mutation` suite
+> (create/update/move nodes, add context types) are **write-path** bugs — fix them
+> in the ops/node-codes below, not in context assembly. Run `npm test tests/cxms`
+> first to tell op-level bugs apart from pipeline/prompt failures.
+
+#### If cxms-mutation (write path) failures:
+
+The node actually didn't change, a rename wiped the body, a moved node can't be
+found, or the assistant claimed success without executing. Fix surfaces:
+
+- **Node-codes** (`src/feral/node-code/context/`): `update_entity`, `set_entity_field`,
+  `complete_entity`, `delete_entity`, `link_entities`, `move_context_type`,
+  `preview_move_context_type`, `create_entity`. Resolvers must fall back across the
+  type hierarchy (`findNodeAnyType`) so a node moved to a subtype is still found,
+  and must operate on the **resolved** type; never overwrite a body with a
+  non-string `content`.
+- **Core ops**: `src/cxms/move-context-type.ts` (field reconciliation, dimension
+  recompute, inbound-link rewrite), `src/entities/entity.ts` (`findEntityByTitle`,
+  `findNodeAnyType`, `writeEntity` null-body guard).
+- **If the pipeline never ran a mutation but reported "Done"**: that's a
+  classification/synthesis-honesty bug — the request must route to the action
+  pipeline and synthesis must not claim a change that no node-code performed.
+  Add/adjust deterministic coverage in `tests/cxms/` alongside the eval scenario.
 
 #### If "process":
 Create or modify saved Feral process JSON files. Processes live in the vault's `.phaibel/processes/` directory.

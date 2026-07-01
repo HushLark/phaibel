@@ -10,6 +10,7 @@ import { createVsUpdateScenarios } from './create-vs-update.js';
 import { multiEntityScenarios } from './multi-entity.js';
 import { conversationalScenarios } from './conversational.js';
 import { contextTypeCreationScenarios } from './context-type-creation.js';
+import { cxmsMutationScenarios } from './cxms-mutations.js';
 import { execScenarios } from './exec.js';
 import { familyScenarios } from './family.js';
 import { parseMdEvals } from './parse-md-evals.js';
@@ -31,6 +32,7 @@ export const CORE_SCENARIOS: EvalScenario[] = [
     ...multiEntityScenarios,
     ...conversationalScenarios,
     ...contextTypeCreationScenarios,
+    ...cxmsMutationScenarios,
     ...loadSmokeScenarios(),
 ];
 
