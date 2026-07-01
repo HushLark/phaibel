@@ -13,7 +13,7 @@ import { ResultStatus } from '../../result/result.js';
 import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
-import { findEntityByTitle, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
+import { findEntityByTitle, findNodeAnyType, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
 import { getEntityIndex } from '../../../entities/entity-index.js';
 import { getEmbeddingIndex } from '../../../entities/embedding-index.js';
 
@@ -48,7 +48,12 @@ export class CompleteEntityNodeCode extends AbstractNodeCode {
             return this.result(NOT_FOUND, 'Missing title — provide entity_title config or set "title" in context.');
         }
 
-        const found = await findEntityByTitle(entityType, title);
+        let found = await findEntityByTitle(entityType, title);
+        let effectiveType: string = entityType;
+        if (!found) {
+            const any = await findNodeAnyType(title, entityType);
+            if (any) { found = any; effectiveType = any.entityType; }
+        }
         if (!found) {
             context.set('error', `${entityType} "${title}" not found.`);
             return this.result(NOT_FOUND, `${entityType} "${title}" not found.`);
@@ -69,7 +74,7 @@ export class CompleteEntityNodeCode extends AbstractNodeCode {
         if (index.isBuilt) {
             const entityId = found.meta.id as string;
             const summary = (found.meta.summary as string) ?? '';
-            await index.addOrUpdate(entityType, entityId, title, found.filepath, summary);
+            await index.addOrUpdate(effectiveType as EntityTypeName, entityId, title, found.filepath, summary);
         }
 
         // Update embedding index
@@ -77,9 +82,9 @@ export class CompleteEntityNodeCode extends AbstractNodeCode {
         if (embeddingIndex.isLoaded) {
             const id = found.meta.id as string;
             const summary = (found.meta.summary as string) ?? '';
-            await embeddingIndex.upsert(`${entityType}:${id}`, { title, summary, bodySnippet: (found.content ?? '').slice(0, 500) });
+            await embeddingIndex.upsert(`${effectiveType}:${id}`, { title, summary, bodySnippet: (found.content ?? '').slice(0, 500) });
         }
 
-        return this.result(ResultStatus.OK, `Marked ${entityType} "${title}" as complete.`);
+        return this.result(ResultStatus.OK, `Marked ${effectiveType} "${title}" as complete.`);
     }
 }

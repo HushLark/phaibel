@@ -17,7 +17,7 @@ import { ResultStatus } from '../../result/result.js';
 import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
-import { findEntityByTitle, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
+import { findEntityByTitle, findNodeAnyType, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
 import { getEntityIndex } from '../../../entities/entity-index.js';
 
 const NOT_FOUND = 'not_found';
@@ -60,7 +60,14 @@ export class SetEntityFieldNodeCode extends AbstractNodeCode {
             return this.result(NOT_FOUND, 'Missing entity title.');
         }
 
-        const found = await findEntityByTitle(entityType, title);
+        // Look up in the requested type; fall back across the type hierarchy so a
+        // node moved to a subtype (e.g. person → family) is still found.
+        let found = await findEntityByTitle(entityType, title);
+        let effectiveType: string = entityType;
+        if (!found) {
+            const any = await findNodeAnyType(title, entityType);
+            if (any) { found = any; effectiveType = any.entityType; }
+        }
         if (!found) {
             context.set('error', `${entityType} "${title}" not found.`);
             return this.result(NOT_FOUND, `${entityType} "${title}" not found.`);
@@ -76,9 +83,9 @@ export class SetEntityFieldNodeCode extends AbstractNodeCode {
         // Update entity index
         const index = getEntityIndex();
         if (index.isBuilt) {
-            await index.addOrUpdate(entityType, String(found.meta.id ?? title), title, found.filepath);
+            await index.addOrUpdate(effectiveType as EntityTypeName, String(found.meta.id ?? title), title, found.filepath);
         }
 
-        return this.result(ResultStatus.OK, `Set ${entityType} "${title}" ${field} = ${value}.`);
+        return this.result(ResultStatus.OK, `Set ${effectiveType} "${title}" ${field} = ${value}.`);
     }
 }

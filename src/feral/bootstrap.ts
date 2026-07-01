@@ -66,6 +66,8 @@ import { ListEntityTypesNodeCode } from './node-code/context/list-entity-types-n
 import { UpdateEntityTypeNodeCode } from './node-code/context/update-entity-type-node-code.js';
 import { DeleteEntityTypeNodeCode } from './node-code/context/delete-entity-type-node-code.js';
 import { SetEntityFieldNodeCode } from './node-code/context/set-entity-field-node-code.js';
+import { MoveContextTypeNodeCode } from './node-code/context/move-context-type-node-code.js';
+import { PreviewMoveContextTypeNodeCode } from './node-code/context/preview-move-context-type-node-code.js';
 import { UpdateEntityNodeCode } from './node-code/context/update-entity-node-code.js';
 import { DeleteEntityNodeCode } from './node-code/context/delete-entity-node-code.js';
 import { CompleteEntityNodeCode } from './node-code/context/complete-entity-node-code.js';
@@ -159,6 +161,8 @@ function getCrossPlatformNodeCodes(): NodeCode[] {
         new DeleteEntityTypeNodeCode(),
         new UpdateEntityNodeCode(),
         new SetEntityFieldNodeCode(),
+        new MoveContextTypeNodeCode(),
+        new PreviewMoveContextTypeNodeCode(),
         new DeleteEntityNodeCode(),
         new CompleteEntityNodeCode(),
         new SortEntitiesNodeCode(),

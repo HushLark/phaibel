@@ -8,7 +8,7 @@ import { ResultStatus } from '../../result/result.js';
 import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
-import { findEntityByTitle, type EntityTypeName } from '../../../entities/entity.js';
+import { findEntityByTitle, findNodeAnyType, type EntityTypeName } from '../../../entities/entity.js';
 
 /**
  * Custom result status for "not found" branching.
@@ -54,7 +54,15 @@ export class FindEntityNodeCode extends AbstractNodeCode {
             return this.result(NOT_FOUND, `No title provided at context key "${titleKey}".`);
         }
 
-        const found = await findEntityByTitle(entityType, title);
+        // Try the requested type first; if missing, fall back across the type
+        // hierarchy (subtypes/siblings, then all types) so a node moved to a
+        // subtype (e.g. person → family) is still found instead of duplicated.
+        let found = await findEntityByTitle(entityType, title);
+        let resolvedType: string = entityType;
+        if (!found) {
+            const any = await findNodeAnyType(title, entityType);
+            if (any) { found = any; resolvedType = any.entityType; }
+        }
         if (!found) {
             context.set('error', `${entityType} "${title}" not found.`);
             return this.result(NOT_FOUND, `${entityType} "${title}" not found.`);
@@ -65,7 +73,12 @@ export class FindEntityNodeCode extends AbstractNodeCode {
             content: found.content,
             ...found.meta,
         });
+        // Expose the actual type it was found in (may differ from the requested
+        // type after a move), so downstream ops target the right context type.
+        context.set('resolved_type', resolvedType);
 
-        return this.result(ResultStatus.OK, `Found ${entityType} "${title}".`);
+        return this.result(ResultStatus.OK,
+            resolvedType === entityType ? `Found ${entityType} "${title}".`
+                : `Found "${title}" as ${resolvedType} (requested ${entityType}).`);
     }
 }

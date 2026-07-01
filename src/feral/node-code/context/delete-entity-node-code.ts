@@ -9,7 +9,7 @@ import { ResultStatus } from '../../result/result.js';
 import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
-import { findEntityByTitle, trashEntity, type EntityTypeName } from '../../../entities/entity.js';
+import { findEntityByTitle, findNodeAnyType, trashEntity, type EntityTypeName } from '../../../entities/entity.js';
 import { getEntityIndex } from '../../../entities/entity-index.js';
 import { getEmbeddingIndex } from '../../../entities/embedding-index.js';
 
@@ -44,7 +44,14 @@ export class DeleteEntityNodeCode extends AbstractNodeCode {
             return this.result(NOT_FOUND, 'Missing title in context.');
         }
 
-        const found = await findEntityByTitle(entityType, title);
+        // Resolve in the requested type; fall back across the type hierarchy so a
+        // node moved to a subtype (e.g. person → family) is still found.
+        let found = await findEntityByTitle(entityType, title);
+        let effectiveType: string = entityType;
+        if (!found) {
+            const any = await findNodeAnyType(title, entityType);
+            if (any) { found = any; effectiveType = any.entityType; }
+        }
         if (!found) {
             context.set('error', `${entityType} "${title}" not found.`);
             return this.result(NOT_FOUND, `${entityType} "${title}" not found.`);
@@ -55,14 +62,14 @@ export class DeleteEntityNodeCode extends AbstractNodeCode {
         // Update entity index incrementally
         const index = getEntityIndex();
         if (index.isBuilt) {
-            index.remove(entityType, found.meta.id as string);
+            index.remove(effectiveType as EntityTypeName, found.meta.id as string);
         }
 
         // Update embedding index
         const embeddingIndex = getEmbeddingIndex();
         if (embeddingIndex.isLoaded) {
             const id = found.meta.id as string;
-            embeddingIndex.remove(`${entityType}:${id}`);
+            embeddingIndex.remove(`${effectiveType}:${id}`);
         }
 
         context.set('deleted', {
@@ -71,6 +78,6 @@ export class DeleteEntityNodeCode extends AbstractNodeCode {
             deleted: true,
         });
 
-        return this.result(ResultStatus.OK, `Deleted ${entityType} "${title}".`);
+        return this.result(ResultStatus.OK, `Deleted ${effectiveType} "${title}".`);
     }
 }

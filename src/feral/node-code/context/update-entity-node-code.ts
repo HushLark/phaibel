@@ -8,7 +8,7 @@ import { ResultStatus } from '../../result/result.js';
 import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
-import { findEntityByTitle, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
+import { findEntityByTitle, findNodeAnyType, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
 import { getEntityType } from '../../../entities/entity-type-config.js';
 import { validateEntity, formatValidationErrors } from '../../../entities/entity-validator.js';
 import { getEntityIndex } from '../../../entities/entity-index.js';
@@ -68,15 +68,25 @@ export class UpdateEntityNodeCode extends AbstractNodeCode {
             return this.result(NOT_FOUND, 'Missing title in context.');
         }
 
-        const found = await findEntityByTitle(entityType, title);
+        // Look up by title in the requested type; if missing, fall back across the
+        // context-type hierarchy so a node moved to a subtype (e.g. person → family)
+        // is still found and updated instead of silently failing.
+        let found = await findEntityByTitle(entityType, title);
+        let effectiveType: string = entityType;
+        if (!found) {
+            const any = await findNodeAnyType(title, entityType);
+            if (any) { found = any; effectiveType = any.entityType; }
+        }
         if (!found) {
             context.set('error', `${entityType} "${title}" not found.`);
             return this.result(NOT_FOUND, `${entityType} "${title}" not found.`);
         }
 
-        // Merge content if provided
-        const newContent = context.get('content') as string | undefined;
-        const content = newContent !== undefined ? newContent : (found.content ?? '');
+        // Merge content only if a real string was provided — a null/undefined (or
+        // non-string) "content" in context must NOT clobber the existing body
+        // (that's how a rename wiped a node's body to the literal "null").
+        const newContent = context.get('content');
+        const content = typeof newContent === 'string' ? newContent : (found.content ?? '');
 
         // Merge patch fields from context into existing metadata
         if (patchFieldsStr) {
@@ -89,7 +99,7 @@ export class UpdateEntityNodeCode extends AbstractNodeCode {
         }
 
         // Validate only the patched fields against entity type schema
-        const typeConfig = await getEntityType(entityType);
+        const typeConfig = await getEntityType(effectiveType);
         if (typeConfig) {
             const patchedFields = new Set(
                 patchFieldsStr ? patchFieldsStr.split(',').map(f => f.trim()).filter(Boolean) : []
@@ -98,7 +108,7 @@ export class UpdateEntityNodeCode extends AbstractNodeCode {
             if (newContent !== undefined) patchedFields.add('content');
             const errors = validateEntity(found.meta, typeConfig, false, patchedFields.size > 0 ? patchedFields : undefined);
             if (errors.length > 0) {
-                const msg = `Validation failed for ${entityType}: ${formatValidationErrors(errors)}`;
+                const msg = `Validation failed for ${effectiveType}: ${formatValidationErrors(errors)}`;
                 context.set('error', msg);
                 return this.result(ResultStatus.ERROR, msg);
             }
@@ -107,7 +117,7 @@ export class UpdateEntityNodeCode extends AbstractNodeCode {
         await writeEntity(found.filepath, found.meta, content);
 
         // Regenerate summary with updated content
-        const summary = await generateEntitySummary(entityType, found.meta.title as string ?? title, content, found.meta);
+        const summary = await generateEntitySummary(effectiveType as EntityTypeName, found.meta.title as string ?? title, content, found.meta);
         found.meta.summary = summary;
         await writeEntity(found.filepath, found.meta, content);
 
@@ -121,16 +131,16 @@ export class UpdateEntityNodeCode extends AbstractNodeCode {
         const index = getEntityIndex();
         if (index.isBuilt) {
             const entityId = found.meta.id as string;
-            await index.addOrUpdate(entityType, entityId, title, found.filepath, summary);
+            await index.addOrUpdate(effectiveType as EntityTypeName, entityId, title, found.filepath, summary);
         }
 
         // Update embedding index
         const embeddingIndex = getEmbeddingIndex();
         if (embeddingIndex.isLoaded) {
             const id = found.meta.id as string;
-            await embeddingIndex.upsert(`${entityType}:${id}`, { title, summary: summary ?? '', bodySnippet: content.slice(0, 500) });
+            await embeddingIndex.upsert(`${effectiveType}:${id}`, { title, summary: summary ?? '', bodySnippet: content.slice(0, 500) });
         }
 
-        return this.result(ResultStatus.OK, `Updated ${entityType} "${title}".`);
+        return this.result(ResultStatus.OK, `Updated ${effectiveType} "${title}".`);
     }
 }

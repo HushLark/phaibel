@@ -12,7 +12,7 @@ import { ResultStatus } from '../../result/result.js';
 import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
-import { findEntityByTitle, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
+import { findEntityByTitle, findNodeAnyType, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
 
 const NOT_FOUND = 'not_found';
 
@@ -45,22 +45,33 @@ export class LinkEntitiesNodeCode extends AbstractNodeCode {
         const targetTitle = this.interpolate(rawTargetTitle, context);
         const label = this.interpolate(rawLabel, context);
 
-        // Find both entities
-        const source = await findEntityByTitle(sourceType, sourceTitle);
+        // Find both entities — fall back across the type hierarchy so a node moved
+        // to a subtype (e.g. person → family) still links correctly.
+        let source = await findEntityByTitle(sourceType, sourceTitle);
+        let effectiveSourceType: string = sourceType;
+        if (!source) {
+            const any = await findNodeAnyType(sourceTitle, sourceType);
+            if (any) { source = any; effectiveSourceType = any.entityType; }
+        }
         if (!source) {
             context.set('error', `Source ${sourceType} "${sourceTitle}" not found.`);
             return this.result(NOT_FOUND, `Source ${sourceType} "${sourceTitle}" not found.`);
         }
 
-        const target = await findEntityByTitle(targetType, targetTitle);
+        let target = await findEntityByTitle(targetType, targetTitle);
+        let effectiveTargetType: string = targetType;
+        if (!target) {
+            const any = await findNodeAnyType(targetTitle, targetType);
+            if (any) { target = any; effectiveTargetType = any.entityType; }
+        }
         if (!target) {
             context.set('error', `Target ${targetType} "${targetTitle}" not found.`);
             return this.result(NOT_FOUND, `Target ${targetType} "${targetTitle}" not found.`);
         }
 
-        // Build the link target key: "type:id"
+        // Build the link target key: "type:id" (using the resolved target type)
         const targetId = target.meta.id as string;
-        const linkTarget = `${targetType}:${targetId}`;
+        const linkTarget = `${effectiveTargetType}:${targetId}`;
 
         // Append to existing links array (avoid duplicates)
         const existingLinks = Array.isArray(source.meta.links) ? source.meta.links as Array<{ target: string; label: string }> : [];
@@ -72,7 +83,7 @@ export class LinkEntitiesNodeCode extends AbstractNodeCode {
             await writeEntity(source.filepath, source.meta, source.content);
         }
 
-        context.set('link', { source: `${sourceType}:${source.meta.id}`, target: linkTarget, label });
-        return this.result(ResultStatus.OK, `Linked ${sourceType} "${sourceTitle}" → ${targetType} "${targetTitle}" (${label}).`);
+        context.set('link', { source: `${effectiveSourceType}:${source.meta.id}`, target: linkTarget, label });
+        return this.result(ResultStatus.OK, `Linked ${effectiveSourceType} "${sourceTitle}" → ${effectiveTargetType} "${targetTitle}" (${label}).`);
     }
 }

@@ -384,6 +384,9 @@ export async function writeEntity(
     content: string,
 ): Promise<void> {
     await assertWithinFoundation(filepath);
+    // Defensive: never serialize a non-string body (null/undefined would be written
+    // as the literal "null"/"undefined"). Coerce to an empty string.
+    if (typeof content !== 'string') content = '';
     meta.updated = new Date().toISOString();
 
     const cleanMeta = { ...meta };
@@ -566,6 +569,47 @@ export async function findEntityByTitle(
         // Directory doesn't exist yet
     }
 
+    return null;
+}
+
+/**
+ * Hierarchy-aware lookup: resolve a node by title across the context-type tree.
+ * Tries the preferred type first, then its siblings/subtypes (same baseCategory
+ * or whose parent-chain includes it), then every other type. This is what lets a
+ * lookup for a "person" still find a node that was moved to a subtype like
+ * "family" — a plain `findEntityByTitle(preferredType, …)` only searches one type.
+ * Returns the match plus the type it was actually found in.
+ */
+export async function findNodeAnyType(
+    titleOrFilename: string,
+    preferredType?: string,
+): Promise<{ filepath: string; meta: Record<string, unknown>; content: string; entityType: string } | null> {
+    const types = await loadEntityTypes();
+    const byName = new Map(types.map(t => [t.name, t]));
+    const pref = preferredType ? byName.get(preferredType) : undefined;
+
+    // A type is "near" the preferred one if it shares its base category or its
+    // parent-chain leads to it (so person ↔ family/friend/colleague are neighbors).
+    const isNear = (t: { name: string; parent?: string; baseCategory?: string }): boolean => {
+        if (!pref) return false;
+        if (t.name === pref.name) return true;
+        if (t.baseCategory && pref.baseCategory && t.baseCategory === pref.baseCategory) return true;
+        let cur: typeof t | undefined = t; const seen = new Set<string>();
+        while (cur?.parent && !seen.has(cur.name)) { seen.add(cur.name); if (cur.parent === pref.name) return true; cur = byName.get(cur.parent); }
+        return false;
+    };
+
+    // Search order: preferred → near types → everything else.
+    const order: string[] = [];
+    const push = (n: string) => { if (!order.includes(n)) order.push(n); };
+    if (preferredType && byName.has(preferredType)) push(preferredType);
+    for (const t of types) if (isNear(t)) push(t.name);
+    for (const t of types) push(t.name);
+
+    for (const typeName of order) {
+        const found = await findEntityByTitle(typeName as EntityTypeName, titleOrFilename).catch(() => null);
+        if (found) return { ...found, entityType: typeName };
+    }
     return null;
 }
 
