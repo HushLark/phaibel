@@ -81,8 +81,27 @@ import { HtmlToMarkdownNodeCode } from './node-code/data/html-to-markdown-node-c
 import { PromptInputNodeCode } from './node-code/input/prompt-input-node-code.js';
 import { PromptSelectNodeCode } from './node-code/input/prompt-select-node-code.js';
 
-// ── Pipeline NodeCodes (Node.js only — use dynamic import to stay mobile-safe) ──
-// Imported in getNodeOnlyNodeCodes() below.
+// ── Pipeline NodeCodes (cross-platform) ─────────────────────────────────
+// MUST be static imports: the chat host runs pipeline.standard on every
+// platform, and Metro mis-resolves runtime import() paths for modules in
+// watchFolders outside the app root (dev client "Unable to resolve module").
+import { PipelineClassifyNodeCode } from './node-code/pipeline/pipeline-classify-node-code.js';
+import { PipelineFactualSearchNodeCode } from './node-code/pipeline/pipeline-factual-search-node-code.js';
+import { PipelineCategoryContextNodeCode } from './node-code/pipeline/pipeline-category-context-node-code.js';
+import { PipelineGatherContextNodeCode } from './node-code/pipeline/pipeline-gather-context-node-code.js';
+import { PipelineSelectNodesNodeCode } from './node-code/pipeline/pipeline-select-nodes-node-code.js';
+import { PipelineActionLoopNodeCode } from './node-code/pipeline/pipeline-action-loop-node-code.js';
+import { PipelineSynthesizeNodeCode } from './node-code/pipeline/pipeline-synthesize-node-code.js';
+import { CSCategorizeNodeCode } from './node-code/pipeline/cs-categorize-node-code.js';
+import { CSContextLoopNodeCode } from './node-code/pipeline/cs-context-loop-node-code.js';
+import { CSDefineSuccessNodeCode } from './node-code/pipeline/cs-define-success-node-code.js';
+import { CSNodeLoopNodeCode } from './node-code/pipeline/cs-node-loop-node-code.js';
+import { CSBuildProcessNodeCode } from './node-code/pipeline/cs-build-process-node-code.js';
+import { CSEvaluateSuccessNodeCode } from './node-code/pipeline/cs-evaluate-success-node-code.js';
+import { HZCategorizeNodeCode } from './node-code/pipeline/hz-categorize-node-code.js';
+import { HZPlanNodeCode } from './node-code/pipeline/hz-plan-node-code.js';
+import { HZExecuteNodeCode } from './node-code/pipeline/hz-execute-node-code.js';
+import { HZEvaluateNodeCode } from './node-code/pipeline/hz-evaluate-node-code.js';
 
 // ── Cross-platform catalog sources ───────────────────────────────────────
 import { EntityCatalogSource } from './catalog/entity-catalog-source.js';
@@ -212,25 +231,6 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         { CxfPushNodeCode },
         { Cfx3WriteNodeCode },
         { Cfx3SyncNodeCode },
-        { PipelineClassifyNodeCode },
-        { PipelineFactualSearchNodeCode },
-        { PipelineCategoryContextNodeCode },
-        { PipelineGatherContextNodeCode },
-        { PipelineSelectNodesNodeCode },
-        { PipelineActionLoopNodeCode },
-        { PipelineSynthesizeNodeCode },
-        // Cruel Summer pipeline NodeCodes
-        { CSCategorizeNodeCode },
-        { CSContextLoopNodeCode },
-        { CSDefineSuccessNodeCode },
-        { CSNodeLoopNodeCode },
-        { CSBuildProcessNodeCode },
-        { CSEvaluateSuccessNodeCode },
-        // Hertz pipeline NodeCodes
-        { HZCategorizeNodeCode },
-        { HZPlanNodeCode },
-        { HZExecuteNodeCode },
-        { HZEvaluateNodeCode },
     ] = await Promise.all([
         import('./node-code/data/read-file-node-code.js'),
         import('./node-code/genai/write-file-node-code.js'),
@@ -256,23 +256,6 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         import('./node-code/context/cxf-push-node-code.js'),
         import('./node-code/cfx3/cfx3-write-node-code.js'),
         import('./node-code/cfx3/cfx3-sync-node-code.js'),
-        import('./node-code/pipeline/pipeline-classify-node-code.js'),
-        import('./node-code/pipeline/pipeline-factual-search-node-code.js'),
-        import('./node-code/pipeline/pipeline-category-context-node-code.js'),
-        import('./node-code/pipeline/pipeline-gather-context-node-code.js'),
-        import('./node-code/pipeline/pipeline-select-nodes-node-code.js'),
-        import('./node-code/pipeline/pipeline-action-loop-node-code.js'),
-        import('./node-code/pipeline/pipeline-synthesize-node-code.js'),
-        import('./node-code/pipeline/cs-categorize-node-code.js'),
-        import('./node-code/pipeline/cs-context-loop-node-code.js'),
-        import('./node-code/pipeline/cs-define-success-node-code.js'),
-        import('./node-code/pipeline/cs-node-loop-node-code.js'),
-        import('./node-code/pipeline/cs-build-process-node-code.js'),
-        import('./node-code/pipeline/cs-evaluate-success-node-code.js'),
-        import('./node-code/pipeline/hz-categorize-node-code.js'),
-        import('./node-code/pipeline/hz-plan-node-code.js'),
-        import('./node-code/pipeline/hz-execute-node-code.js'),
-        import('./node-code/pipeline/hz-evaluate-node-code.js'),
     ]);
 
     return [
@@ -300,7 +283,17 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         new CxfPushNodeCode(),
         new Cfx3WriteNodeCode(),
         new Cfx3SyncNodeCode(),
-        // Pipeline orchestration NodeCodes (Node.js only)
+    ];
+}
+
+/**
+ * Pipeline orchestration NodeCodes (cross-platform).
+ * The chat host runs pipeline.standard on every platform, so these MUST be
+ * registered on mobile too — their deps (classifier, LLM router, process
+ * hydrator) are all platform-abstracted.
+ */
+function getPipelineNodeCodes(): NodeCode[] {
+    return [
         new PipelineClassifyNodeCode(),
         new PipelineFactualSearchNodeCode(),
         new PipelineCategoryContextNodeCode(),
@@ -308,14 +301,12 @@ async function getNodeOnlyNodeCodes(): Promise<NodeCode[]> {
         new PipelineSelectNodesNodeCode(),
         new PipelineActionLoopNodeCode(),
         new PipelineSynthesizeNodeCode(),
-        // Cruel Summer pipeline NodeCodes (Node.js only)
         new CSCategorizeNodeCode(),
         new CSContextLoopNodeCode(),
         new CSDefineSuccessNodeCode(),
         new CSNodeLoopNodeCode(),
         new CSBuildProcessNodeCode(),
         new CSEvaluateSuccessNodeCode(),
-        // Hertz pipeline NodeCodes (Node.js only)
         new HZCategorizeNodeCode(),
         new HZPlanNodeCode(),
         new HZExecuteNodeCode(),
@@ -407,6 +398,8 @@ export async function bootstrapFeral(
 
     // 1. NodeCode factory — start with cross-platform codes
     const allNodeCodes = getCrossPlatformNodeCodes();
+    // Pipeline NodeCodes run the chat flow itself — required on ALL platforms
+    allNodeCodes.push(...getPipelineNodeCodes());
     if (!isMobile) {
         allNodeCodes.push(...await getNodeOnlyNodeCodes());
     }
