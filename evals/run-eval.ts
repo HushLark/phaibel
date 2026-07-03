@@ -7,7 +7,7 @@
  *   tsx evals/run-eval.ts --label "prompt-v2" --filter event-not-task,task-not-event
  *   tsx evals/run-eval.ts --label "sonnet-test" --model-override reason=anthropic:claude-sonnet-4-6
  */
-import { promises as fs } from 'fs';
+import { promises as fs, readFileSync } from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
@@ -16,6 +16,23 @@ import { runEval } from './runner.js';
 import type { EvalRunConfig, EvalScenario } from './types.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Authenticate all Synaptic calls in this run (engine under test AND the LLM
+// judge) as the dedicated eval-harness agent, so eval usage is attributed to
+// the agent's account server-side — never to the developer's personal account.
+// Key resolution: PHAIBEL_SYNAPTIC_API_KEY env var, else ~/.phaibel/eval-agent.key.
+if (!process.env.PHAIBEL_SYNAPTIC_API_KEY) {
+    try {
+        const keyFile = path.join(process.env.HOME ?? '', '.phaibel', 'eval-agent.key');
+        const key = readFileSync(keyFile, 'utf-8').trim();
+        if (key) {
+            process.env.PHAIBEL_SYNAPTIC_API_KEY = key;
+            console.log('  Using eval-harness agent credentials (~/.phaibel/eval-agent.key)');
+        }
+    } catch {
+        console.warn('  ⚠ No eval agent key (PHAIBEL_SYNAPTIC_API_KEY or ~/.phaibel/eval-agent.key) — synaptic usage will bill the signed-in user');
+    }
+}
 
 interface ParsedArgs {
     label: string;

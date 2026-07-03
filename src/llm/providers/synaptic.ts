@@ -32,6 +32,18 @@ export class SynapticProvider implements LLMProvider {
     }
 
     private async getConfig(): Promise<SynapticConfig> {
+        // Env override — lets headless callers (eval harness, CI) authenticate
+        // as a dedicated Synaptic agent instead of the signed-in user, so their
+        // usage/cost is attributed to the agent's account server-side.
+        // Node-only: process.env doesn't exist on mobile.
+        const env = typeof process !== 'undefined' ? process.env : undefined;
+        if (env?.PHAIBEL_SYNAPTIC_API_KEY) {
+            return {
+                token: env.PHAIBEL_SYNAPTIC_API_KEY,
+                endpoint: env.PHAIBEL_SYNAPTIC_ENDPOINT ?? DEFAULT_ENDPOINT,
+                refreshToken: undefined,
+            };
+        }
         const secrets = await loadSecrets();
         const cfg = secrets.providers['synaptic'] as {
             apiKey: string; endpoint?: string; refreshToken?: string;
