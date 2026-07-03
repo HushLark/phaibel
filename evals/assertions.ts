@@ -15,6 +15,52 @@
  */
 import { getModelForCapability } from '../src/llm/router.js';
 import { parseJsonResponse } from '../src/utils/json-parser.js';
+import { recordUsage } from '../src/llm/token-usage.js';
+
+// ── Judge LLM access ─────────────────────────────────────────────────────────
+// The judge is pinned to an explicit model (cross-family from the engine under
+// test) and invoked through Synaptic's direct-model endpoint as the eval-harness
+// agent — never through the app's capability routing, so re-assigning the app's
+// models can't silently change the judge.
+const JUDGE_MODEL_DEFAULT = 'gpt-5.4';
+
+function judgeModel(): string {
+    return process.env.PHAIBEL_EVAL_JUDGE_MODEL ?? JUDGE_MODEL_DEFAULT;
+}
+
+async function judgeChat(prompt: string): Promise<string> {
+    const key = process.env.PHAIBEL_SYNAPTIC_API_KEY;
+    if (!key) {
+        // No agent credentials — fall back to the app's reason capability
+        const llm = await getModelForCapability('reason');
+        return llm.chat([{ role: 'user', content: prompt }], { maxTokens: 2000, temperature: 0 });
+    }
+    const endpoint = process.env.PHAIBEL_SYNAPTIC_ENDPOINT ?? 'https://synaptic.hushlark.ai';
+    const res = await fetch(`${endpoint}/v1/phaibel/llm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({
+            model: judgeModel(),
+            max_tokens: 2000,
+            temperature: 0,
+            messages: [{ role: 'user', content: prompt }],
+        }),
+    });
+    if (!res.ok) throw new Error(`Judge LLM error (${res.status}): ${await res.text()}`);
+    const data = await res.json() as Record<string, unknown>;
+    // Feed the harness token tracker so judge spend shows up in harness metrics
+    const usage = data.usage as Record<string, number> | undefined;
+    if (usage) {
+        const inTok = usage.input_tokens ?? usage.prompt_tokens ?? 0;
+        const outTok = usage.output_tokens ?? usage.completion_tokens ?? 0;
+        if (inTok || outTok) recordUsage(judgeModel(), inTok, outTok).catch(() => {});
+    }
+    const content = data.content as Array<{ text?: string }> | undefined;
+    if (content?.[0]?.text) return content[0].text;
+    const choices = data.choices as Array<{ message: { content: string } }> | undefined;
+    if (choices?.[0]?.message?.content) return choices[0].message.content;
+    throw new Error('Unexpected judge response format');
+}
 import type {
     EvalAssertion,
     EvalDimension,
@@ -379,16 +425,12 @@ async function checkResponseFaithful(
         'Keep each claim and reason under 15 words. No prose outside the JSON.',
     ].join('\n');
 
-    const llm = await getModelForCapability('reason');
     let claims: JudgedClaim[] = [];
     let lastErr: unknown;
     // The judge occasionally truncates or malforms JSON — one retry before giving up.
     for (let attempt = 0; attempt < 2; attempt++) {
         try {
-            const raw = await llm.chat(
-                [{ role: 'user', content: prompt }],
-                { maxTokens: 2000, temperature: 0 },
-            );
+            const raw = await judgeChat(prompt);
             const parsed = parseJsonResponse(raw) as { claims?: JudgedClaim[] } | null;
             claims = parsed?.claims ?? [];
             lastErr = undefined;
@@ -408,7 +450,7 @@ async function checkResponseFaithful(
     }
 
     if (claims.length === 0) {
-        return { description: a.description, type: a.type, passed: true, score: 1, dimensions, message: 'No verifiable claims in response' };
+        return { description: a.description, type: a.type, passed: true, score: 1, dimensions, message: `No verifiable claims in response [judge=${judgeModel()}]` };
     }
 
     const supported = claims.filter(c => c.verdict === 'supported').length;
@@ -416,7 +458,7 @@ async function checkResponseFaithful(
     const bad = claims.filter(c => c.verdict !== 'supported');
 
     if (bad.length === 0) {
-        return { description: a.description, type: a.type, passed: true, score: 1, dimensions, actual: claims.length, message: `All ${claims.length} claim(s) supported` };
+        return { description: a.description, type: a.type, passed: true, score: 1, dimensions, actual: claims.length, message: `All ${claims.length} claim(s) supported [judge=${judgeModel()}]` };
     }
     return {
         description: a.description,
@@ -426,6 +468,6 @@ async function checkResponseFaithful(
         dimensions,
         failedDimension: 'accuracy',
         actual: bad.map(c => `${c.verdict}: ${c.claim}`),
-        message: `${supported}/${claims.length} claims supported. Problems: ${bad.map(c => `[${c.verdict}] "${c.claim}"`).join('; ')}`,
+        message: `${supported}/${claims.length} claims supported [judge=${judgeModel()}]. Problems: ${bad.map(c => `[${c.verdict}] "${c.claim}"`).join('; ')}`,
     };
 }
