@@ -7,6 +7,31 @@ import type { EvalScenario } from '../types.js';
 
 export const conversationalScenarios: EvalScenario[] = [
     {
+        id: 'faithful-recall',
+        name: 'Answer about stored facts contains no fabricated details',
+        category: 'conversational',
+        timeoutSeconds: 120,
+        userInput: "When is my mom's birthday and what did she ask for?",
+        vaultSeed: [
+            {
+                entityType: 'note',
+                title: "Mom's birthday",
+                body: 'Mom\'s birthday is March 12. She asked for a rosemary plant and a photo book.',
+            },
+        ],
+        assertions: [
+            {
+                type: 'response_contains',
+                match: 'March 12',
+                description: 'The stored birthday date should be surfaced',
+            },
+            {
+                type: 'response_faithful',
+                description: 'Every claim in the answer must be supported by the vault (no invented gifts, dates, or details)',
+            },
+        ],
+    },
+    {
         id: 'person-creation',
         name: 'Adding a contact creates a person entity with fields',
         category: 'conversational',

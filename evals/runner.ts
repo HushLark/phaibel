@@ -7,7 +7,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { feralChatHeadless } from '../src/commands/chat.js';
 import { createEvalVault, destroyEvalVault, snapshotVault } from './vault-setup.js';
-import { evaluateAssertions, computeScore } from './assertions.js';
+import { evaluateAssertions, computeScore, computeDimensionScores } from './assertions.js';
 import type {
     EvalScenario,
     EvalRunConfig,
@@ -76,6 +76,8 @@ async function runScenario(
                 category: scenario.category,
                 passed: false,
                 score: 0,
+                accuracy: 0,
+                completeness: 0,
                 assertionResults: [],
                 responseText: '',
                 durationMs: Date.now() - startTime,
@@ -87,9 +89,11 @@ async function runScenario(
         const after = await snapshotVault();
 
         // Evaluate assertions
-        const assertionResults = evaluateAssertions(scenario.assertions, before, after, responseText);
+        const assertionResults = await evaluateAssertions(scenario.assertions, before, after, responseText);
         const score = computeScore(scenario.assertions, assertionResults);
-        const passed = assertionResults.every(r => r.passed);
+        const { accuracy, completeness } = computeDimensionScores(scenario.assertions, assertionResults);
+        // Pass requires BOTH dimensions perfect: nothing wrong AND nothing missing.
+        const passed = accuracy === 1 && completeness === 1;
 
         await destroyEvalVault();
 
@@ -99,6 +103,8 @@ async function runScenario(
             category: scenario.category,
             passed,
             score,
+            accuracy,
+            completeness,
             assertionResults,
             responseText,
             durationMs: Date.now() - startTime,
@@ -135,10 +141,11 @@ export async function runEval(
         results.push(result);
 
         const icon = result.passed ? '✓' : '✗';
-        const scoreStr = (result.score * 100).toFixed(0);
+        const accStr = (result.accuracy * 100).toFixed(0);
+        const compStr = (result.completeness * 100).toFixed(0);
         const timeStr = (result.durationMs / 1000).toFixed(1);
         const errorStr = result.error ? ` [ERROR: ${result.error}]` : '';
-        console.log(`  ${icon} ${scenario.id}: ${scoreStr}% (${timeStr}s)${errorStr}`);
+        console.log(`  ${icon} ${scenario.id}: accuracy ${accStr}% · completeness ${compStr}% (${timeStr}s)${errorStr}`);
     }
 
     const summary = buildSummary(results);
@@ -153,29 +160,37 @@ export async function runEval(
 }
 
 function buildSummary(results: ScenarioResult[]): EvalSummary {
-    const byCategory: Record<string, { total: number; passed: number; score: number }> = {};
+    const byCategory: Record<string, { total: number; passed: number; score: number; accuracy: number; completeness: number }> = {};
 
     for (const r of results) {
         if (!byCategory[r.category]) {
-            byCategory[r.category] = { total: 0, passed: 0, score: 0 };
+            byCategory[r.category] = { total: 0, passed: 0, score: 0, accuracy: 0, completeness: 0 };
         }
         byCategory[r.category].total++;
         if (r.passed) byCategory[r.category].passed++;
         byCategory[r.category].score += r.score;
+        byCategory[r.category].accuracy += r.accuracy;
+        byCategory[r.category].completeness += r.completeness;
     }
 
     // Average scores per category
     for (const cat of Object.values(byCategory)) {
         cat.score = cat.total > 0 ? cat.score / cat.total : 0;
+        cat.accuracy = cat.total > 0 ? cat.accuracy / cat.total : 0;
+        cat.completeness = cat.total > 0 ? cat.completeness / cat.total : 0;
     }
 
     const totalScore = results.reduce((sum, r) => sum + r.score, 0);
+    const totalAccuracy = results.reduce((sum, r) => sum + r.accuracy, 0);
+    const totalCompleteness = results.reduce((sum, r) => sum + r.completeness, 0);
 
     return {
         totalScenarios: results.length,
         passed: results.filter(r => r.passed).length,
         failed: results.filter(r => !r.passed).length,
         overallScore: results.length > 0 ? totalScore / results.length : 0,
+        overallAccuracy: results.length > 0 ? totalAccuracy / results.length : 0,
+        overallCompleteness: results.length > 0 ? totalCompleteness / results.length : 0,
         byCategory,
     };
 }

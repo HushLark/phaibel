@@ -40,14 +40,16 @@ async function main() {
 
     // Per-scenario rows
     for (const id of allIds) {
-        const scores: (number | null)[] = runs.map(run => {
-            const s = run.scenarios.find(s => s.scenarioId === id);
-            return s ? s.score : null;
-        });
+        const found = runs.map(run => run.scenarios.find(s => s.scenarioId === id) ?? null);
+        const scores: (number | null)[] = found.map(s => (s ? s.score : null));
 
-        const cells = scores.map(s =>
-            s === null ? pad('—') : pad(s === 1 ? 'PASS (100%)' : `FAIL (${(s * 100).toFixed(0)}%)`),
-        );
+        const cells = found.map(s => {
+            if (!s) return pad('—');
+            const verdict = s.passed ? 'PASS' : 'FAIL';
+            // Older result files predate the accuracy/completeness split
+            if (s.accuracy === undefined) return pad(`${verdict} (${(s.score * 100).toFixed(0)}%)`);
+            return pad(`${verdict} A${(s.accuracy * 100).toFixed(0)} C${(s.completeness * 100).toFixed(0)}`);
+        });
 
         // Delta: last - first
         let delta = '';
@@ -82,7 +84,9 @@ async function main() {
     for (const cat of allCats) {
         const catScores = runs.map(r => {
             const c = r.summary.byCategory[cat];
-            return c ? `${c.passed}/${c.total} (${(c.score * 100).toFixed(0)}%)` : '—';
+            if (!c) return '—';
+            if (c.accuracy === undefined) return `${c.passed}/${c.total} (${(c.score * 100).toFixed(0)}%)`;
+            return `${c.passed}/${c.total} A${(c.accuracy * 100).toFixed(0)} C${(c.completeness * 100).toFixed(0)}`;
         });
         console.log(`  ${pad(cat, 30)} ${catScores.map(s => pad(s)).join(' ')}`);
     }

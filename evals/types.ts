@@ -30,9 +30,24 @@ export interface EvalScenario {
 // ASSERTIONS
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * The two quality dimensions every assertion measures:
+ * - accuracy:     nothing wrong was done or said (no incorrect writes, no false reads/claims)
+ * - completeness: everything asked for was done (no omitted work, no missing info)
+ * Failures are classified by direction: commission → accuracy, omission → completeness.
+ */
+export type EvalDimension = 'accuracy' | 'completeness';
+
 interface BaseAssertion {
     weight?: number;
     description: string;
+    /**
+     * Override the automatic failure-mode classification. Most assertions
+     * classify themselves (e.g. entity_not_created failures are accuracy;
+     * entity_created failures are completeness; entity_count is bidirectional).
+     * Set this only when the default reading is wrong for a specific check.
+     */
+    dimension?: EvalDimension;
 }
 
 export interface EntityCreatedAssertion extends BaseAssertion {
@@ -97,6 +112,17 @@ export interface EntityBodyAssertion extends BaseAssertion {
     match: string;
 }
 
+export interface ResponseFaithfulAssertion extends BaseAssertion {
+    type: 'response_faithful';
+    /**
+     * Extra ground-truth facts (beyond the post-run vault contents) that the
+     * response's claims are judged against. An LLM judge extracts each factual
+     * claim from the response and scores supported/total — fractional credit,
+     * counted against accuracy.
+     */
+    groundTruth?: string;
+}
+
 export type EvalAssertion =
     | EntityCreatedAssertion
     | EntityUpdatedAssertion
@@ -107,7 +133,8 @@ export type EvalAssertion =
     | ResponseContainsAssertion
     | ResponseNotContainsAssertion
     | EntityBodyAssertion
-    | ContextTypeCreatedAssertion;
+    | ContextTypeCreatedAssertion
+    | ResponseFaithfulAssertion;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RESULTS
@@ -117,6 +144,12 @@ export interface AssertionResult {
     description: string;
     type: string;
     passed: boolean;
+    /** Fractional credit 0–1 for judged assertions (e.g. response_faithful). Binary checks omit it (passed ⇒ 1, failed ⇒ 0). */
+    score?: number;
+    /** Dimensions this assertion is capable of measuring. */
+    dimensions: EvalDimension[];
+    /** On failure: the dimension the failure counts against. Absent on hard errors (counts against both). */
+    failedDimension?: EvalDimension;
     actual?: unknown;
     message: string;
 }
@@ -127,6 +160,10 @@ export interface ScenarioResult {
     category: string;
     passed: boolean;
     score: number;
+    /** 0–1: weighted share of accuracy-relevant checks with nothing wrong done or said. */
+    accuracy: number;
+    /** 0–1: weighted share of completeness-relevant checks with everything asked for done. */
+    completeness: number;
     assertionResults: AssertionResult[];
     responseText: string;
     durationMs: number;
@@ -138,7 +175,9 @@ export interface EvalSummary {
     passed: number;
     failed: number;
     overallScore: number;
-    byCategory: Record<string, { total: number; passed: number; score: number }>;
+    overallAccuracy: number;
+    overallCompleteness: number;
+    byCategory: Record<string, { total: number; passed: number; score: number; accuracy: number; completeness: number }>;
 }
 
 export interface EvalRunConfig {

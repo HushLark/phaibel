@@ -110,11 +110,13 @@ async function main() {
 
     // Print summary
     console.log('\n  ── Summary ──');
-    console.log(`  Score:  ${(result.summary.overallScore * 100).toFixed(0)}%`);
-    console.log(`  Passed: ${result.summary.passed}/${result.summary.totalScenarios}`);
+    console.log(`  Score:        ${(result.summary.overallScore * 100).toFixed(0)}%`);
+    console.log(`  Accuracy:     ${(result.summary.overallAccuracy * 100).toFixed(0)}%`);
+    console.log(`  Completeness: ${(result.summary.overallCompleteness * 100).toFixed(0)}%`);
+    console.log(`  Passed:       ${result.summary.passed}/${result.summary.totalScenarios}`);
     console.log('');
     for (const [cat, stats] of Object.entries(result.summary.byCategory)) {
-        console.log(`  ${cat}: ${stats.passed}/${stats.total} (${(stats.score * 100).toFixed(0)}%)`);
+        console.log(`  ${cat}: ${stats.passed}/${stats.total} (A ${(stats.accuracy * 100).toFixed(0)}% · C ${(stats.completeness * 100).toFixed(0)}%)`);
     }
     console.log(`\n  Results: ${resultFile}\n`);
 }
