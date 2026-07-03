@@ -5,7 +5,8 @@
  */
 import { promises as fs } from 'fs';
 import path from 'path';
-import { feralChatHeadless } from '../src/commands/chat.js';
+import { feralChatHeadless, setActivePipeline } from '../src/commands/chat.js';
+import { pipelineProcessSource } from '../src/feral/pipelines/pipeline-process-source.js';
 import { runWithTokenTracker, type ChatTokenTotals } from '../src/llm/token-usage.js';
 import { createEvalVault, destroyEvalVault, snapshotVault } from './vault-setup.js';
 import { evaluateAssertions, computeScore, computeDimensionScores } from './assertions.js';
@@ -164,6 +165,15 @@ export async function runEval(
     scenarios: EvalScenario[],
     config: EvalRunConfig,
 ): Promise<EvalRunResult> {
+    if (config.engine) {
+        const known = pipelineProcessSource.getPipelineKeys();
+        if (!known.includes(config.engine)) {
+            throw new Error(`Unknown engine "${config.engine}". Registered: ${known.join(', ')}`);
+        }
+        setActivePipeline(config.engine);
+        console.log(`  Engine: ${config.engine}`);
+    }
+
     const results: ScenarioResult[] = [];
 
     for (const scenario of scenarios) {

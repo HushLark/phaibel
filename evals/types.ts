@@ -209,6 +209,8 @@ export interface EvalRunConfig {
     label: string;
     gitCommit?: string;
     scenarioFilter?: string[];
+    /** Pipeline (engine) key the chat host runs — e.g. pipeline.standard, pipeline.cruel-summer, pipeline.hertz. */
+    engine?: string;
     modelOverrides?: Record<string, { provider: string; model: string }>;
 }
 

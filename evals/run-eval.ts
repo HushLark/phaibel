@@ -38,6 +38,7 @@ interface ParsedArgs {
     label: string;
     filter?: string[];
     scenariosFile?: string;
+    engine?: string;
     modelOverrides?: Record<string, { provider: string; model: string }>;
 }
 
@@ -45,6 +46,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     let label = 'unnamed';
     let filter: string[] | undefined;
     let scenariosFile: string | undefined;
+    let engine: string | undefined;
     const modelOverrides: Record<string, { provider: string; model: string }> = {};
 
     for (let i = 2; i < argv.length; i++) {
@@ -54,6 +56,8 @@ function parseArgs(argv: string[]): ParsedArgs {
             filter = argv[++i].split(',').map(s => s.trim());
         } else if (argv[i] === '--scenarios-file' && argv[i + 1]) {
             scenariosFile = argv[++i];
+        } else if (argv[i] === '--engine' && argv[i + 1]) {
+            engine = argv[++i];
         } else if (argv[i] === '--model-override' && argv[i + 1]) {
             // Format: capability=provider:model (e.g., reason=anthropic:claude-sonnet-4-6)
             const parts = argv[++i].split('=');
@@ -65,7 +69,7 @@ function parseArgs(argv: string[]): ParsedArgs {
         }
     }
 
-    return { label, filter, scenariosFile, modelOverrides: Object.keys(modelOverrides).length > 0 ? modelOverrides : undefined };
+    return { label, filter, scenariosFile, engine, modelOverrides: Object.keys(modelOverrides).length > 0 ? modelOverrides : undefined };
 }
 
 async function main() {
@@ -106,6 +110,7 @@ async function main() {
         label: args.label,
         gitCommit,
         scenarioFilter: args.filter,
+        engine: args.engine,
         modelOverrides: args.modelOverrides,
     };
 
