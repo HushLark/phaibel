@@ -6,6 +6,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { feralChatHeadless } from '../src/commands/chat.js';
+import { runWithTokenTracker, type ChatTokenTotals } from '../src/llm/token-usage.js';
 import { createEvalVault, destroyEvalVault, snapshotVault } from './vault-setup.js';
 import { evaluateAssertions, computeScore, computeDimensionScores } from './assertions.js';
 import type {
@@ -13,8 +14,21 @@ import type {
     EvalRunConfig,
     EvalRunResult,
     EvalSummary,
+    RunMetrics,
     ScenarioResult,
 } from './types.js';
+
+const ZERO_METRICS: RunMetrics = { durationMs: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, llmCalls: 0 };
+
+function metricsFrom(tokens: ChatTokenTotals, durationMs: number): RunMetrics {
+    return {
+        durationMs,
+        inputTokens: tokens.inputTokens,
+        outputTokens: tokens.outputTokens,
+        costUsd: tokens.calls.reduce((sum, c) => sum + c.costUsd, 0),
+        llmCalls: tokens.calls.length,
+    };
+}
 
 /**
  * Run a single scenario: set up vault, call chat, snapshot, assert, tear down.
@@ -44,13 +58,16 @@ async function runScenario(
         // Take before snapshot
         const before = await snapshotVault();
 
-        // Run feralChatHeadless with timeout
+        // Run feralChatHeadless with timeout.
+        // APPLICATION metrics: only this call's wall-clock and LLM spend.
         const timeoutMs = (scenario.timeoutSeconds ?? 90) * 1000;
         let responseText: string;
+        let appMetrics: RunMetrics;
         let processJson: Record<string, unknown> | undefined;
 
+        const appStart = Date.now();
         try {
-            responseText = await Promise.race([
+            const chatResult = await Promise.race([
                 feralChatHeadless(
                     scenario.userInput,
                     () => {},                          // onStatus: no-op
@@ -63,11 +80,13 @@ async function runScenario(
                     },
                     () => {},                           // onChatId: no-op
                     scenario.history,
-                ).then(r => r.response),
+                ),
                 new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error(`Scenario timed out after ${timeoutMs}ms`)), timeoutMs),
                 ),
             ]);
+            responseText = chatResult.response;
+            appMetrics = metricsFrom(chatResult.tokens, Date.now() - appStart);
         } catch (err) {
             await destroyEvalVault();
             return {
@@ -78,6 +97,8 @@ async function runScenario(
                 score: 0,
                 accuracy: 0,
                 completeness: 0,
+                app: { ...ZERO_METRICS, durationMs: Date.now() - startTime },
+                harness: ZERO_METRICS,
                 assertionResults: [],
                 responseText: '',
                 durationMs: Date.now() - startTime,
@@ -88,14 +109,22 @@ async function runScenario(
         // Take after snapshot
         const after = await snapshotVault();
 
-        // Evaluate assertions
-        const assertionResults = await evaluateAssertions(scenario.assertions, before, after, responseText);
+        // Evaluate assertions inside a token tracker so LLM-judge spend is
+        // attributed to the HARNESS, never to the application.
+        const { result: assertionResults, tokens: harnessTokens } = await runWithTokenTracker(
+            () => evaluateAssertions(scenario.assertions, before, after, responseText),
+        );
         const score = computeScore(scenario.assertions, assertionResults);
         const { accuracy, completeness } = computeDimensionScores(scenario.assertions, assertionResults);
         // Pass requires BOTH dimensions perfect: nothing wrong AND nothing missing.
         const passed = accuracy === 1 && completeness === 1;
 
         await destroyEvalVault();
+
+        const totalMs = Date.now() - startTime;
+        // Harness time = everything that wasn't the application call
+        // (vault setup/teardown, snapshots, assertion checks incl. the judge).
+        const harnessMetrics = metricsFrom(harnessTokens, totalMs - appMetrics.durationMs);
 
         return {
             scenarioId: scenario.id,
@@ -105,9 +134,11 @@ async function runScenario(
             score,
             accuracy,
             completeness,
+            app: appMetrics,
+            harness: harnessMetrics,
             assertionResults,
             responseText,
-            durationMs: Date.now() - startTime,
+            durationMs: totalMs,
         };
     } catch (err) {
         // Ensure cleanup even on unexpected errors
@@ -143,9 +174,10 @@ export async function runEval(
         const icon = result.passed ? '✓' : '✗';
         const accStr = (result.accuracy * 100).toFixed(0);
         const compStr = (result.completeness * 100).toFixed(0);
-        const timeStr = (result.durationMs / 1000).toFixed(1);
+        const appStr = `${(result.app.durationMs / 1000).toFixed(1)}s $${result.app.costUsd.toFixed(4)}`;
+        const harnessStr = `${(result.harness.durationMs / 1000).toFixed(1)}s $${result.harness.costUsd.toFixed(4)}`;
         const errorStr = result.error ? ` [ERROR: ${result.error}]` : '';
-        console.log(`  ${icon} ${scenario.id}: accuracy ${accStr}% · completeness ${compStr}% (${timeStr}s)${errorStr}`);
+        console.log(`  ${icon} ${scenario.id}: accuracy ${accStr}% · completeness ${compStr}% · app ${appStr} (harness ${harnessStr})${errorStr}`);
     }
 
     const summary = buildSummary(results);
@@ -160,17 +192,19 @@ export async function runEval(
 }
 
 function buildSummary(results: ScenarioResult[]): EvalSummary {
-    const byCategory: Record<string, { total: number; passed: number; score: number; accuracy: number; completeness: number }> = {};
+    const byCategory: Record<string, { total: number; passed: number; score: number; accuracy: number; completeness: number; appDurationMs: number; appCostUsd: number }> = {};
 
     for (const r of results) {
         if (!byCategory[r.category]) {
-            byCategory[r.category] = { total: 0, passed: 0, score: 0, accuracy: 0, completeness: 0 };
+            byCategory[r.category] = { total: 0, passed: 0, score: 0, accuracy: 0, completeness: 0, appDurationMs: 0, appCostUsd: 0 };
         }
         byCategory[r.category].total++;
         if (r.passed) byCategory[r.category].passed++;
         byCategory[r.category].score += r.score;
         byCategory[r.category].accuracy += r.accuracy;
         byCategory[r.category].completeness += r.completeness;
+        byCategory[r.category].appDurationMs += r.app.durationMs;
+        byCategory[r.category].appCostUsd += r.app.costUsd;
     }
 
     // Average scores per category
@@ -184,6 +218,20 @@ function buildSummary(results: ScenarioResult[]): EvalSummary {
     const totalAccuracy = results.reduce((sum, r) => sum + r.accuracy, 0);
     const totalCompleteness = results.reduce((sum, r) => sum + r.completeness, 0);
 
+    const sumMetrics = (pick: (r: ScenarioResult) => RunMetrics): RunMetrics => results.reduce(
+        (acc, r) => {
+            const m = pick(r);
+            return {
+                durationMs: acc.durationMs + m.durationMs,
+                inputTokens: acc.inputTokens + m.inputTokens,
+                outputTokens: acc.outputTokens + m.outputTokens,
+                costUsd: acc.costUsd + m.costUsd,
+                llmCalls: acc.llmCalls + m.llmCalls,
+            };
+        },
+        { ...ZERO_METRICS },
+    );
+
     return {
         totalScenarios: results.length,
         passed: results.filter(r => r.passed).length,
@@ -191,6 +239,8 @@ function buildSummary(results: ScenarioResult[]): EvalSummary {
         overallScore: results.length > 0 ? totalScore / results.length : 0,
         overallAccuracy: results.length > 0 ? totalAccuracy / results.length : 0,
         overallCompleteness: results.length > 0 ? totalCompleteness / results.length : 0,
+        appTotals: sumMetrics(r => r.app),
+        harnessTotals: sumMetrics(r => r.harness),
         byCategory,
     };
 }

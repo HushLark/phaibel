@@ -1,4 +1,5 @@
 import { loadSecrets, saveSecrets } from '../../config.js';
+import { recordUsage } from '../token-usage.js';
 import type { LLMProvider, Message, ChatOptions } from '../types.js';
 
 const DEFAULT_ENDPOINT = 'https://synaptic.hushlark.ai';
@@ -106,7 +107,9 @@ export class SynapticProvider implements LLMProvider {
                 const detail = await res.text().catch(() => res.statusText);
                 throw new Error(`Synaptic error (${res.status}): ${detail}`);
             }
-            return this.parseResponse(await res.json() as Record<string, unknown>);
+            const data = await res.json() as Record<string, unknown>;
+            this.trackUsage(data, messages, options);
+            return this.parseResponse(data);
         }
 
         // Node.js fallback: own refresh logic (no mobile deduplication needed).
@@ -131,7 +134,32 @@ export class SynapticProvider implements LLMProvider {
             throw new Error(`Synaptic error (${res.status}): ${detail}`);
         }
 
-        return this.parseResponse(await res.json() as Record<string, unknown>);
+        const data = await res.json() as Record<string, unknown>;
+        this.trackUsage(data, messages, options);
+        return this.parseResponse(data);
+    }
+
+    /**
+     * Synaptic passes through the upstream provider response, which includes a
+     * usage block (Anthropic or OpenAI shape) and usually the resolved model id.
+     * Record it locally so per-chat token trackers (mobile UI, eval harness)
+     * see real token counts and costs for synaptic-routed calls.
+     */
+    private trackUsage(data: Record<string, unknown>, messages: Message[], options: ChatOptions): void {
+        try {
+            const usage = data.usage as Record<string, number> | undefined;
+            if (!usage) return;
+            const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? 0;
+            const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? 0;
+            if (!inputTokens && !outputTokens) return;
+            const model = typeof data.model === 'string' && data.model ? data.model : `synaptic:${this.capability}`;
+            const chatMessages = messages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content }));
+            let responseText = '';
+            try { responseText = this.parseResponse(data); } catch { /* tracking only */ }
+            recordUsage(model, inputTokens, outputTokens, { system: options.systemPrompt, messages: chatMessages }, responseText).catch(() => {});
+        } catch {
+            // Usage tracking must never break the chat path
+        }
     }
 
     private parseResponse(data: Record<string, unknown>): string {

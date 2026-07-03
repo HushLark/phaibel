@@ -114,9 +114,14 @@ async function main() {
     console.log(`  Accuracy:     ${(result.summary.overallAccuracy * 100).toFixed(0)}%`);
     console.log(`  Completeness: ${(result.summary.overallCompleteness * 100).toFixed(0)}%`);
     console.log(`  Passed:       ${result.summary.passed}/${result.summary.totalScenarios}`);
+    const app = result.summary.appTotals;
+    const harness = result.summary.harnessTotals;
+    console.log('');
+    console.log(`  Application:  ${(app.durationMs / 1000).toFixed(1)}s · $${app.costUsd.toFixed(4)} · ${app.llmCalls} LLM calls (${app.inputTokens} in / ${app.outputTokens} out)`);
+    console.log(`  Harness:      ${(harness.durationMs / 1000).toFixed(1)}s · $${harness.costUsd.toFixed(4)} · ${harness.llmCalls} LLM calls — judge/setup overhead, excluded from app judgments`);
     console.log('');
     for (const [cat, stats] of Object.entries(result.summary.byCategory)) {
-        console.log(`  ${cat}: ${stats.passed}/${stats.total} (A ${(stats.accuracy * 100).toFixed(0)}% · C ${(stats.completeness * 100).toFixed(0)}%)`);
+        console.log(`  ${cat}: ${stats.passed}/${stats.total} (A ${(stats.accuracy * 100).toFixed(0)}% · C ${(stats.completeness * 100).toFixed(0)}% · app ${(stats.appDurationMs / 1000).toFixed(1)}s $${stats.appCostUsd.toFixed(4)})`);
     }
     console.log(`\n  Results: ${resultFile}\n`);
 }

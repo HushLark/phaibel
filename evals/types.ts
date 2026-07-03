@@ -154,6 +154,22 @@ export interface AssertionResult {
     message: string;
 }
 
+/**
+ * Time and spend for one side of the app/harness split.
+ * - app:     the engine under test (the feralChatHeadless call — its wall-clock
+ *            and its LLM calls). Judge the APPLICATION on these numbers only.
+ * - harness: eval overhead (vault setup/teardown, snapshots, assertion checks
+ *            including the response_faithful judge). Never attribute these to
+ *            the application.
+ */
+export interface RunMetrics {
+    durationMs: number;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+    llmCalls: number;
+}
+
 export interface ScenarioResult {
     scenarioId: string;
     scenarioName: string;
@@ -164,8 +180,13 @@ export interface ScenarioResult {
     accuracy: number;
     /** 0–1: weighted share of completeness-relevant checks with everything asked for done. */
     completeness: number;
+    /** Engine-under-test time/spend — the basis for application judgments. */
+    app: RunMetrics;
+    /** Eval-overhead time/spend (incl. LLM judge) — excluded from application judgments. */
+    harness: RunMetrics;
     assertionResults: AssertionResult[];
     responseText: string;
+    /** Total wall-clock (app + harness). */
     durationMs: number;
     error?: string;
 }
@@ -177,7 +198,11 @@ export interface EvalSummary {
     overallScore: number;
     overallAccuracy: number;
     overallCompleteness: number;
-    byCategory: Record<string, { total: number; passed: number; score: number; accuracy: number; completeness: number }>;
+    /** Summed engine-under-test metrics — the basis for application judgments. */
+    appTotals: RunMetrics;
+    /** Summed eval-overhead metrics — kept separate; never judge the app on these. */
+    harnessTotals: RunMetrics;
+    byCategory: Record<string, { total: number; passed: number; score: number; accuracy: number; completeness: number; appDurationMs: number; appCostUsd: number }>;
 }
 
 export interface EvalRunConfig {

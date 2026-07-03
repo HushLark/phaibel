@@ -73,6 +73,18 @@ async function main() {
 
     console.log(`  ${pad('OVERALL', 30)} ${overalls.map(o => pad(o)).join(' ')} ${pad(deltaStr)}`);
 
+    // Application vs harness time/cost (older runs predate the split → —)
+    const appCells = runs.map(r => {
+        const t = r.summary.appTotals;
+        return t ? `${(t.durationMs / 1000).toFixed(1)}s $${t.costUsd.toFixed(4)}` : '—';
+    });
+    const harnessCells = runs.map(r => {
+        const t = r.summary.harnessTotals;
+        return t ? `${(t.durationMs / 1000).toFixed(1)}s $${t.costUsd.toFixed(4)}` : '—';
+    });
+    console.log(`  ${pad('APP time/cost', 30)} ${appCells.map(c => pad(c)).join(' ')}`);
+    console.log(`  ${pad('HARNESS time/cost', 30)} ${harnessCells.map(c => pad(c)).join(' ')}`);
+
     // Category breakdown
     console.log('\n  ── By Category ──');
     const allCats = new Set<string>();
