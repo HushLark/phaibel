@@ -176,10 +176,24 @@ export async function runEval(
 
     const results: ScenarioResult[] = [];
 
+    const isRateLimited = (r: ScenarioResult) =>
+        (r.error ?? '').includes('rate_limited') || r.responseText.includes('rate_limited');
+
     for (const scenario of scenarios) {
         console.log(`  Running: ${scenario.id} — ${scenario.name}`);
-        const result = await runScenario(scenario, config.modelOverrides);
+        let result = await runScenario(scenario, config.modelOverrides);
+        // Provider rate limits poison the measurement — back off and retry the
+        // scenario rather than recording a failure that isn't the engine's.
+        for (let retry = 0; retry < 3 && isRateLimited(result); retry++) {
+            const waitS = 30 * (retry + 1);
+            console.log(`    rate-limited — waiting ${waitS}s and retrying (${retry + 1}/3)`);
+            await new Promise(res => setTimeout(res, waitS * 1000));
+            result = await runScenario(scenario, config.modelOverrides);
+        }
         results.push(result);
+
+        // Pace scenarios so sustained runs stay under provider RPM limits
+        await new Promise(res => setTimeout(res, 3000));
 
         const icon = result.passed ? '✓' : '✗';
         const accStr = (result.accuracy * 100).toFixed(0);
