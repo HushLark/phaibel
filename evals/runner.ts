@@ -61,7 +61,10 @@ async function runScenario(
 
         // Run feralChatHeadless with timeout.
         // APPLICATION metrics: only this call's wall-clock and LLM spend.
-        const timeoutMs = (scenario.timeoutSeconds ?? 90) * 1000;
+        // PHAIBEL_EVAL_TIMEOUT_S raises the ceiling uniformly (engine bake-offs:
+        // slow engines should be measured, not killed — slowness shows in app time)
+        const envFloor = Number(process.env.PHAIBEL_EVAL_TIMEOUT_S ?? 0);
+        const timeoutMs = Math.max(scenario.timeoutSeconds ?? 90, envFloor) * 1000;
         let responseText: string;
         let appMetrics: RunMetrics;
         let processJson: Record<string, unknown> | undefined;
