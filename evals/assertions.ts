@@ -38,6 +38,7 @@ async function judgeChat(prompt: string): Promise<string> {
     const endpoint = process.env.PHAIBEL_SYNAPTIC_ENDPOINT ?? 'https://synaptic.hushlark.ai';
     const res = await fetch(`${endpoint}/v1/phaibel/llm`, {
         method: 'POST',
+        signal: AbortSignal.timeout(60_000),
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
         body: JSON.stringify({
             model: judgeModel(),

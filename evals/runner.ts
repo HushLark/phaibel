@@ -182,16 +182,42 @@ export async function runEval(
     const isRateLimited = (r: ScenarioResult) =>
         (r.error ?? '').includes('rate_limited') || r.responseText.includes('rate_limited');
 
+    const hardCap = async (scenario: EvalScenario): Promise<ScenarioResult> => {
+        // Absolute ceiling: scenario timeout + 120s of harness allowance. A hang
+        // anywhere (judge fetch, vault IO, engine promise leak) fails the scenario
+        // instead of wedging the whole run.
+        const envFloor = Number(process.env.PHAIBEL_EVAL_TIMEOUT_S ?? 0);
+        const capMs = (Math.max(scenario.timeoutSeconds ?? 90, envFloor) + 120) * 1000;
+        return Promise.race([
+            runScenario(scenario, config.modelOverrides),
+            new Promise<ScenarioResult>(resolve => setTimeout(() => resolve({
+                scenarioId: scenario.id,
+                scenarioName: scenario.name,
+                category: scenario.category,
+                passed: false,
+                score: 0,
+                accuracy: 0,
+                completeness: 0,
+                app: { durationMs: capMs, inputTokens: 0, outputTokens: 0, costUsd: 0, llmCalls: 0 },
+                harness: { durationMs: 0, inputTokens: 0, outputTokens: 0, costUsd: 0, llmCalls: 0 },
+                assertionResults: [],
+                responseText: '',
+                durationMs: capMs,
+                error: `Hard cap: scenario exceeded ${capMs / 1000}s (harness hang guard)`,
+            }), capMs)),
+        ]);
+    };
+
     for (const scenario of scenarios) {
         console.log(`  Running: ${scenario.id} — ${scenario.name}`);
-        let result = await runScenario(scenario, config.modelOverrides);
+        let result = await hardCap(scenario);
         // Provider rate limits poison the measurement — back off and retry the
         // scenario rather than recording a failure that isn't the engine's.
         for (let retry = 0; retry < 3 && isRateLimited(result); retry++) {
             const waitS = 30 * (retry + 1);
             console.log(`    rate-limited — waiting ${waitS}s and retrying (${retry + 1}/3)`);
             await new Promise(res => setTimeout(res, waitS * 1000));
-            result = await runScenario(scenario, config.modelOverrides);
+            result = await hardCap(scenario);
         }
         results.push(result);
 
