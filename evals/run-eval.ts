@@ -148,7 +148,11 @@ async function main() {
     console.log(`\n  Results: ${resultFile}\n`);
 }
 
-main().catch(err => {
+main().then(() => {
+    // Engine runs can leak timers/handles (hang-guard survivors, skill catalog
+    // refreshers) that keep Node alive after the summary — exit explicitly.
+    process.exit(0);
+}).catch(err => {
     console.error('Eval failed:', err);
     process.exit(1);
 });
