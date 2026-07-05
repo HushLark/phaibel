@@ -124,8 +124,14 @@ async function main() {
         // and no local embeddings (Metro shims ONNX out on the app). The
         // platform:'mobile' bootstrap is applied per-call in the runner.
         process.env.PHAIBEL_FORCE_PROVIDERS = 'synaptic';
-        process.env.PHAIBEL_DISABLE_LOCAL_EMBED = '1';
-        console.log('  Mobile-emulation mode: platform=mobile, providers=synaptic, local embeddings off');
+        // Respect an explicit override (PHAIBEL_DISABLE_LOCAL_EMBED=0) so the
+        // "mobile platform + semantic relevance" configuration can be measured —
+        // the isolation experiment for whether the app needs an embedding component.
+        if (process.env.PHAIBEL_DISABLE_LOCAL_EMBED === undefined) {
+            process.env.PHAIBEL_DISABLE_LOCAL_EMBED = '1';
+        }
+        const embedState = process.env.PHAIBEL_DISABLE_LOCAL_EMBED === '1' ? 'off' : 'ON (override)';
+        console.log(`  Mobile-emulation mode: platform=mobile, providers=synaptic, local embeddings ${embedState}`);
     }
 
     console.log(`\n  Phaibel Eval — "${args.label}"`);
