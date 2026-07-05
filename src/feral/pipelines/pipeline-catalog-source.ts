@@ -68,6 +68,23 @@ export class PipelineCatalogSource implements CatalogSource {
                 description: 'Composes the final natural-language response from accumulated results.',
                 configuration: {},
             },
+            // ── Take on Me pipeline nodes ──────────────────────────────────────
+            {
+                key: 'tom_contract',
+                nodeCodeKey: 'tom_contract',
+                name: 'TOM: Contract',
+                group: 'pipeline',
+                description: 'Decomposes the request into a checklist of verifiable outcomes.',
+                configuration: {},
+            },
+            {
+                key: 'tom_flow_loop',
+                nodeCodeKey: 'tom_flow_loop',
+                name: 'TOM: Flow Loop',
+                group: 'pipeline',
+                description: 'One small Feral fragment per contract item, evidence-checked with one repair round.',
+                configuration: {},
+            },
             // ── Cruel Summer pipeline nodes ────────────────────────────────────
             {
                 key: 'cs_categorize',

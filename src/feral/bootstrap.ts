@@ -102,6 +102,8 @@ import { HZCategorizeNodeCode } from './node-code/pipeline/hz-categorize-node-co
 import { HZPlanNodeCode } from './node-code/pipeline/hz-plan-node-code.js';
 import { HZExecuteNodeCode } from './node-code/pipeline/hz-execute-node-code.js';
 import { HZEvaluateNodeCode } from './node-code/pipeline/hz-evaluate-node-code.js';
+import { TomContractNodeCode } from './node-code/pipeline/tom-contract-node-code.js';
+import { TomFlowLoopNodeCode } from './node-code/pipeline/tom-flow-loop-node-code.js';
 
 // ── Cross-platform catalog sources ───────────────────────────────────────
 import { EntityCatalogSource } from './catalog/entity-catalog-source.js';
@@ -311,6 +313,8 @@ function getPipelineNodeCodes(): NodeCode[] {
         new HZPlanNodeCode(),
         new HZExecuteNodeCode(),
         new HZEvaluateNodeCode(),
+        new TomContractNodeCode(),
+        new TomFlowLoopNodeCode(),
     ];
 }
 
