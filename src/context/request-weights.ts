@@ -193,13 +193,7 @@ export function buildFetchRequests(
     // an empty query is ranked by temporal/recency rather than returning nothing
     // (a summary keyword search alone usually whiffs — that was a dead end).
     if (requests.length === 0) {
-        for (const et of ['task', 'event', 'goal', 'note']) {
-            requests.push({ entityType: et, query: '', limit: 8 });
-        }
-        if (classification.summary.trim()) {
-            // Cross-type keyword pass for any semantic match the broad fetch missed.
-            requests.push({ query: classification.summary, limit: 10 });
-        }
+        requests.push(...buildBroadFallbackRequests(classification));
     }
 
     // Cross-type recall companion. Per-subject requests are scoped to the
@@ -219,5 +213,26 @@ export function buildFetchRequests(
         requests.push({ query: recallQuery, limit: 10 });
     }
 
+    return requests;
+}
+
+/**
+ * Broad cross-type requests used when subject-scoped retrieval has nothing to
+ * go on — either no subjects were extracted, or every typed search whiffed
+ * (a wrong entityType from the classifier must not zero out retrieval; the
+ * answer often lives in a different type, e.g. a birthday in a NOTE while the
+ * subject was typed as a PERSON).
+ */
+export function buildBroadFallbackRequests(
+    classification: ClassificationResult,
+): ClassificationFetchRequest[] {
+    const requests: ClassificationFetchRequest[] = [];
+    for (const et of ['task', 'event', 'goal', 'note', 'person']) {
+        requests.push({ entityType: et, query: '', limit: 8 });
+    }
+    if (classification.summary.trim()) {
+        // Cross-type keyword pass for any semantic match the broad fetch missed.
+        requests.push({ query: classification.summary, limit: 10 });
+    }
     return requests;
 }

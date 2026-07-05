@@ -79,6 +79,11 @@ export class PipelineSynthesizeNodeCode extends AbstractNodeCode {
 
         try {
             const chatLlm = await getModelForCapability('chat');
+            // Read-only turns must never mutate the vault (a retrieval miss would
+            // otherwise create stub entities for things that already exist).
+            const classification = context.get('__classification') as { category?: string } | null;
+            const READ_ONLY_CATEGORIES = ['query', 'factual', 'analytical', 'introspection'];
+            const allowAssumedNodes = !READ_ONLY_CATEGORIES.includes(classification?.category ?? '');
             const response = await synthesizeResponse(
                 chatLlm,
                 userInput,
@@ -92,6 +97,7 @@ export class PipelineSynthesizeNodeCode extends AbstractNodeCode {
                 reasonModelName,
                 sourceScope?.name,
                 federatedContext || undefined,
+                allowAssumedNodes,
             );
             context.set('__pipeline_response', response);
             debug('pipeline', `Synthesis complete (${response.length} chars)`);

@@ -9,7 +9,7 @@ import { resolveDomainDimensions } from '../entities/base-categories.js';
 import { debug } from '../utils/debug.js';
 import type { ClassificationResult } from './request-classifier.js';
 import type { RequestWeights } from './request-weights.js';
-import { buildFetchRequests } from './request-weights.js';
+import { buildFetchRequests, buildBroadFallbackRequests } from './request-weights.js';
 
 export interface FetchRequest {
     type?: string;   // entity type filter; omit or '*' to search all types
@@ -306,7 +306,20 @@ export async function fetchContextByClassification(
     // nodes still surface for generic asks ("what's the latest in <connection>").
     if (sourceScope) fetchReqs.push({ query: '', limit: maxNodes });
 
-    const scored = await fulfillRequests(fetchReqs, entityIndex, new Set(), requestWeights, sourceScope);
+    let scored = await fulfillRequests(fetchReqs, entityIndex, new Set(), requestWeights, sourceScope);
+
+    // Zero-result rescue: subject-typed retrieval trusting a wrong entityType
+    // must never zero out context (the answer often lives in another type).
+    // Re-run with the broad cross-type fallback before concluding "nothing".
+    if (scored.length === 0 && classification.subjects.length > 0) {
+        debug('chat', 'fetchContextByClassification: typed requests found nothing — running broad cross-type fallback');
+        const broadReqs: FetchRequest[] = buildBroadFallbackRequests(classification).map(r => ({
+            type:  r.entityType,
+            query: r.query,
+            limit: r.limit,
+        }));
+        scored = await fulfillRequests(broadReqs, entityIndex, new Set(), requestWeights, sourceScope);
+    }
 
     // Merge across requests: dedup keeping the highest score per node, then rank
     // by score (specificity-boosted) and cap. This is what makes a specific-typed
@@ -333,7 +346,9 @@ export async function fetchContextByClassification(
     const typesSeen = [...new Set(unique.map(n => n.type))].join(', ');
     const summary = unique.length > 0
         ? `${unique.length} entities (${typesSeen}) via classification-driven fetch`
-        : 'No entities matched the request';
+        : 'RETRIEVAL NOTE: no matching records were found by the context search. '
+          + 'This does NOT prove the information is absent from the vault — '
+          + 'do not claim records do not exist; say you could not find it and offer to save it.';
 
     debug('chat', `fetchContextByClassification: ${unique.length} nodes, rounds=1, types=${typesSeen || 'none'}`);
 
@@ -377,7 +392,10 @@ export function serializeGatheredContext(gathered: GatheredContext): string {
             })
             .join(', ');
         const via = typeof n.meta.source === 'string' && n.meta.source ? ` (via ${n.meta.source})` : '';
-        return `[${n.type}:${n.id}] "${n.name}"${via} — ${metaStr}`;
+        // Body content is the substance of note-like entities — without it the
+        // model sees a bare title and truthfully claims "no details recorded".
+        const body = n.bodySnippet?.trim() ? `\n    ${n.bodySnippet.trim().replace(/\s+/g, ' ').slice(0, 300)}` : '';
+        return `[${n.type}:${n.id}] "${n.name}"${via} — ${metaStr}${body}`;
     });
 
     return `GATHERED CONTEXT (${gathered.nodes.length} entities, ${gathered.rounds} round(s)):

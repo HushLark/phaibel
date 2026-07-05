@@ -268,6 +268,7 @@ export async function synthesizeResponse(
     modelName = 'gpt-4o',
     sourceScopeName?: string,
     federatedContext?: string,
+    allowAssumedNodes = true,
 ): Promise<string> {
     const sessionLine = (() => {
         if (!clientHints?.creditsLimit) return '';
@@ -328,9 +329,10 @@ RESPONSE GUIDELINES:
 ${TOKEN_INSTRUCTIONS}
 ${UI_COMPONENT_INSTRUCTIONS}
 
-ASSUMED CONTEXT NODES:
+${allowAssumedNodes ? `ASSUMED CONTEXT NODES:
 If the user casually mentions people, places, projects, or other notable entities that don't already exist in context, include them in "assumed_nodes" so they can be saved automatically. Only include entities that are clearly worth remembering — not throwaway mentions. Do NOT re-add an entity already created or present in this turn's context. Each assumed node needs: contextType (must match an available type like "person", "note", etc.), title, and any fields you can infer.
-For a "person", always infer a relationship "type" field from how they're described, using one of: family (spouse, child, parent, sibling, relative), friend, colleague (coworker, manager, direct report, teammate), professional (vendor, client, contact at another company), acquaintance. E.g. "my manager Sam" → {"contextType":"person","title":"Sam","type":"colleague"}; "my daughter Emma" → {"contextType":"person","title":"Emma","type":"family"}.
+For a "person", always infer a relationship "type" field from how they're described, using one of: family (spouse, child, parent, sibling, relative), friend, colleague (coworker, manager, direct report, teammate), professional (vendor, client, contact at another company), acquaintance. E.g. "my manager Sam" → {"contextType":"person","title":"Sam","type":"colleague"}; "my daughter Emma" → {"contextType":"person","title":"Emma","type":"family"}.` : `ASSUMED CONTEXT NODES:
+This is a read-only question — do NOT save anything. Return an empty "assumed_nodes" array.`}
 
 Do NOT include fenced code blocks (\`\`\`) anywhere in the "response" value.
 
@@ -355,7 +357,7 @@ You MUST return valid JSON with this structure:
 
         try {
             const assumedNodes = parsed.assumed_nodes as Array<{ contextType: string; title: string; [key: string]: unknown }> | undefined;
-            if (assumedNodes && assumedNodes.length > 0) {
+            if (allowAssumedNodes && assumedNodes && assumedNodes.length > 0) {
                 createAssumedNodes(assumedNodes).catch(err => debug('chat', `Assumed node creation failed: ${err}`));
             }
         } catch (e) {
