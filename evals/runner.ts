@@ -37,6 +37,7 @@ function metricsFrom(tokens: ChatTokenTotals, durationMs: number): RunMetrics {
 async function runScenario(
     scenario: EvalScenario,
     modelOverrides?: EvalRunConfig['modelOverrides'],
+    mobile = false,
 ): Promise<ScenarioResult> {
     const startTime = Date.now();
 
@@ -84,6 +85,8 @@ async function runScenario(
                     },
                     () => {},                           // onChatId: no-op
                     scenario.history,
+                    mobile ? 'mobile' : undefined,       // platform — mirrors useChat
+                    mobile ? { platform: 'mobile', screenWidth: 390, screenHeight: 844 } : undefined,
                 ),
                 new Promise<never>((_, reject) =>
                     setTimeout(() => reject(new Error(`Scenario timed out after ${timeoutMs}ms`)), timeoutMs),
@@ -182,6 +185,7 @@ export async function runEval(
     const isRateLimited = (r: ScenarioResult) =>
         (r.error ?? '').includes('rate_limited') || r.responseText.includes('rate_limited');
 
+    const mobile = config.mobile === true;
     const hardCap = async (scenario: EvalScenario): Promise<ScenarioResult> => {
         // Absolute ceiling: scenario timeout + 120s of harness allowance. A hang
         // anywhere (judge fetch, vault IO, engine promise leak) fails the scenario
@@ -189,7 +193,7 @@ export async function runEval(
         const envFloor = Number(process.env.PHAIBEL_EVAL_TIMEOUT_S ?? 0);
         const capMs = (Math.max(scenario.timeoutSeconds ?? 90, envFloor) + 120) * 1000;
         return Promise.race([
-            runScenario(scenario, config.modelOverrides),
+            runScenario(scenario, config.modelOverrides, mobile),
             new Promise<ScenarioResult>(resolve => setTimeout(() => resolve({
                 scenarioId: scenario.id,
                 scenarioName: scenario.name,

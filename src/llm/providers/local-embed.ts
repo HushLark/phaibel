@@ -40,6 +40,11 @@ async function getPipeline(): Promise<Pipeline> {
  * Loads the model on first call (cached for the process lifetime).
  */
 export async function localEmbed(texts: string[]): Promise<number[][]> {
+    // Mobile emulation: on the app, Metro shims the ONNX runtime and this call
+    // throws — reproduce that so retrieval exercises the same keyword fallback.
+    if (typeof process !== 'undefined' && process.env?.PHAIBEL_DISABLE_LOCAL_EMBED === '1') {
+        throw new Error('local embeddings disabled (mobile emulation)');
+    }
     const pipe = await getPipeline();
     const output = await pipe(texts, { pooling: 'mean', normalize: true });
     if (Array.isArray(output)) {

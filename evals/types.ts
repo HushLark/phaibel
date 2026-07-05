@@ -211,6 +211,8 @@ export interface EvalRunConfig {
     scenarioFilter?: string[];
     /** Pipeline (engine) key the chat host runs — e.g. pipeline.standard, pipeline.cruel-summer, pipeline.hertz. */
     engine?: string;
+    /** Mobile-emulation mode: platform:'mobile' bootstrap, synaptic-only providers, no local embeddings. */
+    mobile?: boolean;
     modelOverrides?: Record<string, { provider: string; model: string }>;
 }
 
