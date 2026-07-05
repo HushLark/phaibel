@@ -175,8 +175,12 @@ export class SynapticProvider implements LLMProvider {
     }
 
     private parseResponse(data: Record<string, unknown>): string {
-        const content = data.content as Array<{ type: string; text: string }> | undefined;
-        if (content?.[0]?.text) return content[0].text;
+        // Anthropic responses can lead with thinking blocks (always-on for
+        // Fable 5; empty text under display:omitted) — take the first TEXT
+        // block, not content[0].
+        const content = data.content as Array<{ type: string; text?: string }> | undefined;
+        const textBlock = content?.find(b => b.type === 'text' && typeof b.text === 'string' && b.text.length > 0);
+        if (textBlock?.text) return textBlock.text;
 
         const choices = data.choices as Array<{ message: { content: string } }> | undefined;
         if (choices?.[0]?.message?.content) return choices[0].message.content;
