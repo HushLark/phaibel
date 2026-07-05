@@ -44,6 +44,7 @@ import {
 } from '../../../commands/chat-helpers.js';
 import type { ChatHistoryEntry } from '../../../commands/chat-helpers.js';
 import type { TomContractItem } from './tom-contract-node-code.js';
+import type { GatheredContext } from '../../../context/context-loop.js';
 
 const MAX_FRAGMENTS = 8;          // total design calls, incl. repairs
 const MAX_REPAIR_ROUNDS = 1;
@@ -79,6 +80,20 @@ export class TomFlowLoopNodeCode extends AbstractNodeCode {
         const selectedNodes = (context.get('__selected_nodes') as CatalogNode[] | null) ?? [];
         const contract = (context.get('__tom_contract') as TomContractItem[] | null)
             ?? [{ id: 'i1', outcome: userInput, expect: 'action' }];
+        const gatheredNodes = (context.get('__gathered_context') as GatheredContext | null)?.nodes ?? [];
+
+        // Deterministic current-type lookup: an entity's authoritative type is the
+        // index node's type — NEVER a meta field that happens to be called "type"
+        // (e.g. a person's relationship type), which models routinely misread.
+        const currentTypeOf = (outcome: string): { title: string; type: string } | null => {
+            for (const n of gatheredNodes) {
+                const name = (n.name ?? '').trim();
+                if (name && outcome.toLowerCase().includes(name.toLowerCase())) {
+                    return { title: name, type: n.type };
+                }
+            }
+            return null;
+        };
 
         if (!engine) {
             return this.result(ResultStatus.ERROR, 'tom_flow_loop requires __process_engine in context.');
@@ -108,6 +123,20 @@ export class TomFlowLoopNodeCode extends AbstractNodeCode {
             const otherItems = contract.filter(i => i.id !== item.id)
                 .map(i => `- [${done.get(i.id) ? 'done' : 'pending'}] ${i.outcome}`).join('\n');
 
+            // Hard requirement derived from the contract's evidence class — v1's
+            // measured own-goals were type confusion and create-instead-of-mutate.
+            const [expectKind, expectType] = item.expect.split(':');
+            let expectDirective = '';
+            if (expectKind === 'create' && expectType) {
+                expectDirective = `\nHARD REQUIREMENT: this outcome MUST create exactly one "${expectType}" entity (use create_${expectType}). Do not substitute another type.`;
+            } else if (expectKind === 'update' || expectKind === 'move') {
+                const resolved = currentTypeOf(item.outcome);
+                const authoritativeType = resolved?.type ?? expectType;
+                expectDirective = `\nHARD REQUIREMENT: this outcome mutates an EXISTING entity${authoritativeType ? ` whose CURRENT type is "${authoritativeType}"` : ''}${resolved ? ` (verified from the index: "${resolved.title}" is [${resolved.type}:…])` : ''}. Use the matching update_*/complete_*/move_*/set_* node — do NOT create a new entity.${authoritativeType ? ` Any from_type/entity_type config for the CURRENT entity MUST be exactly "${authoritativeType}" — never a meta field value and never the TARGET type's name.` : ''} Reference the EXACT existing title from context/results. Field values must use the exact enum values listed in NODE CONFIGURATION DETAILS (e.g. a status enum's literal value — never a synonym).`;
+            } else if (expectKind === 'answer') {
+                expectDirective = '\nHARD REQUIREMENT: this outcome retrieves/derives information for the reply. Use find_*/list_*/search_* nodes. Do NOT create or modify any entity.';
+            }
+
             let raw: string;
             try {
                 const reasonLlm = await getModelForCapability('reason');
@@ -115,7 +144,7 @@ export class TomFlowLoopNodeCode extends AbstractNodeCode {
                     [{
                         role: 'user' as const,
                         content: `Build ONE SMALL Feral process fragment that accomplishes ONLY this outcome:
-"${item.outcome}"${repairNote ? `\n\nPREVIOUS ATTEMPT DID NOT PRODUCE EVIDENCE OF COMPLETION. ${repairNote}` : ''}
+"${item.outcome}"${expectDirective}${repairNote ? `\n\nPREVIOUS ATTEMPT DID NOT PRODUCE EVIDENCE OF COMPLETION. ${repairNote}` : ''}
 
 The user's full request (for context only — do NOT do the other items here): "${userInput}"
 ${otherItems ? `Other items handled separately:\n${otherItems}\n` : ''}${historyBlock}${previousResultsStr}
@@ -129,13 +158,13 @@ ${nodeCodeDetails}
 
 PROCESS FORMAT RULES:
 1. schema_version=1, key="chat.generated". First node: key="start", catalog_node_key="start". Last node: key="done", catalog_node_key="stop", edges={}.
-2. "edges" maps result statuses to next node key. Most nodes produce "ok" and "error". Use {context_key} for interpolation.
+2. "edges" maps result statuses to next node key. Map EVERY status listed for the node in NODE CONFIGURATION DETAILS (some nodes produce "blocked" or other statuses besides ok/error) — an unmapped status ends the flow prematurely. When a status documents a recovery (e.g. "blocked": provide field_map from preview, or set force), structure the flow to avoid or handle it (run the preview node first, set the documented config). Use {context_key} for interpolation.
 3. KEEP IT SMALL: 2-5 working nodes between start and done. This fragment covers ONE outcome only.
 4. For entity creation, ALWAYS set entity_title and entity_body with concrete values.
 5. create_* nodes ONLY accept: entity_type, entity_title, entity_body, extra_fields. To set fields (startDate, priority, etc.): put values in process "context" object, list field names in extra_fields.
 6. DATE FORMAT: date→YYYY-MM-DD, datetime→ISO 8601 with timezone. Events ALWAYS need startDate in context+extra_fields; include duration (ISO 8601, e.g. "PT1H") or endDate. Default startDate to 09:00 if no time given.
 7. CRITICAL: Match entity types precisely. event≠task. Use create_event for appointments/meetings, create_task for todos. Never substitute types.
-8. When referencing existing entities, use EXACT titles from GATHERED CONTEXT or RESULTS SO FAR. Use valid enum values only.
+8. When referencing existing entities, use EXACT titles from GATHERED CONTEXT or RESULTS SO FAR. An entity's context/entity type is its BRACKET PREFIX ([person:abc] = type "person") — a meta field named "type" is ordinary data (e.g. a relationship), NOT the entity's type. Enum-typed fields (status, priority, …) MUST use the exact literal values from NODE CONFIGURATION DETAILS — "done" and "complete" are NOT interchangeable; copy the listed value.
 9. Prefer ACTION over QUESTIONS. Use sensible defaults (today's date, "medium" priority). No prompt nodes unless unavoidable.
 10. If create_content_type is in your node list and the outcome needs a new type, create the type FIRST, then the entity.
 
@@ -173,6 +202,7 @@ Return ONLY JSON: {"reasoning": "one short sentence", "process": { ... }}`,
             }
             seenFingerprints.add(fingerprint);
             allReasonings.push(design.reasoning || item.outcome);
+            debug('pipeline', `TOM fragment ${item.id} design: ${fingerprint.slice(0, 600)}`);
             onProcess?.(design.process);
 
             onStatus?.(`Running: ${item.outcome.slice(0, 60)}…`);
@@ -282,7 +312,7 @@ Return ONLY JSON: {"done": ["i1"], "missing": ["i2"]}`,
             debug('pipeline', `TOM repair round: ${missing.length} item(s) missing — ${missing.map(i => i.id).join(', ')}`);
             for (const item of missing) {
                 if (designs >= MAX_FRAGMENTS) break;
-                await runFragment(item, 'Check the results so far, fix what went wrong, and produce the outcome. Do NOT recreate entities that already exist in the results.');
+                await runFragment(item, 'Check the results so far, fix what went wrong, and produce the outcome. If a node likely stopped on a non-ok status (e.g. "blocked"), read its NODE CONFIGURATION DETAILS and apply the documented recovery (required config like field_map, a preview step first, or the force flag). Do NOT recreate entities that already exist in the results.');
             }
             // Final deterministic sweep so __all_reasonings reflects reality
             for (const item of missing) if (hasEvidence(item) === true) done.set(item.id, true);

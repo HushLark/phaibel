@@ -25,6 +25,7 @@ import { parseJsonResponse } from '../../../utils/json-parser.js';
 import { debug } from '../../../utils/debug.js';
 import { formatHistoryBlock } from '../../../commands/chat-helpers.js';
 import type { ChatHistoryEntry } from '../../../commands/chat-helpers.js';
+import type { EntityTypeConfig } from '../../../entities/entity-type-config.js';
 
 export interface TomContractItem {
     id: string;
@@ -55,6 +56,8 @@ export class TomContractNodeCode extends AbstractNodeCode {
         const history = (context.get('__history') as ChatHistoryEntry[] | null) ?? [];
         const gatheredStr = context.getString('__gathered_context_str') ?? '';
         const onStatus = context.get('__on_status') as ((s: string) => void) | null;
+        const entityTypes = (context.get('__entity_types') as EntityTypeConfig[] | null) ?? [];
+        const typeNames = entityTypes.map(t => t.name).join(', ');
 
         onStatus?.('Planning the work…');
 
@@ -69,7 +72,10 @@ ${gatheredStr ? `CONTEXT ALREADY GATHERED:\n${gatheredStr.slice(0, 1500)}\n` : '
 Break this request into its distinct outcomes — the concrete things that must be TRUE afterward for the request to be fully satisfied. Rules:
 - One item per distinct deliverable. "Create a task to fix the fence and a goal to improve the backyard" = 2 items. "Add a dentist appointment Tuesday 2pm" = 1 item.
 - Ignore pleasantries and implementation details; capture user-visible outcomes only.
-- "expect" classifies the evidence: "create:<entityType>" when a new entity of that type must exist, "update:<entityType>" when an existing one must change, "answer" when information must be provided in the reply, "action" for anything else (linking, searching, configuring).
+- "expect" classifies the evidence: "create:<entityType>" when a new entity of that type must exist, "update:<entityType>" when an existing one must change, "move:<entityType>" when an existing entity must be reclassified/moved to a different type (<entityType> is the entity's CURRENT type — shown as the bracket prefix [type:id] in context — NOT the destination type), "answer" when information must be provided in the reply, "action" for anything else (linking, searching, configuring).
+${typeNames ? `- <entityType> MUST be one of the registered types: ${typeNames}. Pick the precise type the user named (todont ≠ task, event ≠ task).` : ''}
+- Reclassifying/moving/completing/renaming an EXISTING entity is "move:" or "update:" — never "create:".
+- If the request involves creating a NEW context/content type AND then moving or adding entities of that type, make those SEPARATE items in dependency order (type first).
 - If the user asked to link/relate entities explicitly, that IS an item (expect "action").
 - 1 to 6 items. Fewer, well-chosen items beat many trivial ones.
 
