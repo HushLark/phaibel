@@ -22,6 +22,12 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
     // Anthropic
     'claude-opus-4-6':              { inputPerMillion: 15.00, outputPerMillion: 75.00 },
     'claude-sonnet-4-6':            { inputPerMillion: 3.00, outputPerMillion: 15.00 },
+    'claude-fable-5':               { inputPerMillion: 10.00, outputPerMillion: 50.00 },
+    'claude-opus-4-8':              { inputPerMillion: 5.00, outputPerMillion: 25.00 },
+    'gpt-5.5':                      { inputPerMillion: 5.00, outputPerMillion: 30.00 },
+    'gpt-5.4':                      { inputPerMillion: 2.50, outputPerMillion: 15.00 },
+    'gpt-5.4-mini':                 { inputPerMillion: 0.75, outputPerMillion: 4.50 },
+    'gpt-5.4-nano':                 { inputPerMillion: 0.20, outputPerMillion: 1.25 },
     'claude-haiku-4-5-20251001':    { inputPerMillion: 0.80, outputPerMillion: 4.00 },
     // DeepSeek
     'deepseek-reasoner':            { inputPerMillion: 0.55, outputPerMillion: 2.19 },
