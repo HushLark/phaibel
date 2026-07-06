@@ -209,7 +209,7 @@ export interface EvalRunConfig {
     label: string;
     gitCommit?: string;
     scenarioFilter?: string[];
-    /** Pipeline (engine) key the chat host runs — e.g. pipeline.standard, pipeline.cruel-summer, pipeline.hertz. */
+    /** Pipeline (engine) key the chat host runs — e.g. pipeline.standard, pipeline.take-on-me. */
     engine?: string;
     /** Mobile-emulation mode: platform:'mobile' bootstrap, synaptic-only providers, no local embeddings. */
     mobile?: boolean;

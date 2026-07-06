@@ -92,16 +92,6 @@ import { PipelineGatherContextNodeCode } from './node-code/pipeline/pipeline-gat
 import { PipelineSelectNodesNodeCode } from './node-code/pipeline/pipeline-select-nodes-node-code.js';
 import { PipelineActionLoopNodeCode } from './node-code/pipeline/pipeline-action-loop-node-code.js';
 import { PipelineSynthesizeNodeCode } from './node-code/pipeline/pipeline-synthesize-node-code.js';
-import { CSCategorizeNodeCode } from './node-code/pipeline/cs-categorize-node-code.js';
-import { CSContextLoopNodeCode } from './node-code/pipeline/cs-context-loop-node-code.js';
-import { CSDefineSuccessNodeCode } from './node-code/pipeline/cs-define-success-node-code.js';
-import { CSNodeLoopNodeCode } from './node-code/pipeline/cs-node-loop-node-code.js';
-import { CSBuildProcessNodeCode } from './node-code/pipeline/cs-build-process-node-code.js';
-import { CSEvaluateSuccessNodeCode } from './node-code/pipeline/cs-evaluate-success-node-code.js';
-import { HZCategorizeNodeCode } from './node-code/pipeline/hz-categorize-node-code.js';
-import { HZPlanNodeCode } from './node-code/pipeline/hz-plan-node-code.js';
-import { HZExecuteNodeCode } from './node-code/pipeline/hz-execute-node-code.js';
-import { HZEvaluateNodeCode } from './node-code/pipeline/hz-evaluate-node-code.js';
 import { TomContractNodeCode } from './node-code/pipeline/tom-contract-node-code.js';
 import { TomFlowLoopNodeCode } from './node-code/pipeline/tom-flow-loop-node-code.js';
 
@@ -303,16 +293,6 @@ function getPipelineNodeCodes(): NodeCode[] {
         new PipelineSelectNodesNodeCode(),
         new PipelineActionLoopNodeCode(),
         new PipelineSynthesizeNodeCode(),
-        new CSCategorizeNodeCode(),
-        new CSContextLoopNodeCode(),
-        new CSDefineSuccessNodeCode(),
-        new CSNodeLoopNodeCode(),
-        new CSBuildProcessNodeCode(),
-        new CSEvaluateSuccessNodeCode(),
-        new HZCategorizeNodeCode(),
-        new HZPlanNodeCode(),
-        new HZExecuteNodeCode(),
-        new HZEvaluateNodeCode(),
         new TomContractNodeCode(),
         new TomFlowLoopNodeCode(),
     ];

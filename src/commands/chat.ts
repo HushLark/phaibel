@@ -35,6 +35,7 @@ import {
     type ClientHints,
 } from './chat-helpers.js';
 import { STANDARD_PIPELINE_KEY } from '../feral/pipelines/standard-pipeline.js';
+import { pipelineProcessSource } from '../feral/pipelines/pipeline-process-source.js';
 import { resolveScopeFromInput } from '../cfx3/source-registry.js';
 
 // Re-export public types so callers (web-server, a2a-server) keep working.
@@ -53,6 +54,12 @@ export interface ChatResult {
 export let activePipelineKey = STANDARD_PIPELINE_KEY;
 
 export function setActivePipeline(key: string): void {
+    // Persisted configs may reference retired engines (see docs/ENGINE-GRAVEYARD.md);
+    // an unknown key would fail every chat turn, so fall back to Standard.
+    if (!pipelineProcessSource.getPipelineKeys().includes(key)) {
+        debug('chat', `Unknown pipeline "${key}" — falling back to ${STANDARD_PIPELINE_KEY}`);
+        key = STANDARD_PIPELINE_KEY;
+    }
     activePipelineKey = key;
     debug('chat', `Active pipeline set to: ${key}`);
 }

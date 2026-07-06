@@ -4,9 +4,9 @@
 // and prints timing, token usage, and accuracy.
 //
 // Usage:
-//   node tests/headless/pipeline-test.mjs                  # both pipelines
+//   node tests/headless/pipeline-test.mjs                  # all pipelines
 //   node tests/headless/pipeline-test.mjs standard         # standard only
-//   node tests/headless/pipeline-test.mjs cruel-summer     # cruel-summer only
+//   node tests/headless/pipeline-test.mjs take-on-me       # take-on-me only
 // ─────────────────────────────────────────────────────────────────────────────
 
 import path from 'path';
@@ -74,7 +74,7 @@ const SESSIONS = [
 
 const PIPELINES = process.argv[2]
     ? [process.argv[2]]
-    : ['standard', 'cruel-summer', 'hertz'];
+    : ['standard', 'take-on-me'];
 
 const PASS  = '\x1b[32m✓\x1b[0m';
 const FAIL  = '\x1b[31m✗\x1b[0m';

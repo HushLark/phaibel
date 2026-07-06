@@ -9,15 +9,13 @@
 import type { Process } from '../process/process.js';
 import type { ProcessSource } from '../process/process-factory.js';
 import { STANDARD_PIPELINE } from './standard-pipeline.js';
-import { CRUEL_SUMMER_PIPELINE } from './cruel-summer-pipeline.js';
-import { HERTZ_PIPELINE } from './hertz-pipeline.js';
 import { TAKE_ON_ME_PIPELINE } from './take-on-me-pipeline.js';
 
+// Retired engines (Cruel Summer, Hertz) are documented in
+// docs/ENGINE-GRAVEYARD.md and recoverable from git history.
 export class PipelineProcessSource implements ProcessSource {
     private readonly pipelines: Process[] = [
         STANDARD_PIPELINE,
-        CRUEL_SUMMER_PIPELINE,
-        HERTZ_PIPELINE,
         TAKE_ON_ME_PIPELINE,
     ];
 
