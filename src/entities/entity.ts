@@ -500,12 +500,18 @@ export async function findEntityByTitle(
             }
         }
 
-        // Semantic fallback: try embedding similarity search
+        // Semantic fallback: try embedding similarity search.
+        // This is an identity lookup, not relevance ranking — a weak match here
+        // returns the WRONG entity (create sees a false "already exists"; update
+        // writes onto it). The index's own floor (0.25, tuned for paraphrase
+        // retrieval where a combiner weighs the score) admitted "Jeremy"→"gary"
+        // at 0.42 and serially renamed the ME node. Require near-identity.
+        const TITLE_LOOKUP_MIN_SIMILARITY = 0.6;
         const embeddingIndex = getEmbeddingIndex();
         if (embeddingIndex.isLoaded) {
             try {
                 const results = await embeddingIndex.search(titleOrFilename, 1, entityType);
-                if (results.length > 0) {
+                if (results.length > 0 && results[0].similarity >= TITLE_LOOKUP_MIN_SIMILARITY) {
                     const matchedNode = index.getNode(results[0].key);
                     if (matchedNode) {
                         debug('entities', `Semantic match for "${titleOrFilename}" → "${matchedNode.title}" (similarity: ${results[0].similarity.toFixed(3)})`);
