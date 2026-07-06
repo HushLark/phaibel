@@ -152,6 +152,19 @@ export function inferWeights(classification: ClassificationResult): RequestWeigh
  * when the classification extracted a specific date.  Falls back to a single
  * general query using the classification summary.
  */
+/**
+ * Enrich a retrieval query with the classifier's expansion terms. Typed
+ * requests for dimension-declaring types route to searchByRelevance, where
+ * the query feeds SEMANTIC scoring — concrete answer-vocabulary in the vector
+ * is the difference between a paraphrase match and a miss for small embedding
+ * models (measured: MiniLM ranks keyword-bait above true paraphrase targets
+ * without it).
+ */
+function enrichQuery(q: string, classification: ClassificationResult): string {
+    const terms = (classification.expansion ?? []).slice(0, 6).join(' ');
+    return terms ? `${q} ${terms}`.trim() : q;
+}
+
 export function buildFetchRequests(
     classification: ClassificationResult,
 ): ClassificationFetchRequest[] {
@@ -182,7 +195,7 @@ export function buildFetchRequests(
 
         requests.push({
             entityType: subject.entityType,
-            query:      (keywordPart + effectiveDateTag).trim() || classification.summary,
+            query:      enrichQuery((keywordPart + effectiveDateTag).trim() || classification.summary, classification),
             limit:      12,
         });
     }
@@ -241,7 +254,7 @@ export function buildBroadFallbackRequests(
     // Where embeddings are unavailable (mobile today), the semantic dimension
     // is skipped and behavior degrades to the previous temporal/recency
     // ranking — so this is strictly an upgrade, never a regression.
-    const query = classification.summary.trim();
+    const query = enrichQuery(classification.summary.trim(), classification);
     for (const et of ['task', 'event', 'goal', 'note', 'person']) {
         requests.push({ entityType: et, query, limit: 8 });
     }
