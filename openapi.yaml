@@ -981,7 +981,7 @@ components:
         vaultRoot:
           type: string
           description: Absolute path to the active vault
-          example: /Users/gary/phaibel-vault
+          example: /Users/alex/phaibel-vault
         memory:
           type: object
           properties:
