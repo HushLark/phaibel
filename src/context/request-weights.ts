@@ -203,6 +203,14 @@ export function buildFetchRequests(
     // event. When any subject was typed, add an untyped search so semantic
     // matches in any type surface alongside the typed results. Dedup + the
     // maxNodes cap in fetchContextByClassification bound the total.
+    // Vocabulary-mismatch recall: the classifier suggests words a matching
+    // record would CONTAIN (words the user didn't say). One untyped keyword
+    // request per term — fulfillRequests merges and dedups across requests.
+    // Platform-independent: no embeddings required, works identically on mobile.
+    for (const term of (classification.expansion ?? []).slice(0, 6)) {
+        if (term && term.trim()) requests.push({ query: term.trim(), limit: 4 });
+    }
+
     const hasTypedSubject = classification.subjects.some(s => s.entityType);
     if (hasTypedSubject) {
         // Use the subject text (high-signal keywords like "Emma"), not the full
@@ -227,12 +235,22 @@ export function buildBroadFallbackRequests(
     classification: ClassificationResult,
 ): ClassificationFetchRequest[] {
     const requests: ClassificationFetchRequest[] = [];
+    // Pass the classification summary as the query: for types with relevance
+    // dimensions this feeds SEMANTIC scoring in searchByRelevance (a sentence
+    // is fine for embeddings — it is NOT an AND-keyword filter on this path).
+    // Where embeddings are unavailable (mobile today), the semantic dimension
+    // is skipped and behavior degrades to the previous temporal/recency
+    // ranking — so this is strictly an upgrade, never a regression.
+    const query = classification.summary.trim();
     for (const et of ['task', 'event', 'goal', 'note', 'person']) {
-        requests.push({ entityType: et, query: '', limit: 8 });
+        requests.push({ entityType: et, query, limit: 8 });
     }
-    if (classification.summary.trim()) {
-        // Cross-type keyword pass for any semantic match the broad fetch missed.
-        requests.push({ query: classification.summary, limit: 10 });
+    if (query) {
+        // Cross-type keyword pass for any match the typed fetches missed.
+        requests.push({ query, limit: 10 });
+    }
+    for (const term of (classification.expansion ?? []).slice(0, 6)) {
+        if (term && term.trim()) requests.push({ query: term.trim(), limit: 4 });
     }
     return requests;
 }

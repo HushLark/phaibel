@@ -9,6 +9,8 @@ import { feralChatHeadless, setActivePipeline } from '../src/commands/chat.js';
 import { pipelineProcessSource } from '../src/feral/pipelines/pipeline-process-source.js';
 import { runWithTokenTracker, type ChatTokenTotals } from '../src/llm/token-usage.js';
 import { createEvalVault, destroyEvalVault, snapshotVault } from './vault-setup.js';
+import { getEntityIndex } from '../src/entities/entity-index.js';
+import { getEmbeddingIndex } from '../src/entities/embedding-index.js';
 import { evaluateAssertions, computeScore, computeDimensionScores } from './assertions.js';
 import type {
     EvalScenario,
@@ -55,6 +57,24 @@ async function runScenario(
                 existing.capabilityMapping[capability] = { provider, model };
             }
             await fs.writeFile(configPath, JSON.stringify(existing, null, 2));
+        }
+
+        // Replicate the daemon's startup embedding sync — without this the
+        // semantic dimension is silently inert (isLoaded=false) and evals
+        // under-measure desktop production retrieval. Skipped when local
+        // embeddings are disabled (mobile emulation without the component).
+        if (process.env.PHAIBEL_DISABLE_LOCAL_EMBED !== '1') {
+            try {
+                const entityIndex = getEntityIndex();
+                await entityIndex.build();   // singleton is lazy — sync needs a built index
+                const embeddingIndex = getEmbeddingIndex();
+                await embeddingIndex.load();
+                const syncRes = await embeddingIndex.sync(entityIndex);
+                await embeddingIndex.save();
+                console.log(`  [embeddings] sync: +${syncRes.added} ~${syncRes.updated} -${syncRes.removed} (loaded=${embeddingIndex.isLoaded})`);
+            } catch (err) {
+                console.warn(`  ⚠ embedding sync failed (semantic scoring inactive): ${err instanceof Error ? err.message : err}`);
+            }
         }
 
         // Take before snapshot

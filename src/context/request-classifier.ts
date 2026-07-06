@@ -92,6 +92,8 @@ export interface ClassificationResult {
     timeframes: TimeframeRef[];
     subjects: SubjectRef[];
     attributes: AttributeRef[];
+    /** Alternate retrieval terms (synonyms/related words) for vocabulary-mismatch recall. */
+    expansion?: string[];
 }
 
 /**
@@ -143,6 +145,8 @@ SUBJECTS — things being referenced. Map to entity type if obvious: task, event
 
 ATTRIBUTES — filters/modifiers: "overdue" → filter, "urgent" → modifier, "completed" → filter.
 
+EXPANSION — for query/analytical/introspection requests, list 4-6 single words a stored note answering this request would likely CONTAIN, prioritising words the user did NOT say. Use CONCRETE nouns naming things, places, people, months — the vocabulary of the ANSWER, not of the question. Avoid abstract planning words (itinerary, details, information, dates, budget). Examples: "what was that noise in the car?" → ["mechanic","garage","brake","engine","repair"]; "plans for our summer getaway?" → ["vacation","cottage","cabin","beach","lake","flight","July"]. For other categories return [].
+
 Return JSON only. No markdown fences.`;
 
 function buildUserMessage(
@@ -168,7 +172,8 @@ Return JSON:
   "summary": "user wants to see overdue tasks",
   "timeframes": [{"label": "today", "type": "relative", "direction": "present", "isoDate": "${today}"}],
   "subjects": [{"text": "tasks", "entityType": "task"}],
-  "attributes": [{"text": "overdue", "type": "filter"}]
+  "attributes": [{"text": "overdue", "type": "filter"}],
+  "expansion": ["deadline", "due", "pending"]
 }`;
 }
 
@@ -354,6 +359,9 @@ export async function classifyRequest(
             ? parsed.summary : input,
         timeframes: parseTimeframes(parsed.timeframes),
         subjects:   parseSubjects(parsed.subjects),
+        expansion:  Array.isArray(parsed.expansion)
+            ? (parsed.expansion as unknown[]).filter((t): t is string => typeof t === 'string' && t.trim().length > 0).slice(0, 6)
+            : [],
         attributes: parseAttributes(parsed.attributes),
     };
 

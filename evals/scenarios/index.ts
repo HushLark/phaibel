@@ -14,6 +14,7 @@ import { cxmsMutationScenarios } from './cxms-mutations.js';
 import { execScenarios } from './exec.js';
 import { familyScenarios } from './family.js';
 import { parseMdEvals } from './parse-md-evals.js';
+import { semanticStressScenarios } from './semantic-stress.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -44,4 +45,10 @@ export const PERSONA_SCENARIOS: EvalScenario[] = [
     ...familyScenarios,
 ];
 
-export const ALL_SCENARIOS: EvalScenario[] = [...CORE_SCENARIOS, ...PERSONA_SCENARIOS];
+// Large-vault paraphrase-recall suite — decides whether platforms without
+// local embeddings (mobile) need a semantic component. Kept OUT of
+// ALL_SCENARIOS: 120+ seeded entities per scenario make it a targeted
+// instrument, not a default regression suite.
+export const SEMANTIC_STRESS_SCENARIOS: EvalScenario[] = [...semanticStressScenarios];
+
+export const ALL_SCENARIOS: EvalScenario[] = [...CORE_SCENARIOS, ...PERSONA_SCENARIOS, ...SEMANTIC_STRESS_SCENARIOS];

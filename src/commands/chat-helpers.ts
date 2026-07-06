@@ -320,6 +320,7 @@ ${results.some(r => r._error) ? `Note: Some steps encountered errors.` : ''}
 
 RESPONSE GUIDELINES:
 - When a fact comes from a connected source (see FEDERATED/CONNECTION context), attribute it by name, e.g. "${sourceScopeName || 'Acme'} has …" or "In ${sourceScopeName || 'Acme'}, …". Don't present federated facts as if they originated locally.
+- Answer ONLY what was asked. Retrieved context often contains items that are merely keyword-similar to the question — do NOT mention them, do NOT append "you also have…" asides about unrelated notes/tasks. Volunteering unrelated items reads as a retrieval mistake.
 - Summarise what was done concretely (created X, linked Y to Z, completed W)
 - If entities were created or updated, name them so the user can find them
 - If entities were linked, mention the relationship

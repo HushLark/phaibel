@@ -49,7 +49,12 @@ import { LOCAL_EMBED_MODEL, LOCAL_EMBED_DIMENSIONS } from '../llm/providers/loca
 const MODEL = LOCAL_EMBED_MODEL;
 const DIMENSIONS = LOCAL_EMBED_DIMENSIONS;
 const BATCH_SIZE = 100;
-const SIMILARITY_THRESHOLD = 0.5;
+// 0.25, not 0.5: MiniLM cosine for true paraphrase matches typically lands
+// 0.3–0.5 ("car noise" query vs "mechanic diagnosed grinding — brake pads"
+// note ≈ 0.4). A 0.5 floor silently discarded every paraphrase hit, making
+// the semantic dimension inert exactly where it matters; the relevance
+// combiner weighs the score, so a lower floor only admits candidates.
+const SIMILARITY_THRESHOLD = 0.25;
 
 function cosineSimilarity(a: number[], b: number[]): number {
     let dot = 0;

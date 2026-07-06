@@ -296,6 +296,7 @@ export async function fetchContextByClassification(
     sourceScope?: string,
 ): Promise<GatheredContext> {
     const requests = buildFetchRequests(classification);
+    debug('chat', `fetch requests: ${requests.length} (expansion: ${JSON.stringify(classification.expansion ?? [])})`);
     // Map to FetchRequest (type is optional, which fulfillRequests now supports)
     const fetchReqs: FetchRequest[] = requests.map(r => ({
         type:  r.entityType,
