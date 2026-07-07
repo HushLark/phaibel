@@ -17,7 +17,7 @@ import { ResultStatus } from '../../result/result.js';
 import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
-import { findEntityByTitle, findNodeAnyType, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
+import { findEntityByTitle, findNodeAnyType, writeEntity, composePersonTitle, type EntityTypeName } from '../../../entities/entity.js';
 import { getEntityIndex } from '../../../entities/entity-index.js';
 
 const NOT_FOUND = 'not_found';
@@ -73,8 +73,23 @@ export class SetEntityFieldNodeCode extends AbstractNodeCode {
             return this.result(NOT_FOUND, `${entityType} "${title}" not found.`);
         }
 
-        // Set the field and persist
+        // Set the field and persist. Capture the old last name first so a
+        // person's title can be recomposed correctly when name/lastName changes.
+        const oldLastName = typeof found.meta.lastName === 'string' ? found.meta.lastName.trim() : '';
         found.meta[field] = value;
+
+        // Keep a person's node title in sync with their current name — setting
+        // lastName on "Ben" should retitle the node "Ben Torres".
+        let effectiveTitle = title;
+        if (effectiveType === 'person' && (field === 'name' || field === 'lastName')) {
+            if (typeof found.meta.name !== 'string' || !found.meta.name) found.meta.name = title;
+            const composed = composePersonTitle(found.meta, oldLastName);
+            if (composed) {
+                effectiveTitle = composed;
+                found.meta.name = composed;
+            }
+        }
+
         await writeEntity(found.filepath, found.meta, found.content ?? '');
 
         context.set('entity', { filepath: found.filepath, content: found.content ?? '', ...found.meta });
@@ -83,9 +98,9 @@ export class SetEntityFieldNodeCode extends AbstractNodeCode {
         // Update entity index
         const index = getEntityIndex();
         if (index.isBuilt) {
-            await index.addOrUpdate(effectiveType as EntityTypeName, String(found.meta.id ?? title), title, found.filepath);
+            await index.addOrUpdate(effectiveType as EntityTypeName, String(found.meta.id ?? title), effectiveTitle, found.filepath);
         }
 
-        return this.result(ResultStatus.OK, `Set ${effectiveType} "${title}" ${field} = ${value}.`);
+        return this.result(ResultStatus.OK, `Set ${effectiveType} "${effectiveTitle}" ${field} = ${value}.`);
     }
 }

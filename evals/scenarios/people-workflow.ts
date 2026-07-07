@@ -71,6 +71,8 @@ export const peopleWorkflowScenarios: EvalScenario[] = [
         vaultSeed: SPARSE_PEOPLE_SEED,
         assertions: [
             { type: 'entity_updated', entityType: 'person', titleMatch: 'Ben', description: "Ben's record should be updated with the last name" },
+            { type: 'entity_field', entityType: 'person', titleMatch: 'Ben', field: 'lastName', expected: 'Torres', description: 'The last name should be stored in the lastName field' },
+            { type: 'entity_field', entityType: 'person', titleMatch: 'Ben', field: 'name', expected: 'Ben Torres', dimension: 'completeness', description: 'The node title should update to include the new last name' },
             { type: 'entity_count', entityType: 'person', expected: 4, description: 'No new person — this refines the existing Ben' },
             { type: 'entity_field', entityType: 'person', titleMatch: 'Gary', field: 'name', expected: 'Gary Tester', dimension: 'accuracy', description: 'The ME node must not absorb the refinement' },
         ],

@@ -8,7 +8,7 @@ import { ResultStatus } from '../../result/result.js';
 import type { ConfigurationDescription, ResultDescription } from '../../configuration/configuration-description.js';
 import { AbstractNodeCode } from '../abstract-node-code.js';
 import { NodeCodeCategory } from '../node-code.js';
-import { findEntityByTitle, findNodeAnyType, writeEntity, type EntityTypeName } from '../../../entities/entity.js';
+import { findEntityByTitle, findNodeAnyType, writeEntity, composePersonTitle, type EntityTypeName } from '../../../entities/entity.js';
 import { getEntityType } from '../../../entities/entity-type-config.js';
 import { validateEntity, formatValidationErrors } from '../../../entities/entity-validator.js';
 import { getEntityIndex } from '../../../entities/entity-index.js';
@@ -88,22 +88,39 @@ export class UpdateEntityNodeCode extends AbstractNodeCode {
         const newContent = context.get('content');
         const content = typeof newContent === 'string' ? newContent : (found.content ?? '');
 
+        // Remember the last name before patching so we can strip it when
+        // recomposing a person's display title (avoids "Ben Torres Smith" when
+        // the last name is changed rather than added).
+        const oldLastName = typeof found.meta.lastName === 'string' ? found.meta.lastName.trim() : '';
+        const patchedFieldList = patchFieldsStr
+            ? patchFieldsStr.split(',').map(f => f.trim()).filter(Boolean)
+            : [];
+
         // Merge patch fields from context into existing metadata
-        if (patchFieldsStr) {
-            for (const field of patchFieldsStr.split(',').map(f => f.trim()).filter(Boolean)) {
-                const val = context.get(field);
-                if (val !== undefined) {
-                    found.meta[field] = val;
-                }
+        for (const field of patchedFieldList) {
+            const val = context.get(field);
+            if (val !== undefined) {
+                found.meta[field] = val;
+            }
+        }
+
+        // A person's node title should always read as their current name. When
+        // the first name (name) or last name (lastName) is edited, recompose the
+        // title so the browser/index reflect it — e.g. "Ben" → "Ben Torres".
+        let effectiveTitle = title;
+        if (effectiveType === 'person' && patchedFieldList.some(f => f === 'name' || f === 'lastName')) {
+            if (typeof found.meta.name !== 'string' || !found.meta.name) found.meta.name = title;
+            const composed = composePersonTitle(found.meta, oldLastName);
+            if (composed) {
+                effectiveTitle = composed;
+                found.meta.name = composed;
             }
         }
 
         // Validate only the patched fields against entity type schema
         const typeConfig = await getEntityType(effectiveType);
         if (typeConfig) {
-            const patchedFields = new Set(
-                patchFieldsStr ? patchFieldsStr.split(',').map(f => f.trim()).filter(Boolean) : []
-            );
+            const patchedFields = new Set(patchedFieldList);
             // Also validate content-related fields if content was changed
             if (newContent !== undefined) patchedFields.add('content');
             const errors = validateEntity(found.meta, typeConfig, false, patchedFields.size > 0 ? patchedFields : undefined);
@@ -117,7 +134,7 @@ export class UpdateEntityNodeCode extends AbstractNodeCode {
         await writeEntity(found.filepath, found.meta, content);
 
         // Regenerate summary with updated content
-        const summary = await generateEntitySummary(effectiveType as EntityTypeName, found.meta.title as string ?? title, content, found.meta);
+        const summary = await generateEntitySummary(effectiveType as EntityTypeName, effectiveTitle, content, found.meta);
         found.meta.summary = summary;
         await writeEntity(found.filepath, found.meta, content);
 
@@ -131,16 +148,16 @@ export class UpdateEntityNodeCode extends AbstractNodeCode {
         const index = getEntityIndex();
         if (index.isBuilt) {
             const entityId = found.meta.id as string;
-            await index.addOrUpdate(effectiveType as EntityTypeName, entityId, title, found.filepath, summary);
+            await index.addOrUpdate(effectiveType as EntityTypeName, entityId, effectiveTitle, found.filepath, summary);
         }
 
         // Update embedding index
         const embeddingIndex = getEmbeddingIndex();
         if (embeddingIndex.isLoaded) {
             const id = found.meta.id as string;
-            await embeddingIndex.upsert(`${effectiveType}:${id}`, { title, summary: summary ?? '', bodySnippet: content.slice(0, 500) });
+            await embeddingIndex.upsert(`${effectiveType}:${id}`, { title: effectiveTitle, summary: summary ?? '', bodySnippet: content.slice(0, 500) });
         }
 
-        return this.result(ResultStatus.OK, `Updated ${effectiveType} "${title}".`);
+        return this.result(ResultStatus.OK, `Updated ${effectiveType} "${effectiveTitle}".`);
     }
 }

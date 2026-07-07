@@ -463,6 +463,29 @@ export async function trashEntity(filepath: string): Promise<string> {
 }
 
 /**
+ * A person's node title should always read as their current name. When the
+ * first name (the `name` field) or last name (`lastName`) is edited, this
+ * recomposes the display title as "First Last". Pass the last name as it was
+ * BEFORE the edit so a changed last name is replaced, not appended (avoids
+ * "Ben Torres Smith"). Returns null when there's nothing to compose (empty
+ * name) so callers can leave the existing title untouched.
+ */
+export function composePersonTitle(
+    meta: Record<string, unknown>,
+    oldLastName?: string,
+): string | null {
+    const newLast = typeof meta.lastName === 'string' ? meta.lastName.trim() : '';
+    let first = typeof meta.name === 'string' ? meta.name.trim() : '';
+    if (!first) return null;
+    const prev = (oldLastName ?? '').trim();
+    if (prev && first.toLowerCase().endsWith(prev.toLowerCase())) {
+        first = first.slice(0, first.length - prev.length).trim();
+    }
+    const composed = [first, newLast].filter(Boolean).join(' ').trim();
+    return composed || null;
+}
+
+/**
  * Find an entity by title or filename within a directory.
  */
 export async function findEntityByTitle(
