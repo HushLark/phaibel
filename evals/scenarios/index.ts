@@ -16,6 +16,7 @@ import { familyScenarios } from './family.js';
 import { parseMdEvals } from './parse-md-evals.js';
 import { semanticStressScenarios } from './semantic-stress.js';
 import { peopleWorkflowScenarios } from './people-workflow.js';
+import { businessWorkflowScenarios } from './business-workflow.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -36,6 +37,7 @@ export const CORE_SCENARIOS: EvalScenario[] = [
     ...contextTypeCreationScenarios,
     ...cxmsMutationScenarios,
     ...peopleWorkflowScenarios,
+    ...businessWorkflowScenarios,
     ...loadSmokeScenarios(),
 ];
 

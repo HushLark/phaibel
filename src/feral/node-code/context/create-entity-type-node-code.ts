@@ -35,7 +35,7 @@ Rules:
 - The object must have these top-level keys:
     plural        : string  (plural form of the type name)
     description   : string  (short description ≤ 80 chars)
-    baseCategory  : one of: person | place | thing | event | task | goal
+    baseCategory  : one of: person | place | thing | business | event | task | goal
     parent        : string | null   (an existing more-general type this specializes, or null)
     fields        : array of field objects (see below)
     completionField : string | null   (which field tracks done/complete state, or null)
@@ -60,6 +60,7 @@ Rules:
     calendarDateField : string | null   (which date/datetime field places this entity on the timeline)
 - baseCategory: which life primitive this rolls up to — it gives the type a relevance profile. Choose:
     person (people) · place (locations) · thing (objects, notes, records) ·
+    business (organizations you deal with — companies, customers, vendors) ·
     event (things that happen over a span — meetings, concerts, trips) ·
     task (things to do with a deadline) · goal (outcomes you work toward).
 - parent: if a more-general existing type clearly fits, set it (e.g. a "concert" specializes "event"); else null.

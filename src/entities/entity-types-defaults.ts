@@ -171,8 +171,10 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
     },
     {
         name: 'company',
-        baseCategory: 'place',
-        parent: 'place',
+        // Primary type of the 'business' life primitive (like person→place). No
+        // parent: it sits directly under the base category and inherits its
+        // organization-oriented relevance profile.
+        baseCategory: 'business',
         plural: 'companies',
         directory: 'companies',
         description: 'Companies and organizations',
@@ -186,14 +188,39 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
             { key: 'location',       type: 'string',    label: 'Location',        required: false },
             { key: 'primaryContact', type: 'reference', label: 'Primary Contact', targetType: 'person', required: false },
         ],
-        // Thing/organization: found by name + graph-linkage to deals and people.
-        dimensions: [
-            { type: 'semantic',         weight: 3 },
-            { type: 'contextProximity', weight: 3 },
-            { type: 'behavioral',       weight: 2 },
-            { type: 'goalAlignment',    weight: 2 },
-            { type: 'recency',          weight: 2 },
-            { type: 'socialProximity',  weight: 1 },
+        // Inherits the 'business' base-category relevance profile.
+    },
+    {
+        // A business you sell to. Subtype of company (inherits the business
+        // relevance profile) with pipeline-oriented fields.
+        name: 'customer',
+        baseCategory: 'business',
+        parent: 'company',
+        plural: 'customers',
+        directory: 'customers',
+        description: 'Businesses you sell to — clients and accounts',
+        fields: [
+            { key: 'status',         type: 'enum',      label: 'Status',
+              values: ['prospect', 'active', 'at-risk', 'churned'],                required: false },
+            { key: 'industry',       type: 'string',    label: 'Industry',        required: false },
+            { key: 'website',        type: 'string',    label: 'Website',         required: false },
+            { key: 'primaryContact', type: 'reference', label: 'Primary Contact', targetType: 'person', required: false },
+        ],
+    },
+    {
+        // A business you buy from. Subtype of company (inherits the business
+        // relevance profile) with procurement-oriented fields.
+        name: 'vendor',
+        baseCategory: 'business',
+        parent: 'company',
+        plural: 'vendors',
+        directory: 'vendors',
+        description: 'Businesses you buy from — suppliers and service providers',
+        fields: [
+            { key: 'service',        type: 'string',    label: 'Service / Product', required: false },
+            { key: 'website',        type: 'string',    label: 'Website',         required: false },
+            { key: 'accountNumber',  type: 'string',    label: 'Account Number',  required: false },
+            { key: 'primaryContact', type: 'reference', label: 'Primary Contact', targetType: 'person', required: false },
         ],
     },
     {
@@ -230,4 +257,4 @@ export const DEFAULT_ENTITY_TYPES: EntityTypeConfig[] = [
 ];
 
 /** Names of built-in types that cannot be removed. */
-export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'person', 'place', 'residence', 'spot', 'company', 'todont', 'goal']);
+export const BUILT_IN_TYPE_NAMES = new Set(['task', 'note', 'event', 'person', 'place', 'residence', 'spot', 'company', 'customer', 'vendor', 'todont', 'goal']);

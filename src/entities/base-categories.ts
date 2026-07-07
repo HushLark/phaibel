@@ -18,17 +18,18 @@ import {
 } from './entity-type-config.js';
 
 /**
- * The six base categories — Phaibel's top-level ontology of a person's life:
- *   person — people
- *   place  — locations
- *   thing  — objects, notes, documents, records
- *   event  — period-anchored happenings you attend (duration)
- *   task   — point-anchored actions you complete (a checkbox with a deadline)
- *   goal   — what you're working toward (the "why"; a hub for alignment)
+ * The seven base categories — Phaibel's top-level ontology of a person's life:
+ *   person   — people
+ *   place    — locations
+ *   thing    — objects, notes, documents, records
+ *   business — organizations you deal with (companies, customers, vendors)
+ *   event    — period-anchored happenings you attend (duration)
+ *   task     — point-anchored actions you complete (a checkbox with a deadline)
+ *   goal     — what you're working toward (the "why"; a hub for alignment)
  */
-export type BaseCategory = 'person' | 'place' | 'thing' | 'event' | 'task' | 'goal';
+export type BaseCategory = 'person' | 'place' | 'thing' | 'business' | 'event' | 'task' | 'goal';
 
-export const BASE_CATEGORIES: BaseCategory[] = ['person', 'place', 'thing', 'event', 'task', 'goal'];
+export const BASE_CATEGORIES: BaseCategory[] = ['person', 'place', 'thing', 'business', 'event', 'task', 'goal'];
 
 /**
  * Default relevance profile per base category (docs/RELEVANCE-DIMENSIONS.md §3).
@@ -56,6 +57,17 @@ export const BASE_CATEGORY_DIMENSIONS: Record<BaseCategory, RelevanceDimensionDe
         { type: 'contextProximity', weight: 3 },
         { type: 'goalAlignment',    weight: 2 },
         { type: 'behavioral',       weight: 2 },
+        { type: 'recency',          weight: 2 },
+        { type: 'socialProximity',  weight: 1 },
+    ],
+    business: [
+        // Organizations: found by name + graph-linkage to the people and deals
+        // around them. Not spatially anchored (unlike a place); interaction
+        // history and relevance to active work dominate.
+        { type: 'semantic',         weight: 3 },
+        { type: 'contextProximity', weight: 3 },
+        { type: 'behavioral',       weight: 2 },
+        { type: 'goalAlignment',    weight: 2 },
         { type: 'recency',          weight: 2 },
         { type: 'socialProximity',  weight: 1 },
     ],
