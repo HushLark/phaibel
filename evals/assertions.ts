@@ -179,12 +179,66 @@ async function checkAssertion(
         case 'response_not_contains': return checkResponseNotContains(a, responseText);
         case 'context_type_created': return checkContextTypeCreated(a, after);
         case 'entity_body': return checkEntityBody(a, after);
+        case 'entity_linked': return checkEntityLinked(a, after);
         case 'response_faithful': return checkResponseFaithful(a, after, responseText);
     }
 }
 
 function titleMatches(entity: SnapshotEntity, pattern: string): boolean {
     return entity.title.toLowerCase().includes(pattern.toLowerCase());
+}
+
+/**
+ * A relationship exists between two entities: some entity matching
+ * sourceTitleMatch carries a frontmatter `links` entry pointing at an entity
+ * matching targetTitleMatch — or vice versa (direction not enforced; either
+ * end may own the edge). Type restrictions are optional so scenarios stay
+ * robust to reasonable subtype choices (spot vs place, customer vs company).
+ */
+function checkEntityLinked(
+    a: { type: 'entity_linked'; sourceTitleMatch: string; targetTitleMatch: string; sourceType?: string; targetType?: string; labelMatch?: string; description: string },
+    after: VaultSnapshot,
+): AssertionResult {
+    const dimensions: EvalDimension[] = ['completeness'];
+
+    const findMatches = (pattern: string, type?: string): SnapshotEntity[] => {
+        const pools = type ? { [type]: after[type] ?? [] } : after;
+        const out: SnapshotEntity[] = [];
+        for (const entities of Object.values(pools)) {
+            for (const e of entities ?? []) if (titleMatches(e, pattern)) out.push(e);
+        }
+        return out;
+    };
+
+    const sources = findMatches(a.sourceTitleMatch, a.sourceType);
+    const targets = findMatches(a.targetTitleMatch, a.targetType);
+    if (sources.length === 0 || targets.length === 0) {
+        const missing = sources.length === 0 ? `"${a.sourceTitleMatch}"` : `"${a.targetTitleMatch}"`;
+        return { description: a.description, type: a.type, passed: false, dimensions, failedDimension: 'completeness', message: `No entity matching ${missing} found in the vault` };
+    }
+
+    // links entries hold "type:id" — compare by the id suffix so type-hierarchy
+    // moves (person → family) don't break matching.
+    const idsOf = (list: SnapshotEntity[]) => new Set(list.map(e => String(e.meta.id ?? '')).filter(Boolean));
+    const hasEdge = (from: SnapshotEntity[], toIds: Set<string>): { label: string } | null => {
+        for (const e of from) {
+            const links = Array.isArray(e.meta.links) ? e.meta.links as Array<{ target?: string; label?: string }> : [];
+            for (const l of links) {
+                const targetId = String(l.target ?? '').split(':').pop() ?? '';
+                if (toIds.has(targetId)) return { label: String(l.label ?? '') };
+            }
+        }
+        return null;
+    };
+
+    const edge = hasEdge(sources, idsOf(targets)) ?? hasEdge(targets, idsOf(sources));
+    if (!edge) {
+        return { description: a.description, type: a.type, passed: false, dimensions, failedDimension: 'completeness', message: `No link between "${a.sourceTitleMatch}" and "${a.targetTitleMatch}" in either direction` };
+    }
+    if (a.labelMatch && !edge.label.toLowerCase().includes(a.labelMatch.toLowerCase())) {
+        return { description: a.description, type: a.type, passed: false, dimensions: ['accuracy'], failedDimension: 'accuracy', actual: edge.label, message: `Link exists but label "${edge.label}" does not contain "${a.labelMatch}"` };
+    }
+    return { description: a.description, type: a.type, passed: true, dimensions, actual: edge.label, message: `Linked (label: "${edge.label || 'unlabeled'}")` };
 }
 
 function newEntities(before: VaultSnapshot, after: VaultSnapshot, entityType: string): SnapshotEntity[] {

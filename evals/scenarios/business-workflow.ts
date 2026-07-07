@@ -11,7 +11,7 @@ export const businessWorkflowScenarios: EvalScenario[] = [
     {
         id: 'create-company',
         name: 'Remembering a company creates a company (not a place/note)',
-        category: 'people-workflow',
+        category: 'business-workflow',
         userInput: 'Remember the company Acme Corp — they make industrial widgets',
         assertions: [
             { type: 'entity_created', entityType: 'company', titleMatch: 'Acme', description: 'A company should be created for Acme Corp' },
@@ -21,7 +21,7 @@ export const businessWorkflowScenarios: EvalScenario[] = [
     {
         id: 'create-customer',
         name: 'A business we sell to is a customer',
-        category: 'people-workflow',
+        category: 'business-workflow',
         userInput: 'Add Globex as a customer — an active account we sell to',
         assertions: [
             { type: 'entity_created', entityType: 'customer', titleMatch: 'Globex', description: 'A customer should be created for Globex' },
@@ -31,7 +31,7 @@ export const businessWorkflowScenarios: EvalScenario[] = [
     {
         id: 'create-vendor',
         name: 'A business we buy from is a vendor',
-        category: 'people-workflow',
+        category: 'business-workflow',
         userInput: 'Remember Initech as a vendor — they supply our office equipment',
         assertions: [
             { type: 'entity_created', entityType: 'vendor', titleMatch: 'Initech', description: 'A vendor should be created for Initech' },

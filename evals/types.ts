@@ -18,7 +18,7 @@ export interface VaultSeedEntity {
 export interface EvalScenario {
     id: string;
     name: string;
-    category: 'entity-type' | 'create-vs-update' | 'multi-entity' | 'conversational' | 'persona' | 'context-type-creation' | 'cxms-mutation' | 'smoke' | 'semantic-stress' | 'people-workflow';
+    category: 'entity-type' | 'create-vs-update' | 'multi-entity' | 'conversational' | 'persona' | 'context-type-creation' | 'cxms-mutation' | 'smoke' | 'semantic-stress' | 'people-workflow' | 'business-workflow';
     userInput: string;
     history?: ChatHistoryEntry[];
     vaultSeed?: VaultSeedEntity[];
@@ -123,6 +123,28 @@ export interface ResponseFaithfulAssertion extends BaseAssertion {
     groundTruth?: string;
 }
 
+export interface EntityLinkedAssertion extends BaseAssertion {
+    type: 'entity_linked';
+    /** Title (substring match) of one end of the relationship. */
+    sourceTitleMatch: string;
+    /** Title (substring match) of the other end. */
+    targetTitleMatch: string;
+    /**
+     * Optional type restrictions for finding each end. Omit to search every
+     * type in the snapshot — useful when the model may reasonably choose a
+     * subtype (e.g. a location created as `spot` vs `place`).
+     */
+    sourceType?: string;
+    targetType?: string;
+    /**
+     * Optional case-insensitive substring the edge label must contain
+     * (e.g. "headquarter"). Omit to accept any label — the link's existence
+     * is what's asserted; direction is NOT enforced (either end may own the
+     * frontmatter `links` entry).
+     */
+    labelMatch?: string;
+}
+
 export type EvalAssertion =
     | EntityCreatedAssertion
     | EntityUpdatedAssertion
@@ -134,6 +156,7 @@ export type EvalAssertion =
     | ResponseNotContainsAssertion
     | EntityBodyAssertion
     | ContextTypeCreatedAssertion
+    | EntityLinkedAssertion
     | ResponseFaithfulAssertion;
 
 // ─────────────────────────────────────────────────────────────────────────────
