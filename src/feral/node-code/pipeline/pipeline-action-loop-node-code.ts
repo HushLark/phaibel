@@ -238,7 +238,7 @@ IMPORTANT rules for deciding:
 - Check the "created_entity_types" array — it shows all new types that were registered.
 - If an entity was successfully created, the request is COMPLETE — do NOT retry because of minor details like metadata formatting.
 - Do NOT request "more work" for implementation details (e.g., how a blackout window is stored, or whether a field was set in exactly the right way).
-- Do NOT request "more work" to link entities — linking is nice-to-have, not required.
+- If the request itself STATES a relationship (a business and its locations/headquarters/served places, a person and their employer), the graph edges ARE the work: request "more work" when an endpoint entity or its link is missing from the results. For links the user did not imply, do NOT request more work — incidental linking is nice-to-have.
 - Only say "more_work" if a user-requested entity or action is clearly MISSING from the results.
 - When in doubt, say COMPLETE. Creating duplicates is worse than a slightly imperfect result.
 

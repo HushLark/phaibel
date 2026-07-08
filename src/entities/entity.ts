@@ -487,10 +487,18 @@ export function composePersonTitle(
 
 /**
  * Find an entity by title or filename within a directory.
+ *
+ * opts.semanticFallback (default true): when the exact/index lookup misses,
+ * fall back to near-identity embedding search (≥0.6 similarity). Callers
+ * checking existence BEFORE CREATING must pass false — the user naming a new
+ * thing should only be blocked by a real title match, not a sibling that
+ * shares vocabulary ("Chipotle — Riverside Mall" ≈ "Chipotle — Main Street"
+ * clears 0.6 and would wrongly report "already exists").
  */
 export async function findEntityByTitle(
     entityType: EntityTypeName,
     titleOrFilename: string,
+    opts?: { semanticFallback?: boolean },
 ): Promise<{ filepath: string; meta: Record<string, unknown>; content: string } | null> {
     const { storage, paths } = getPlatform();
     // Fast path: use in-memory index if built
@@ -531,7 +539,7 @@ export async function findEntityByTitle(
         // at 0.42 and serially renamed the ME node. Require near-identity.
         const TITLE_LOOKUP_MIN_SIMILARITY = 0.6;
         const embeddingIndex = getEmbeddingIndex();
-        if (embeddingIndex.isLoaded) {
+        if (embeddingIndex.isLoaded && (opts?.semanticFallback ?? true)) {
             try {
                 const results = await embeddingIndex.search(titleOrFilename, 1, entityType);
                 if (results.length > 0 && results[0].similarity >= TITLE_LOOKUP_MIN_SIMILARITY) {

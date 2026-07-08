@@ -68,7 +68,9 @@ export class CreateEntityNodeCode extends AbstractNodeCode {
         }
 
         // Check for duplicates
-        const existing = await findEntityByTitle(entityType, title);
+        // No semantic fallback here: a creation should only be blocked by a
+        // real title match, not a semantically-similar sibling.
+        const existing = await findEntityByTitle(entityType, title, { semanticFallback: false });
         if (existing) {
             context.set('error', `${entityType} "${title}" already exists.`);
             return this.result(ALREADY_EXISTS, `${entityType} "${title}" already exists.`);

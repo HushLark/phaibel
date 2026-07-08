@@ -419,6 +419,20 @@ function companyNodes(): CatalogNode[] {
             },
         },
         {
+            key: 'link_business_to_place',
+            nodeCodeKey: 'link_entities',
+            name: 'Link Business to Place',
+            group: 'company',
+            description: 'Creates a graph edge from a business/company to a place — a store location, its headquarters, or a destination it serves. Create the place first if needed, then set "company_title", "place_title", and "link_label" ("location", "headquarters", or "serves") in context. Use one edge per place.',
+            configuration: {
+                source_entity_type: 'company',
+                source_entity_title: '{company_title}',
+                target_entity_type: 'place',
+                target_entity_title: '{place_title}',
+                label: '{link_label}',
+            },
+        },
+        {
             key: 'link_company_to_company',
             nodeCodeKey: 'link_entities',
             name: 'Link Company to Company',

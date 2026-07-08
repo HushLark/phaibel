@@ -470,7 +470,7 @@ export class EntityIndex {
      */
     async searchByRelevance(
         query: string,
-        entityType: EntityTypeName | undefined,
+        entityType: EntityTypeName | EntityTypeName[] | undefined,
         anchorKeys: Set<string>,
         dimensions: import('../entities/entity-type-config.js').RelevanceDimensionDef[],
         requestWeights?: import('../cxms/relevance-scorer.js').RequestWeightMultipliers,
@@ -481,8 +481,10 @@ export class EntityIndex {
         const { getEmbeddingIndex } = await import('./embedding-index.js');
         const { getBehavioralIndex } = await import('../cxms/behavioral-index.js');
 
-        let candidates = entityType
-            ? this.getNodes(entityType)
+        // An array means "this type plus its subtypes" (hierarchy-aware fetch).
+        const typeList = Array.isArray(entityType) ? entityType : entityType ? [entityType] : undefined;
+        let candidates = typeList
+            ? typeList.flatMap(t => this.getNodes(t))
             : this.getNodes();
         // Scope to a single CF/x3 connection when requested (meta.source === slug).
         if (sourceScope) candidates = candidates.filter(n => n.meta.source === sourceScope);
@@ -491,7 +493,11 @@ export class EntityIndex {
         const vectorSimilarity = new Map<string, number>();
         const embeddingIndex = getEmbeddingIndex();
         if (dimensions.some(d => d.type === 'semantic') && embeddingIndex.isLoaded && query) {
-            const results = await embeddingIndex.search(query, candidates.length, entityType);
+            // Multi-type scope: search unfiltered and let candidate scoring pick
+            // the relevant keys (extra similarity entries are ignored by scoreNodes).
+            const embedType = typeList && typeList.length === 1 ? typeList[0] : undefined;
+            const topK = embedType ? candidates.length : this.getNodes().length;
+            const results = await embeddingIndex.search(query, topK, embedType);
             for (const r of results) vectorSimilarity.set(r.key, r.similarity);
         }
 

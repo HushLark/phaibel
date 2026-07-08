@@ -128,10 +128,10 @@ SAFETY GUARDRAILS — return {"blocked":true} and nothing else if the request in
 
 CATEGORIES (pick exactly one):
 chat          — Small talk, greetings, phatic exchanges ("hey", "thanks", "how are you?", "lol")
-query         — Asking for information from stored memory ("what tasks do I have?", "when is my dentist?")
-factual       — Current real-world data requiring live lookup: weather, exchange rates, stock prices, news headlines, flight status, sports scores, interest rates ("what's the weather in NYC?", "USD to EUR today", "is my flight on time?", "current federal funds rate")
+query         — Asking for information from stored memory ("what tasks do I have?", "when is my dentist?"). Includes questions about specific people, places, or businesses in the user's world — "which Chipotle locations are near us?", "where is Kate's office?", "who's our contact at Acme?" — stored memory is checked BEFORE any web lookup.
+factual       — Current/volatile real-world data ONLY a live lookup can answer: weather, exchange rates, stock prices, news headlines, flight status, sports scores, interest rates ("what's the weather in NYC?", "USD to EUR today", "is my flight on time?"). If the answer could plausibly live in the user's saved notes/entities (their businesses, their places, their people), classify as query instead — the vault is checked first.
 task          — Imperative actions to perform ("add a task", "schedule meeting", "remind me", "mark done", "delete")
-remember      — Persisting a fact, preference, or relationship ("I'm allergic to X", "my sister's birthday is June 3")
+remember      — Persisting a fact, preference, or relationship ("I'm allergic to X", "my sister's birthday is June 3"). A bare declarative statement of fact about the user's world IS a request to remember it, even without the word "remember" — "United Airlines is headquartered in Chicago", "Chipotle has two locations near us", "Sarah moved to Denver".
 create        — Generating or composing new content ("write a note", "draft an email", "create a plan")
 analytical    — Analysis, patterns, insights, recommendations ("how productive am I?", "what should I focus on?")
 introspection — Questions about the assistant or its stored knowledge ("what do you know about me?", "what can you do?")
@@ -141,7 +141,7 @@ TIMEFRAMES — extract all temporal references. Resolve relative dates using tod
   type: relative ("tomorrow", "next week"), absolute ("June 3rd"), recurring ("every Monday")
   direction: past ("yesterday"), present ("today", "now"), future ("tomorrow", "next month")
 
-SUBJECTS — things being referenced. Map to entity type if obvious: task, event, note, goal, person, research.
+SUBJECTS — things being referenced. Map to entity type if obvious: task, event, note, goal, person, place, company, customer, vendor, research. Businesses/organizations (restaurants, airlines, stores, brands) → company — unless the user names the relationship: a business they sell to → customer; a business they buy from → vendor. Locations → place.
 
 ATTRIBUTES — filters/modifiers: "overdue" → filter, "urgent" → modifier, "completed" → filter.
 

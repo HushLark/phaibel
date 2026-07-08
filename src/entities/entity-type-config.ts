@@ -269,6 +269,29 @@ export function getSpecificity(
     return 1 + getSpecificity(byName.get(cfg.parent), byName, seen);
 }
 
+/**
+ * A type plus every type that specializes it (any depth). Retrieval scoped to
+ * "place" must see spots and residences too — a subject typed at the base
+ * level would otherwise silently miss every entity stored under a subtype.
+ */
+export function getTypeWithDescendants(
+    root: string,
+    byName: Map<string, EntityTypeConfig>,
+): string[] {
+    const out = [root];
+    for (const cfg of byName.values()) {
+        if (cfg.name === root) continue;
+        let cur: EntityTypeConfig | undefined = cfg;
+        const seen = new Set<string>();
+        while (cur?.parent && !seen.has(cur.name)) {
+            seen.add(cur.name);
+            if (cur.parent === root) { out.push(cfg.name); break; }
+            cur = byName.get(cur.parent);
+        }
+    }
+    return out;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CACHE
 // ─────────────────────────────────────────────────────────────────────────────

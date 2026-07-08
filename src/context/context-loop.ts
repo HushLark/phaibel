@@ -4,8 +4,15 @@ import type { IntentResult } from './intent-classifier.js';
 import type { ContextManifest } from './context-manifest.js';
 import { serializeManifest } from './context-manifest.js';
 import { parseJsonResponse } from '../utils/json-parser.js';
-import { loadEntityTypes, getSpecificity, SPECIFICITY_BONUS, type EntityTypeConfig } from '../entities/entity-type-config.js';
+import { loadEntityTypes, getSpecificity, getTypeWithDescendants, SPECIFICITY_BONUS, type EntityTypeConfig, type RelevanceDimensionDef } from '../entities/entity-type-config.js';
 import { resolveDomainDimensions } from '../entities/base-categories.js';
+
+// Minimal relevance profile for UNTYPED keyword/recall requests: semantic-led
+// so paraphrases match across every type, with recency as a mild tiebreaker.
+const UNTYPED_QUERY_DIMENSIONS: RelevanceDimensionDef[] = [
+    { type: 'semantic', weight: 3 },
+    { type: 'recency',  weight: 1 },
+];
 import { debug } from '../utils/debug.js';
 import type { ClassificationResult } from './request-classifier.js';
 import type { RequestWeights } from './request-weights.js';
@@ -215,6 +222,13 @@ export async function fulfillRequests(
         const query = req.query ?? '';
         const limit = req.limit ?? 10;
         const typeConfig = typeKey ? typeConfigMap.get(typeKey) : undefined;
+        // Hierarchy-aware scope: a request typed at a base level ("place") must
+        // also see entities stored under its subtypes (spot, residence) — the
+        // classifier can't know which concrete subtype the data landed in.
+        const typeScope: string[] | undefined = typeKey
+            ? getTypeWithDescendants(typeKey, typeConfigMap)
+            : undefined;
+        const inTypeScope = (n: IndexNode): boolean => !typeScope || typeScope.includes(n.type);
 
         // Date-based filter: if query contains YYYY-MM-DD, match against entity meta
         const dateMatch = query.match(DATE_PATTERN);
@@ -234,12 +248,18 @@ export async function fulfillRequests(
         // (own, inherited from parent, or its base-category default). Temporal
         // types flow through here too — temporal is a scored dimension whose
         // nonzero support acts as the in-window filter (no separate path).
-        const dims = resolveDomainDimensions(typeConfig, typeConfigMap);
-        if (dims.length > 0) {
+        // Untyped keyword requests get a minimal semantic+recency profile so
+        // paraphrase matches surface across ALL types — pure keyword AND-match
+        // ("Chipotle locations" vs a node titled "Chipotle Main Street") whiffs
+        // exactly where the semantic layer exists to catch it.
+        const dims = typeConfig || typeKey
+            ? resolveDomainDimensions(typeConfig, typeConfigMap)
+            : UNTYPED_QUERY_DIMENSIONS;
+        if (dims.length > 0 && (query || typeKey)) {
             try {
                 const scored = await entityIndex.searchByRelevance(
                     query,
-                    typeKey as import('../entities/entity.js').EntityTypeName | undefined,
+                    typeScope as import('../entities/entity.js').EntityTypeName[] | undefined,
                     anchorKeys,
                     dims,
                     requestWeights,
@@ -249,22 +269,22 @@ export async function fulfillRequests(
                 for (const r of scored.slice(0, limit)) add(r.node, relevanceTier(r.score));
                 continue;
             } catch (err) {
-                debug('context-loop', `Relevance scoring failed for ${typeKey}, falling back: ${err}`);
+                debug('context-loop', `Relevance scoring failed for ${typeKey ?? 'untyped'}, falling back: ${err}`);
             }
         }
 
         if (query) {
-            const found = entityIndex.search(query, typeKey as import('../entities/entity.js').EntityTypeName | undefined)
-                .filter(r => inScope(r.node)).slice(0, limit);
+            const found = entityIndex.search(query, undefined)
+                .filter(r => inScope(r.node) && inTypeScope(r.node)).slice(0, limit);
             if (found.length > 0) {
                 for (const r of found) add(r.node, TIER_KEYWORD);
             } else if (typeKey) {
                 // Keyword search returned nothing for a typed request — fall back to
-                // all entities of this type (query was likely just the type name).
-                for (const n of entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName).filter(inScope).slice(0, limit)) add(n, TIER_FALLBACK);
+                // all entities in this type's hierarchy (query was likely just the type name).
+                for (const n of entityIndex.getNodes().filter(n => inScope(n) && inTypeScope(n)).slice(0, limit)) add(n, TIER_FALLBACK);
             }
         } else {
-            for (const n of entityIndex.getNodes(typeKey as import('../entities/entity.js').EntityTypeName | undefined).filter(inScope).slice(0, limit)) add(n, TIER_FALLBACK);
+            for (const n of entityIndex.getNodes().filter(n => inScope(n) && inTypeScope(n)).slice(0, limit)) add(n, TIER_FALLBACK);
         }
     }
     return results;

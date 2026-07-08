@@ -52,7 +52,7 @@ export const businessPlaceRelationshipScenarios: EvalScenario[] = [
         userInput: 'United Airlines flies into Denver International, SFO, and O\'Hare for the routes we use.',
         assertions: [
             { type: 'entity_linked', sourceTitleMatch: 'United', targetTitleMatch: 'Denver', description: 'United should be linked to Denver International' },
-            { type: 'entity_linked', sourceTitleMatch: 'United', targetTitleMatch: 'SFO', description: 'United should be linked to SFO' },
+            { type: 'entity_linked', sourceTitleMatch: 'United', targetTitleMatch: 'SFO|San Francisco', description: 'United should be linked to SFO (or its expanded name)' },
             { type: 'entity_linked', sourceTitleMatch: 'United', targetTitleMatch: "O'Hare", description: "United should be linked to O'Hare" },
             { type: 'entity_count', entityType: 'company', expected: 1, description: 'The existing United Airlines company is reused — no duplicate created' },
         ],

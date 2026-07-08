@@ -185,7 +185,10 @@ async function checkAssertion(
 }
 
 function titleMatches(entity: SnapshotEntity, pattern: string): boolean {
-    return entity.title.toLowerCase().includes(pattern.toLowerCase());
+    // "a|b" matches either alternative — models legitimately expand names
+    // ("SFO" → "San Francisco International Airport"), so assertions can
+    // accept the reasonable variants.
+    return pattern.split('|').some(p => entity.title.toLowerCase().includes(p.trim().toLowerCase()));
 }
 
 /**

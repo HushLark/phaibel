@@ -17,6 +17,7 @@ import { BuiltInCatalogSource } from './catalog/built-in-catalog-source.js';
 import { JsonCatalogSource } from './catalog/json-catalog-source.js';
 import { loadFeralCatalogConfig } from './catalog/feral-catalog-config.js';
 import { EventDispatcher } from './events/event-dispatcher.js';
+import { createCycleDetectionSubscriber } from './events/subscribers/cycle-detection-subscriber.js';
 import { ProcessEngine } from './engine/process-engine.js';
 import { ProcessFactory } from './process/process-factory.js';
 import { Runner } from './runner/runner.js';
@@ -447,6 +448,11 @@ export async function bootstrapFeral(
 
     // 5. Wire engine
     const eventDispatcher = new EventDispatcher();
+    // Runaway guard: LLM-generated processes can contain accidental edge
+    // cycles; without this, a cycle of non-LLM nodes spins forever silently.
+    // 25 runs of the SAME node within one process run is far beyond any
+    // legitimate generated process. Counting is per-run (WeakMap on Context).
+    createCycleDetectionSubscriber(25)(eventDispatcher);
     const engine = new ProcessEngine(eventDispatcher, catalog, nodeCodeFactory);
     const pipelineProcessSrc = new PipelineProcessSource();
     const allSources: ProcessSource[] = [jsonProcessSource, vaultProcessSource, pipelineProcessSrc, ...processSources];
