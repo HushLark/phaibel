@@ -33,6 +33,10 @@
     "type": "git",
     "url": "https://github.com/HushLark/phaibel.git"
   },
+  "homepage": "https://phaibel.com",
+  "bugs": {
+    "url": "https://github.com/HushLark/phaibel/issues"
+  },
   "license": "MIT",
   "scripts": {
     "prepublishOnly": "npm run build",
