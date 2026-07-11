@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getEntityIndex } from '../entities/entity-index.js';
+import { now as currentNow } from '../utils/now.js';
 
 export interface MomentContext {
     current_date: string;           // YYYY-MM-DD
@@ -35,7 +36,7 @@ function localTimeStr(d: Date): string {
 }
 
 export function buildMomentContext(userName?: string): MomentContext {
-    const now = new Date();
+    const now = currentNow();
 
     // Local date/time — use getFullYear/getMonth/etc., NOT toISOString() (which is UTC)
     const today = localDateStr(now);

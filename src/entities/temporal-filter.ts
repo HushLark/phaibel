@@ -12,6 +12,7 @@
 
 import type { TemporalConfig, TemporalDimensionConfig } from './entity-type-config.js';
 import type { TemporalNodeDimension } from '../cxms/types.js';
+import { now as currentNow } from '../utils/now.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DATE HELPERS
@@ -31,7 +32,7 @@ export function addDays(dateStr: string, days: number): string {
 
 /** Today's date as YYYY-MM-DD in local time. */
 export function todayStr(): string {
-    const now = new Date();
+    const now = currentNow();
     const y = now.getFullYear();
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const d = String(now.getDate()).padStart(2, '0');

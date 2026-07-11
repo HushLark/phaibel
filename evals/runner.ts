@@ -90,6 +90,12 @@ async function runScenario(
         let appMetrics: RunMetrics;
         let processJson: Record<string, unknown> | undefined;
 
+        // Pin the clock so relative dates resolve deterministically. Scoped to
+        // the run call and always restored, so one dated scenario can't leak its
+        // reference date into the next.
+        const prevNow = process.env.PHAIBEL_NOW;
+        if (scenario.referenceDate) process.env.PHAIBEL_NOW = scenario.referenceDate;
+
         const appStart = Date.now();
         try {
             const chatResult = await Promise.race([
@@ -115,6 +121,8 @@ async function runScenario(
             responseText = chatResult.response;
             appMetrics = metricsFrom(chatResult.tokens, Date.now() - appStart);
         } catch (err) {
+            if (scenario.referenceDate) { if (prevNow === undefined) delete process.env.PHAIBEL_NOW; else process.env.PHAIBEL_NOW = prevNow; }
+            // (restore also runs on the success path below)
             await destroyEvalVault();
             return {
                 scenarioId: scenario.id,
@@ -132,6 +140,7 @@ async function runScenario(
                 error: err instanceof Error ? err.message : String(err),
             };
         }
+        if (scenario.referenceDate) { if (prevNow === undefined) delete process.env.PHAIBEL_NOW; else process.env.PHAIBEL_NOW = prevNow; }
 
         // Take after snapshot
         const after = await snapshotVault();

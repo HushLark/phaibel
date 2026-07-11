@@ -31,6 +31,7 @@ import { hydrateProcess } from '../../process/process-json-hydrator.js';
 import { getModelForCapability } from '../../../llm/router.js';
 import { parseJsonResponse } from '../../../utils/json-parser.js';
 import { debug } from '../../../utils/debug.js';
+import { buildMomentContext } from '../../../context/moment.js';
 import {
     EXAMPLE_PROCESSES,
     formatHistoryBlock,
@@ -98,12 +99,21 @@ export class PipelineActionLoopNodeCode extends AbstractNodeCode {
             let phase5Response: string;
             try {
                 const reasonLlm = await getModelForCapability('reason');
+                // The design step writes concrete date/datetime values, so it
+                // MUST know the current date — otherwise it resolves "tomorrow"
+                // / "next Tuesday" against the model's training-era clock and
+                // writes wrong (often wrong-year) dates. Synthesis gets the
+                // moment block; the design step needs it too.
+                const m = buildMomentContext();
+                const dateBlock = `CURRENT DATE & TIME: ${m.current_date} (${m.day_of_week}), ${m.current_time}, timezone ${m.user_timezone}. Full ISO: ${m.current_datetime_iso}. Resolve EVERY relative date/time from this — "today"=${m.current_date}, "tomorrow"=next calendar day, "next <weekday>"/"this <weekday>"=the upcoming one, "in N days/weeks"=add to today. Use THIS year unless the user names another.`;
                 phase5Response = await reasonLlm.chat(
                     [{
                         role: 'user' as const,
                         content: `Build a Feral process to handle: "${remainingWork}"
 ${historyBlock}${previousResultsStr}
 ${gatheredContextStr}
+
+${dateBlock}
 
 SELECTED CATALOG NODES (you must only use nodes from this list):
 ${selectedNodeDetails}

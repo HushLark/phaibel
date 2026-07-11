@@ -6,6 +6,8 @@
 // web client to surface upcoming birthdays, holidays, and recurring dates.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { now as currentNow } from '../utils/now.js';
+
 export interface AnnualDateItem {
     entityId: string;
     entityType: string;
@@ -67,7 +69,7 @@ export function upcomingAnnualDates(
     typeFieldMap: Record<string, Array<{ key: string; label?: string; type: string }>>,
     windowDays = 365,
 ): AnnualDateItem[] {
-    const today = new Date();
+    const today = currentNow();
     today.setHours(0, 0, 0, 0);
     const todayYMD = ymd(today);
     const results: AnnualDateItem[] = [];

@@ -18,12 +18,19 @@ export interface VaultSeedEntity {
 export interface EvalScenario {
     id: string;
     name: string;
-    category: 'entity-type' | 'create-vs-update' | 'multi-entity' | 'conversational' | 'persona' | 'context-type-creation' | 'cxms-mutation' | 'smoke' | 'semantic-stress' | 'people-workflow' | 'business-workflow';
+    category: 'entity-type' | 'create-vs-update' | 'multi-entity' | 'conversational' | 'persona' | 'context-type-creation' | 'cxms-mutation' | 'smoke' | 'semantic-stress' | 'people-workflow' | 'business-workflow' | 'dates';
     userInput: string;
     history?: ChatHistoryEntry[];
     vaultSeed?: VaultSeedEntity[];
     assertions: EvalAssertion[];
     timeoutSeconds?: number;
+    /**
+     * Pin the clock for this scenario (ISO 8601, e.g. "2026-03-15T10:00:00").
+     * Sets PHAIBEL_NOW so relative dates ("tomorrow", "next Tuesday at 2pm")
+     * resolve deterministically regardless of when the suite runs. Restored
+     * after the scenario.
+     */
+    referenceDate?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

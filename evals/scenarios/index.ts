@@ -18,6 +18,7 @@ import { semanticStressScenarios } from './semantic-stress.js';
 import { peopleWorkflowScenarios } from './people-workflow.js';
 import { businessWorkflowScenarios } from './business-workflow.js';
 import { businessPlaceRelationshipScenarios } from './business-place-relationships.js';
+import { dateScenarios } from './dates.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -40,6 +41,7 @@ export const CORE_SCENARIOS: EvalScenario[] = [
     ...peopleWorkflowScenarios,
     ...businessWorkflowScenarios,
     ...businessPlaceRelationshipScenarios,
+    ...dateScenarios,
     ...loadSmokeScenarios(),
 ];
 

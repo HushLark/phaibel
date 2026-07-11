@@ -831,20 +831,26 @@ export class WebServer {
         const today = new Date().toISOString().split('T')[0];
         try {
             const entities = await listEntities('task');
+            // Return every open task (overdue, due today, upcoming, and undated).
+            // The client buckets them into overdue / due today / due soon, so the
+            // endpoint must include future-dated tasks — not just <= today.
+            // Sorted by due date ascending with undated tasks last so the client
+            // can take the nearest "due soon" items directly.
             const tasks = entities
-                .filter((e) => {
-                    if (e.meta.status === 'done') return false;
-                    const due = e.meta.dueDate as string | undefined;
-                    // Include if no due date, due today, or overdue
-                    return !due || due <= today;
-                })
+                .filter((e) => e.meta.status !== 'done')
                 .map((e) => ({
                     id: e.meta.id,
                     title: e.meta.title,
                     status: e.meta.status || 'open',
                     priority: e.meta.priority || 'medium',
-                    dueDate: e.meta.dueDate || null,
-                }));
+                    dueDate: (e.meta.dueDate as string | undefined) || null,
+                }))
+                .sort((a, b) => {
+                    if (!a.dueDate && !b.dueDate) return 0;
+                    if (!a.dueDate) return 1;
+                    if (!b.dueDate) return -1;
+                    return a.dueDate.localeCompare(b.dueDate);
+                });
             return { date: today, tasks };
         } catch {
             return { date: today, tasks: [] };
