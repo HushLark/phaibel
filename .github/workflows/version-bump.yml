@@ -21,10 +21,13 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # NOTE: deliberately NO registry-url — it makes setup-node write an
+      # .npmrc with a "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}"
+      # line. With OIDC there's no token, so that empty credential shadows the
+      # trusted-publisher flow and publish 404s. npm defaults to npmjs anyway.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
 
       - name: Configure git
         run: |
